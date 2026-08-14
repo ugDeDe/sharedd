@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%236366f1"/><stop offset="1" stop-color="%2322d3ee"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(%23g)"/><text x="32" y="44" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · панель регистратора</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --bg2: #0a0f1a;
+    --card: rgba(15, 22, 36, .72);
+    --border: rgba(148, 163, 184, .13);
+    --border-strong: rgba(148, 163, 184, .26);
+    --text: #e7ecf5;
+    --muted: #8694aa;
+    --green: #34d399;
+    --red: #fb7185;
+    --yellow: #fbbf24;
+    --blue: #60a5fa;
+    --purple: #c084fc;
+    --accent1: #6366f1;
+    --accent2: #22d3ee;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --radius: 16px;
+    --shadow: 0 16px 44px rgba(0, 0, 0, .5);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { color-scheme: dark; }
+  body {
+    background:
+      radial-gradient(920px 520px at 12% -12%, rgba(99,102,241,.15), transparent 62%),
+      radial-gradient(820px 500px at 90% -14%, rgba(34,211,238,.09), transparent 62%),
+      radial-gradient(760px 640px at 50% 118%, rgba(192,132,252,.06), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    font: 14px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(99,102,241,.42); color: #fff; }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* ── каркас: сайдбар + контент (V7.7) ──────────────────────── */
+  #app { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; }
+  .view[hidden] { display: none; }
+  .side {
+    position: sticky; top: 0; height: 100vh; z-index: 45;
+    display: flex; flex-direction: column; gap: 20px;
+    padding: 20px 14px 16px;
+    background: rgba(6,9,16,.75);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 0 6px; }
+  .brand-name { font-weight: 800; font-size: 15.5px; letter-spacing: .02em; }
+  .brand-sub { color: var(--muted); font-size: 11.5px; }
+  .nav { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px; border-radius: 11px; color: var(--muted);
+    font-size: 13.5px; font-weight: 600; border: 1px solid transparent;
+    transition: color .15s, background .15s, border-color .15s;
+  }
+  .nav-item svg { flex: 0 0 auto; opacity: .85; }
+  .nav-item:hover { color: var(--text); background: rgba(148,163,184,.07); }
+  .nav-item.active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(99,102,241,.22), rgba(34,211,238,.13));
+    border-color: rgba(99,102,241,.42);
+    box-shadow: 0 6px 18px rgba(99,102,241,.16), inset 3px 0 0 var(--accent1);
+  }
+  .nav-badge {
+    margin-left: auto; min-width: 22px; text-align: center;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: rgba(148,163,184,.1); border: 1px solid var(--border);
+    border-radius: 999px; padding: 1px 7px;
+  }
+  .nav-item.active .nav-badge { color: #fff; border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.12); }
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding: 0 4px; }
+  .main { min-width: 0; padding: 0 28px; display: flex; flex-direction: column; }
+  .main main, .main footer, header.top { width: 100%; max-width: 1380px; margin-left: auto; margin-right: auto; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 15px 0 16px; margin-bottom: 22px;
+    background: rgba(5,7,13,.8);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  header.top h1 { font-size: 19px; font-weight: 700; letter-spacing: .01em; }
+  header.top .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+
+    .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #fff; font-size: 13px; letter-spacing: 0.5px;
+    box-shadow: 0 6px 20px rgba(99,102,241,.45), inset 0 1px 0 rgba(255,255,255,.3);
+    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  }
+  .pill {
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+    font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(148,163,184,.06); backdrop-filter: blur(6px);
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .pill.live .dot { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
+  button.ghost {
+    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 10px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  button.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(148,163,184,.1); }
+  a.ghost {
+    display: inline-flex; align-items: center;
+    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 10px; padding: 5px 12px; font-size: 12.5px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  a.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(148,163,184,.1); }
+
+  .back-link {
+    display: inline-flex; align-items: center; gap: 7px;
+    color: var(--muted); font-size: 13px; font-weight: 600; margin: 0 0 14px;
+  }
+  .back-link:hover { color: var(--text); }
+
+  /* ── баннер тревоги ────────────────────────────────────────── */
+  .banner {
+    border: 1px solid rgba(251,113,133,.38); border-left: 3px solid var(--red);
+    background: linear-gradient(90deg, rgba(251,113,133,.13), rgba(251,113,133,.04) 70%);
+    color: #fecdd3; border-radius: 14px; padding: 11px 16px; margin-bottom: 18px;
+    font-size: 13.5px; display: none; box-shadow: 0 8px 26px rgba(251,113,133,.08);
+    width: 100%; max-width: 1380px; margin-left: auto; margin-right: auto;
+  }
+  .banner.show { display: block; animation: fade-in .25s ease; }
+  .banner { margin-bottom: 18px; }
+
+  /* ── KPI-карточки: строго одинаковая высота, только числа ──── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .card {
+    position: relative; overflow: hidden;
+    background: linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.35);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    display: flex; flex-direction: column; min-height: 112px;
+  }
+  .card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent1), var(--accent2)); opacity: .6;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: 0 18px 36px rgba(0,0,0,.48); }
+  .card .label { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px; }
+  .card .value { font-size: 27px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .card .extra { color: var(--muted); font-size: 12px; margin-top: auto; padding-top: 6px; }
+  .value.good { color: var(--green); text-shadow: 0 0 18px rgba(52,211,153,.35); }
+  .value.bad  { color: var(--red);   text-shadow: 0 0 18px rgba(251,113,133,.35); }
+  .value.warn { color: var(--yellow); }
+  .card-top { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .card-top .label { margin-bottom: 0; }
+  .kpi-ico {
+    width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid transparent;
+  }
+  .kpi-ico.i-gold   { color: #fcd34d;       background: rgba(251,191,36,.12);  border-color: rgba(251,191,36,.32); }
+  .kpi-ico.i-blue   { color: var(--blue);   background: rgba(96,165,250,.12);  border-color: rgba(96,165,250,.3); }
+  .kpi-ico.i-green  { color: var(--green);  background: rgba(52,211,153,.12);  border-color: rgba(52,211,153,.3); }
+  .kpi-ico.i-purple { color: var(--purple); background: rgba(192,132,252,.12); border-color: rgba(192,132,252,.3); }
+  .kpi-ico.i-yellow { color: var(--yellow); background: rgba(251,191,36,.12);  border-color: rgba(251,191,36,.3); }
+  .kpi-ico.i-cyan   { color: var(--accent2);background: rgba(34,211,238,.12);  border-color: rgba(34,211,238,.3); }
+
+  /* ── секции ────────────────────────────────────────────────── */
+  section.block {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 20px; overflow: hidden; box-shadow: var(--shadow);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .block-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,.025);
+  }
+  .block-head h2 { font-size: 14.5px; font-weight: 700; display: flex; align-items: center; gap: 10px; letter-spacing: .01em; }
+  .block-head h2::before {
+    content: ""; width: 4px; height: 17px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--accent1), var(--accent2));
+    box-shadow: 0 0 10px rgba(99,102,241,.5);
+  }
+  .block-head .hint { color: var(--muted); font-size: 12px; }
+
+  /* ── таблица нод ───────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,.09); white-space: nowrap; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; background: rgba(255,255,255,.015); }
+  tbody tr { transition: background .14s ease; }
+  tbody tr:hover { background: rgba(148,163,184,.05); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.rowlink { cursor: pointer; }
+  tbody tr.master {
+    background: linear-gradient(90deg, rgba(251,191,36,.09), transparent 55%);
+    box-shadow: inset 3px 0 0 rgba(251,191,36,.55);
+  }
+  tbody tr.master:hover { background: linear-gradient(90deg, rgba(251,191,36,.13), rgba(148,163,184,.04) 55%); }
+  td.idcell { font-family: var(--mono); font-size: 12.5px; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+  td .ip { font-family: var(--mono); font-size: 12.5px; color: #b7c3d9; }
+  .tbl-wrap { overflow-x: auto; }
+
+  /* ── бейджи ────────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+    padding: 3px 10px; font-size: 11px; font-weight: 700; letter-spacing: .03em;
+    border: 1px solid transparent;
+  }
+  .badge.ok  { color: var(--green);  background: rgba(52,211,153,.1);  border-color: rgba(52,211,153,.3); }
+  .badge.no  { color: var(--red);    background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.32); }
+  .badge.unk { color: var(--muted);  background: rgba(134,148,170,.1); border-color: rgba(134,148,170,.24); }
+  .badge.master {
+    color: #fcd34d; background: rgba(251,191,36,.13); border-color: rgba(251,191,36,.4);
+    text-shadow: 0 0 14px rgba(251,191,36,.4);
+  }
+  .badge.queue { color: var(--blue); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); font-family: var(--mono); }
+  /* V7.9: бейджи типа ноды (classic — обычный muted, без класса) */
+  .badge.t-purple {
+    color: var(--purple); background: rgba(192,132,252,.12); border-color: rgba(192,132,252,.38);
+    text-shadow: 0 0 14px rgba(192,132,252,.35);
+  }
+  .badge.t-cyan {
+    color: var(--accent2); background: rgba(34,211,238,.1); border-color: rgba(34,211,238,.36);
+    text-shadow: 0 0 14px rgba(34,211,238,.32);
+  }
+
+  .avail { display: flex; align-items: center; gap: 8px; }
+  .avail .bar {
+    width: 74px; height: 7px; border-radius: 999px;
+    background: rgba(148,163,184,.14); overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.55);
+  }
+  .avail .bar > div { height: 100%; border-radius: 999px; transition: width .4s ease; }
+  .avail .mono { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .reason { color: var(--yellow); font-size: 12px; white-space: normal; min-width: 160px; }
+
+  /* ── рельса мастеров (строки доменов) ─────────────────────── */
+  .masters-list { padding: 6px 0; max-height: 460px; overflow-y: auto; }
+  .mrow {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px; border-bottom: 1px solid rgba(148,163,184,.07);
+    transition: background .13s ease;
+  }
+  .mrow:hover { background: rgba(148,163,184,.05); }
+  .mrow:last-child { border-bottom: none; }
+  .mdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .mdot.alive { background: var(--green);  box-shadow: 0 0 9px rgba(52,211,153,.8); }
+  .mdot.warn  { background: var(--yellow); box-shadow: 0 0 9px rgba(251,191,36,.8); }
+  .mdot.dead  { background: var(--red);    box-shadow: 0 0 9px rgba(251,113,133,.8); }
+  .mmain { flex: 1 1 auto; min-width: 0; }
+  .mdomain { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mtarget { color: var(--muted); font-size: 11.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .badge { flex: 0 0 auto; }
+
+  /* ── фильтры журнала ───────────────────────────────────────── */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px 0; }
+  .filters button {
+    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 999px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+  }
+  .filters button:hover { color: var(--text); border-color: var(--border-strong); }
+  .filters button.active {
+    color: #fff; border-color: transparent;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    box-shadow: 0 5px 16px rgba(99,102,241,.4);
+  }
+
+  /* ── журнал событий ────────────────────────────────────────── */
+  .events { list-style: none; padding: 10px 14px 14px; max-height: 460px; overflow-y: auto; }
+  .events li {
+    display: flex; gap: 10px; align-items: baseline; padding: 7px 8px; border-radius: 9px;
+    border-bottom: 1px solid rgba(148,163,184,.07); font-size: 13px;
+    transition: background .13s ease;
+  }
+  .events li:hover { background: rgba(148,163,184,.05); }
+  .events li:last-child { border-bottom: none; }
+  .ev-time { color: var(--muted); font-family: var(--mono); font-size: 11.5px; flex: 0 0 178px; font-variant-numeric: tabular-nums; }
+  .ev-type {
+    flex: 0 0 auto; border-radius: 999px; padding: 2px 9px; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; border: 1px solid transparent;
+  }
+  .ev-good  { color: var(--green);  background: rgba(52,211,153,.1);  border-color: rgba(52,211,153,.26); }
+  .ev-bad   { color: var(--red);    background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.28); }
+  .ev-warn  { color: var(--yellow); background: rgba(251,191,36,.1);  border-color: rgba(251,191,36,.26); }
+  .ev-info  { color: var(--blue);   background: rgba(96,165,250,.1);  border-color: rgba(96,165,250,.26); }
+  .ev-neutral { color: var(--muted); background: rgba(134,148,170,.1); border-color: rgba(134,148,170,.22); }
+  .ev-node { font-family: var(--mono); font-size: 12px; color: var(--purple); }
+  .ev-detail { color: var(--muted); font-size: 12.5px; word-break: break-word; }
+  .events::-webkit-scrollbar,
+  .masters-list::-webkit-scrollbar { width: 9px; }
+  .events::-webkit-scrollbar-thumb,
+  .masters-list::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,.22); border-radius: 999px;
+    border: 2px solid transparent; background-clip: padding-box;
+  }
+  .events::-webkit-scrollbar-thumb:hover,
+  .masters-list::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,.34); background-clip: padding-box; }
+
+  .empty { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
+
+  /* ── нода детально (V7.7) ─────────────────────────────────── */
+  .card.nd-head {
+    flex-direction: row; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 18px 20px; margin-bottom: 18px; min-height: 0;
+  }
+  .card.nd-head:hover { transform: none; }
+  .nd-id { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  .nd-ip { font-family: var(--mono); color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .nd-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; }
+  .nd-reason { flex: 0 0 100%; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .gp-grid {
+    display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.7fr);
+    gap: 20px; padding: 16px 18px 18px; align-items: start;
+  }
+  .gp-side .extra { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .gp-side .extra b { color: var(--text); font-family: var(--mono); }
+  .gp-big { font-size: 38px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 8px; }
+  .gp-big.good { color: var(--green); text-shadow: 0 0 22px rgba(52,211,153,.4); }
+  .gp-big.bad  { color: var(--red);   text-shadow: 0 0 22px rgba(251,113,133,.4); }
+  .chart-body { padding: 12px 18px 18px; }
+  .chart-cap {
+    color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+    margin: 14px 0 8px; display: flex; gap: 8px; align-items: baseline;
+  }
+  .chart-cap:first-child { margin-top: 2px; }
+  .chart-cap .hint { text-transform: none; letter-spacing: 0; }
+  .ticks { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+  .tick { width: 7px; height: 16px; border-radius: 2.5px; background: rgba(52,211,153,.85); }
+  .tick.fail { background: rgba(251,113,133,.9); }
+  .bars { display: flex; align-items: flex-end; gap: 3px; min-height: 56px; }
+  .bars:empty { display: none; }
+  .gbar {
+    flex: 1 1 0; min-width: 4px; max-width: 16px; border-radius: 3px 3px 1px 1px;
+    background: linear-gradient(180deg, rgba(52,211,153,.95), rgba(52,211,153,.4));
+    transition: height .3s ease;
+  }
+  .gbar.mid  { background: linear-gradient(180deg, rgba(251,191,36,.95), rgba(251,191,36,.4)); }
+  .gbar.fail { background: linear-gradient(180deg, rgba(251,113,133,.95), rgba(251,113,133,.4)); }
+  .spark { width: 100%; height: 56px; display: block; cursor: crosshair; }
+
+  /* ── V7.9: hover-подсказка спарклайна клиентов на странице ноды ── */
+  .sparkwrap { position: relative; }
+  .spark-guide {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background: rgba(231,236,245,.38); pointer-events: none;
+    opacity: 0; transition: opacity .1s ease;
+  }
+  .spark-dot {
+    position: absolute; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent2); box-shadow: 0 0 8px rgba(34,211,238,.9);
+    transform: translate(-50%, -50%); pointer-events: none;
+    opacity: 0; transition: opacity .1s ease;
+  }
+  .spark-tip {
+    position: absolute; top: -6px; transform: translate(-50%, -100%);
+    background: rgba(7,12,21,.95); border: 1px solid var(--border-strong);
+    border-radius: 9px; padding: 4px 10px; font-family: var(--mono);
+    font-size: 11px; color: var(--text); white-space: nowrap;
+    pointer-events: none; z-index: 5; box-shadow: 0 6px 18px rgba(0,0,0,.45);
+    opacity: 0; transition: opacity .1s ease;
+  }
+  .spark-tip b { color: var(--accent2); }
+  .sparkwrap.hover .spark-guide,
+  .sparkwrap.hover .spark-dot,
+  .sparkwrap.hover .spark-tip { opacity: 1; }
+
+  /* ── вход ──────────────────────────────────────────────────── */
+  #login-overlay {
+    position: fixed; inset: 0; background: rgba(3,5,10,.8);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  #login-overlay.show { display: flex; animation: fade-in .2s ease; }
+  .login-box {
+    position: relative; overflow: hidden;
+    background: linear-gradient(170deg, rgba(255,255,255,.05), rgba(255,255,255,.015)), var(--bg2);
+    border: 1px solid var(--border-strong); border-radius: 20px;
+    padding: 32px; width: 356px; box-shadow: var(--shadow);
+    animation: pop-in .28s cubic-bezier(.2,1.2,.4,1);
+  }
+  .login-box::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+  }
+  .login-logo {
+    width: 46px; height: 46px; border-radius: 14px; margin-bottom: 14px;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    letter-spacing: 0.5px;
+    font-weight: 800; color: #fff; font-size: 19px;
+    box-shadow: 0 8px 24px rgba(99,102,241,.5), inset 0 1px 0 rgba(255,255,255,.3);
+  }
+  .login-box h2 { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; }
+  .login-box h2::before { content: none; }
+  .login-box p { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .login-box input {
+    width: 100%; background: rgba(4,7,14,.75); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 13px; font-size: 13.5px; margin-bottom: 12px; font-family: var(--mono);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .login-box input:focus { outline: none; border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(99,102,241,.22); }
+  .login-box button {
+    width: 100%; border: none; border-radius: 10px; padding: 10px; cursor: pointer;
+    font-size: 13.5px; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    box-shadow: 0 6px 18px rgba(99,102,241,.4);
+    transition: filter .15s, transform .15s;
+  }
+  .login-box button:hover { filter: brightness(1.12); transform: translateY(-1px); }
+  .login-err { color: var(--red); font-size: 12.5px; margin-top: 10px; display: none; }
+  .login-err.show { display: block; }
+
+  /* ── настройки ─────────────────────────────────────────────── */
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; padding: 16px 18px 18px; }
+  fieldset.cfg {
+    border: 1px solid var(--border); border-radius: 14px; padding: 13px 16px 15px;
+    background: rgba(255,255,255,.02);
+  }
+  fieldset.cfg legend {
+    color: #aeb9cd; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
+    font-weight: 700; padding: 0 8px;
+  }
+  fieldset.cfg label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
+  .cfg input[type=text], .cfg input[type=password], .cfg input[type=number], .cfg textarea {
+    width: 100%; background: rgba(4,7,14,.7); border: 1px solid var(--border); color: var(--text);
+    border-radius: 9px; padding: 8px 11px; font-size: 12.5px; font-family: var(--mono);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .cfg input:focus, .cfg textarea:focus { outline: none; border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
+  .cfg input[type=checkbox] { accent-color: var(--accent1); width: 15px; height: 15px; }
+  .cfg textarea { resize: vertical; min-height: 64px; }
+  .cfg .row { display: flex; gap: 8px; align-items: center; margin-top: 11px; flex-wrap: wrap; }
+  .cfg .row label { margin: 0; }
+  button.act {
+    border: none; border-radius: 9px; padding: 7px 15px; cursor: pointer;
+    font-size: 12.5px; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    box-shadow: 0 4px 14px rgba(99,102,241,.32);
+    transition: filter .15s, transform .15s, box-shadow .15s;
+  }
+  button.act:hover { filter: brightness(1.14); transform: translateY(-1px); }
+  button.act:active { transform: translateY(0); }
+  button.act.secondary {
+    background: rgba(148,163,184,.08); color: var(--text);
+    border: 1px solid var(--border-strong); box-shadow: none;
+  }
+  button.act.secondary:hover { background: rgba(148,163,184,.13); filter: none; }
+  button.act.danger {
+    background: transparent; color: var(--red); border: 1px solid rgba(251,113,133,.45); box-shadow: none;
+  }
+  button.act.danger:hover { background: rgba(251,113,133,.12); filter: none; }
+  .cfg .note { color: var(--muted); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
+  #users-tbl { width: 100%; font-size: 12.5px; }
+  #users-tbl td { padding: 4px 6px; border-bottom: 1px solid rgba(148,163,184,.08); white-space: normal; }
+  #users-tbl input { width: 100%; }
+  .static-info { padding: 14px 18px 18px; color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: pre-wrap; line-height: 1.6; }
+
+  /* ── тост ──────────────────────────────────────────────────── */
+  #toast {
+    position: fixed; top: 20px; right: 20px; z-index: 60; max-width: 460px;
+    border-radius: 14px; padding: 12px 17px; font-size: 13px; display: none;
+    border: 1px solid rgba(52,211,153,.45); border-left-width: 3px;
+    background: rgba(7,12,21,.93); color: var(--green);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--shadow);
+  }
+  #toast.err { border-color: rgba(251,113,133,.5); border-left-width: 3px; color: #fecdd3; }
+  #toast.show { display: block; animation: toast-in .28s cubic-bezier(.2,1.1,.4,1); }
+
+  footer {
+    color: var(--muted); font-size: 12px; text-align: center; margin-top: 30px;
+    letter-spacing: .02em; opacity: .85; padding-bottom: 12px;
+  }
+
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pop-in { from { opacity: 0; transform: scale(.95) translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+
+  /* сайдбар сворачивается в верхнюю полосу */
+  @media (max-width: 1080px) {
+    #app { grid-template-columns: 1fr; }
+    .side {
+      position: static; height: auto; flex-direction: row; align-items: center;
+      padding: 12px 16px; gap: 14px; border-right: none; border-bottom: 1px solid var(--border);
+    }
+    .brand-sub { display: none; }
+    .nav { flex-direction: row; margin-top: 0; overflow-x: auto; flex: 1 1 auto; gap: 5px; }
+    .nav-item { padding: 7px 11px; white-space: nowrap; }
+    .nav-item.active { box-shadow: 0 4px 14px rgba(99,102,241,.16), inset 0 -3px 0 var(--accent1); }
+    .side-foot { margin-top: 0; flex-direction: row; align-items: center; padding: 0; }
+    .gp-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .main { padding: 0 14px; }
+    .ev-time { flex: 0 0 118px; }
+    .card .value { font-size: 23px; }
+    .brand { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">DD</div>
+      <div>
+        <div class="brand-name">sharedd</div>
+        <div class="brand-sub">регистратор прокси-пула</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a class="nav-item" href="#/overview" data-view="overview">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Обзор</a>
+      <a class="nav-item" href="#/nodes" data-view="nodes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+        Ноды <span class="nav-badge" id="nav-nodes-count"></span></a>
+      <a class="nav-item" href="#/dns" data-view="dns">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4 10z"/></svg>
+        Мастера и DNS</a>
+      <a class="nav-item" href="#/events" data-view="events">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Журнал</a>
+      <a class="nav-item" href="#/settings" data-view="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Настройки</a>
+      <a class="nav-item" href="/dashboard" target="_blank" rel="noopener" title="Публичный дашборд блокировок">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+        Дашборд ↗</a>
+    </nav>
+    <div class="side-foot">
+            <button class="ghost" id="logout-btn" title="Забыть токен">Сменить токен</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <div>
+        <h1 id="view-title">Обзор</h1>
+        <div class="sub" id="hdr-sub">загрузка…</div>
+      </div>
+      <div class="top-right">
+        <span class="pill live" id="live-pill"><span class="dot"></span><span id="live-text">обновление…</span></span>
+      </div>
+    </header>
+
+    <div class="banner" id="alert-banner"></div>
+
+    <main>
+      <!-- ═══ Обзор ═══ -->
+      <section class="view" id="view-overview">
+        <div class="cards" id="cards"></div>
+        <section class="block" id="stats-block">
+          <div class="block-head">
+            <h2>Статистика пула</h2>
+            <span class="hint" id="stats-hint"></span>
+          </div>
+          <div class="cards" id="pool-stats" style="padding:16px 18px 0; margin-bottom:0"></div>
+          <div class="chart-cap" style="padding:0 18px">История банов Globalping
+            <span class="hint">бан = блокировка без восстановления</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>Начало</th><th>Нода</th><th>IP</th><th>Длительность</th><th>Статус</th><th>Причина (деталь блокировки)</th></tr>
+              </thead>
+              <tbody id="bans-body"><tr><td colspan="6" class="empty">загрузка…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="block">
+          <div class="block-head">
+            <h2>Последние события</h2>
+            <a class="ghost" href="#/events" style="margin-left:auto">весь журнал →</a>
+          </div>
+          <ul class="events" id="events-mini" style="max-height:418px"><li class="empty">загрузка…</li></ul>
+        </section>
+      </section>
+
+      <!-- ═══ Ноды ═══ -->
+      <section class="view" id="view-nodes" hidden>
+        <section class="block" id="quar-block" hidden>
+          <div class="block-head">
+            <h2>Карантин·GP</h2>
+            <span class="hint">всё зелёное, кроме globalping — бан по IP после исчерпания попыток</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>Нода</th><th>Адрес</th><th>В карантине с</th><th>Попытка</th><th>Решение</th></tr>
+              </thead>
+              <tbody id="quar-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="block">
+          <div class="block-head">
+            <h2>Ноды пула</h2>
+            <span class="hint" id="nodes-hint"></span>
+            <span class="hint" style="margin-left:auto">клик по строке — статистика ноды</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Нода</th><th>Адрес</th><th>Роль</th><th>TCP</th><th>Globalping</th><th>Metrics</th>
+                  <th>Доступность</th>
+                  <th>Клиенты</th>
+                  <th>Heartbeat</th><th>Отчёт</th><th>Мастерство</th><th>Статус / ошибка</th>
+                </tr>
+              </thead>
+              <tbody id="nodes-body"><tr><td colspan="12" class="empty">загрузка…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- ═══ Нода: статистика ═══ -->
+      <section class="view" id="view-node" hidden>
+        <a href="#/nodes" class="back-link">← все ноды</a>
+        <div id="node-detail"><div class="empty">загрузка…</div></div>
+      </section>
+
+      <!-- ═══ Мастера и DNS ═══ -->
+      <section class="view" id="view-dns" hidden>
+        <section class="block">
+          <div class="block-head">
+            <h2>Назначения доменов</h2>
+            <span class="hint" id="dns-hint"></span>
+            <button class="act secondary" id="s-dns-push2" style="margin-left:auto">Перезаписать DNS сейчас</button>
+          </div>
+          <div class="masters-list" id="masters-full" style="max-height:none"></div>
+        </section>
+      </section>
+
+      <!-- ═══ Журнал ═══ -->
+      <section class="view" id="view-events" hidden>
+        <section class="block">
+          <div class="block-head">
+            <h2>Журнал событий</h2>
+            <span class="hint">новые сверху</span>
+          </div>
+          <div class="filters" id="ev-filters">
+            <button data-f="all" class="active">Все</button>
+            <button data-f="master">Мастер / DNS</button>
+            <button data-f="blocks">Блокировки</button>
+            <button data-f="nodes">Ноды</button>
+            <button data-f="system">Система</button>
+          </div>
+          <ul class="events" id="events-list" style="max-height:none"><li class="empty">загрузка…</li></ul>
+        </section>
+      </section>
+
+      <!-- ═══ Настройки ═══ -->
+      <section class="view" id="view-settings" hidden>
+        <section class="block">
+          <div class="block-head">
+            <h2>Настройки</h2>
+            <span class="hint">применяются на лету и персистятся в registry.toml · секции сохраняются независимо</span>
+            <button class="ghost" id="cfg-reload" style="margin-left:auto">Обновить</button>
+          </div>
+          <div class="settings-grid">
+            <fieldset class="cfg">
+              <legend>Прокси · SNI</legend>
+              <label>tls_domain (домен маскировки; уходит нодам в tls_domains)</label>
+              <input type="text" id="s-sni" placeholder="www.microsoft.com">
+              <div class="row"><button class="act" id="s-sni-save">Сохранить SNI</button></div>
+              <div class="note">Ноды подтянут на ближайшем sync (sync_ms) и обновят telemt.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Пользователи MTProto</legend>
+              <table id="users-tbl"><tbody id="users-body"></tbody></table>
+              <div class="row">
+                <button class="act secondary" id="s-user-add">+ пользователь</button>
+                <button class="act secondary" id="s-user-gen">сгенерить имя+secret</button>
+                <button class="act" id="s-users-save">Сохранить пользователей</button>
+              </div>
+              <div class="note">Ноды только ДОБАВЛЯЮТ пользователей в telemt — удалённые здесь остаются на нодах до ручной чистки.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Cloudflare DNS</legend>
+              <label>api_token</label>
+              <input type="password" id="s-cf-token" autocomplete="off">
+              <label>zone_id</label>
+              <input type="text" id="s-cf-zone">
+              <label>managed-домены (по одному в строке)</label>
+              <textarea id="s-cf-domains"></textarea>
+              <div class="row">
+                <span>dns_ttl</span><input type="number" id="s-cf-ttl" min="1" max="86400" style="width:110px">
+                <label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="s-cf-proxied"> proxied</label>
+              </div>
+              <div class="row">
+                <button class="act" id="s-cf-save">Сохранить Cloudflare</button>
+                <button class="act secondary" id="s-dns-push">Перезаписать DNS сейчас</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Интервалы нод (мс)</legend>
+              <div class="row"><label style="flex:1">heartbeat</label><input type="number" id="s-nd-heartbeat" style="width:130px"></div>
+              <div class="row"><label style="flex:1">globalping</label><input type="number" id="s-nd-globalping" style="width:130px"></div>
+              <div class="row"><label style="flex:1">metrics</label><input type="number" id="s-nd-metrics" style="width:130px"></div>
+              <div class="row"><label style="flex:1">sync</label><input type="number" id="s-nd-sync" style="width:130px"></div>
+              <div class="row"><button class="act" id="s-nd-save">Сохранить интервалы</button></div>
+              <div class="note">Ноды получают интервалы в GET /config и применяют без рестарта.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Ротация мастерства</legend>
+              <label>master_ttl_minutes — максимум времени мастером одного домена (мин)</label>
+              <div class="row"><input type="number" id="s-rot-ttl" min="0" max="43200" style="width:130px"></div>
+              <div class="row"><button class="act" id="s-rot-save">Сохранить ротацию</button></div>
+              <div class="note">0 = без лимита. По истечении домен уходит следующей здоровой ноде очереди, бывший мастер — в конец очереди (round-robin). 0..43200 мин.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Globalping</legend>
+              <label>api_base</label>
+              <input type="text" id="s-gp-base">
+              <div class="row"><button class="act" id="s-gp-save">Сохранить Globalping</button></div>
+              <div class="note">Measurement'ы создают сами ноды; API-токен не нужен.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Карантин GP</legend>
+              <label>quarantine_attempts — неудачных проверок globalping до бана по IP</label>
+              <div class="row"><input type="number" id="s-hc-quar" min="1" max="20" style="width:130px"></div>
+              <div class="row"><button class="act" id="s-hc-quar-save">Сохранить карантин</button></div>
+              <div class="note">Попытка = независимо верифицированный measurement. Применяется на лету, 1..20. Выход из карантина любым путём, кроме восстановления, — бан.</div>
+            </fieldset>
+
+            <fieldset class="cfg">
+              <legend>Панель</legend>
+              <label>token (Bearer для API панели и /status)</label>
+              <input type="password" id="s-panel-token" autocomplete="off">
+              <label>events_max (размер журнала)</label>
+              <input type="number" id="s-panel-events" min="50" max="10000">
+              <div class="row"><button class="act" id="s-panel-save">Сохранить параметры панели</button></div>
+              <div class="note">После смены токена сессия слетит — войдите с новым.</div>
+            </fieldset>
+          </div>
+          <div class="static-info" id="s-static">…</div>
+        </section>
+      </section>
+    </main>
+
+    <footer>sharedd Registry · обновление каждые 5 с · <span id="last-upd">ещё не обновлялось</span></footer>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">DD</div>
+    <h2>Доступ к панели</h2>
+    <p>Введите токен панели (<span class="mono">[panel] token</span>).</p>
+    <input type="password" id="token-input" placeholder="panel token" autocomplete="off">
+    <button id="login-btn">Войти</button>
+    <div class="login-err" id="login-err">Неверный токен или регистратор недоступен.</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const LS_KEY = "sharedd.panelToken";
+let evFilter = "all";
+const state = { ov: null, events: [], nodeId: null, node: null, settingsLoaded: false };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function fmtDur(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
+        m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (d > 0) return `${d}д ${h}ч`;
+  if (h > 0) return `${h}ч ${m}м`;
+  if (m > 0) return `${m}м ${s}с`;
+  return `${s}с`;
+}
+function fmtAgo(iso) {
+  if (!iso) return "—";
+  const sec = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (sec < 10) return "только что";
+  if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
+  return `${Math.floor(sec / 86400)} дн назад`;
+}
+function fmtClock(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+}
+
+function getToken() { return localStorage.getItem(LS_KEY) || ""; }
+
+async function api(path) {
+  const resp = await fetch(path, {headers: {"Authorization": "Bearer " + getToken()}, cache: "no-store"});
+  if (resp.status === 401) { showLogin(true); throw new Error("unauthorized"); }
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  return resp.json();
+}
+
+function showLogin(bad) {
+  $("login-overlay").classList.add("show");
+  $("login-err").classList.toggle("show", !!bad);
+  setTimeout(() => $("token-input").focus(), 50);
+}
+function hideLogin() { $("login-overlay").classList.remove("show"); }
+
+$("login-btn").onclick = submitToken;
+$("token-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submitToken(); });
+function submitToken() {
+  const t = $("token-input").value.trim();
+  if (!t) return;
+  localStorage.setItem(LS_KEY, t);
+  $("token-input").value = "";
+  refresh().then(() => route()).catch(() => {});
+}
+$("logout-btn").onclick = () => { localStorage.removeItem(LS_KEY); showLogin(false); };
+
+function chip(flag, okText, noText) {
+  if (flag === null || flag === undefined) return `<span class="badge unk">—</span>`;
+  return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge no">${noText || "fail"}</span>`;
+}
+
+function availColor(p) { return p >= 99 ? "var(--green)" : p >= 95 ? "var(--yellow)" : "var(--red)"; }
+
+const EV_META = {
+  registry_started:      {label: "Запуск регистратора",  cls: "ev-neutral", grp: "system"},
+  config_changed:        {label: "Конфиг изменён",       cls: "ev-info",    grp: "system"},
+  node_registered:       {label: "Регистрация ноды",     cls: "ev-info",    grp: "nodes"},
+  node_replaced:         {label: "Нода вытеснена",       cls: "ev-warn",    grp: "nodes"},
+  node_expired:          {label: "Нода отвалилась",      cls: "ev-warn",    grp: "nodes"},
+  node_pruned:           {label: "Удалена (неактивна)",  cls: "ev-warn",    grp: "nodes"},
+  tcp_down:              {label: "TCP недоступен",       cls: "ev-bad",     grp: "blocks"},
+  tcp_up:                {label: "TCP восстановлен",     cls: "ev-good",    grp: "blocks"},
+  metrics_down:          {label: "Метрики в отказе",     cls: "ev-bad",     grp: "blocks"},
+  metrics_up:            {label: "Метрики восстановлены", cls: "ev-good",   grp: "blocks"},
+  globalping_blocked:    {label: "Блокировка (GP)",      cls: "ev-bad",     grp: "blocks"},
+  globalping_recovered:  {label: "GP восстановлен",      cls: "ev-good",    grp: "blocks"},
+  queue_joined:          {label: "В очереди мастеров",   cls: "ev-info",    grp: "nodes"},
+  queue_left:            {label: "Вышла из очереди",     cls: "ev-warn",    grp: "nodes"},
+  master_elected:        {label: "МАСТЕР ИЗБРАН",        cls: "ev-good",    grp: "master"},
+  master_lost:           {label: "Мастер потерян",       cls: "ev-bad",     grp: "master"},
+  dns_updated:           {label: "DNS обновлён",         cls: "ev-info",    grp: "master"},
+  dns_error:             {label: "Ошибка DNS",           cls: "ev-bad",     grp: "master"},
+  dns_deleted:           {label: "DNS запись удалена",   cls: "ev-warn",    grp: "master"},
+  node_quarantined:      {label: "Карантин (GP)",        cls: "ev-warn",    grp: "blocks"},
+  quarantine_recovered:  {label: "Вышла из карантина",   cls: "ev-good",    grp: "blocks"},
+  node_terminated:       {label: "Нода завершена (бан)", cls: "ev-bad",     grp: "nodes"},
+  ban_lifted:            {label: "Бан снят (смена IP)",  cls: "ev-info",    grp: "nodes"},
+  ip_blocked:            {label: "IP заблокирован (смена в карантине)", cls: "ev-bad", grp: "blocks"},
+};
+
+const ICON = (p) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICO = {
+  masters: ICON(`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`),
+  nodes:   ICON(`<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/>`),
+  health:  ICON(`<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`),
+  users:   ICON(`<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`),
+  sw:      ICON(`<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`),
+  dns:     ICON(`<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4 10z"/>`),
+  ban:     ICON(`<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>`),
+  clock:   ICON(`<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`),
+};
+
+/* ---------------- статистика пула по журналу (V7.8) ---------------- */
+
+// средний промежуток: null/undefined (мало данных) — прочерк
+function fmtInterval(sec) {
+  if (sec === null || sec === undefined) return "—";
+  return fmtDur(Math.round(sec));
+}
+
+function banStatusBadge(b) {
+  if (b.active) return `<span class="badge no">активен</span>`;
+  const by = b.closed_by === "node_expired" ? "нода отвалилась"
+           : b.closed_by === "node_replaced" ? "вытеснена новым ID"
+           : b.closed_by === "node_pruned" ? "удалена (неактивна)"
+           : b.closed_by === "node_terminated" ? "завершена навсегда"
+           : (b.closed_by || "закрыт");
+  return `<span class="badge unk">${esc(by)}</span>`;
+}
+
+function renderGPStats(o) {
+  const st = o.stats || {};
+  $("stats-hint").textContent = `окно анализа: ${st.events_window ?? 0} событий журнала`;
+  $("pool-stats").innerHTML = `
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-yellow">${ICO.ban}</span><div class="label">Баны GP</div></div>
+      <div class="value ${(st.gp_bans_total ?? 0) > 0 ? "warn" : "good"}" style="font-size:24px">${st.gp_bans_total ?? 0}</div>
+      <div class="extra">активных: ${st.gp_bans_active ?? 0} · уникальных нод: ${st.gp_bans_nodes ?? 0}</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-blue">${ICO.clock}</span><div class="label">Периодичность банов GP</div></div>
+      <div class="value" style="font-size:24px">${fmtInterval(st.gp_ban_interval_sec)}</div>
+      <div class="extra">средний промежуток между банами</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-cyan">${ICO.dns}</span><div class="label">Периодичность смен DNS</div></div>
+      <div class="value" style="font-size:24px">${fmtInterval(st.dns_switch_interval_sec)}</div>
+      <div class="extra">средний промежуток между переключениями</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-gold">${ICO.masters}</span><div class="label">Среднее время мастерства</div></div>
+      <div class="value" style="font-size:24px">${fmtInterval(st.master_avg_sec)}</div>
+      <div class="extra">от избрания до потери домена</div></div>`;
+  const bans = st.gp_ban_history || [];
+  const body = $("bans-body");
+  if (bans.length === 0) {
+    body.innerHTML = `<tr><td colspan="6" class="empty">банов за окно журнала не было 🎉</td></tr>`;
+    return;
+  }
+  body.innerHTML = bans.map((b) => `<tr>
+    <td class="mono" title="${esc(b.started_at)}">${fmtClock(b.started_at)}</td>
+    <td class="idcell" title="${esc(b.node_id)}">${esc(b.node_id)}</td>
+    <td><span class="ip">${esc(b.ip || "—")}</span></td>
+    <td class="mono">${fmtDur(b.duration_sec || 0)}${b.active ? " · идёт" : ""}</td>
+    <td>${banStatusBadge(b)}</td>
+    <td class="muted" style="white-space:normal;min-width:200px">${esc(b.cause || "—")}</td>
+  </tr>`).join("");
+}
+
+/* ---------------- KPI-стрип (компактные числа, равная высота) ---------------- */
+
+function renderKpis(o) {
+  const c = o.counters || {};
+  const masters = o.masters || [];
+  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  const dnsErr = c.dns_errors_total ?? 0;
+  $("cards").innerHTML = `
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-gold">${ICO.masters}</span><div class="label">Мастера</div></div>
+      <div class="value ${masters.length > 0 && aliveMs === masters.length ? "good" : "bad"}">${aliveMs}<span class="muted">/</span>${masters.length}</div>
+      <div class="extra">живых назначений</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-blue">${ICO.nodes}</span><div class="label">Нод в пуле</div></div>
+      <div class="value">${o.nodes_total}</div>
+      <div class="extra">fully healthy: ${o.nodes_fully_healthy} · очередь: ${o.queue_size}</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-green">${ICO.health}</span><div class="label">TCP / GP / Metrics OK</div></div>
+      <div class="value">${o.nodes_tcp_ok}<span class="muted">/</span>${o.nodes_gp_verified}<span class="muted">/</span>${o.nodes_metrics_ok}</div>
+      <div class="extra">из ${o.nodes_total} нод</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-purple">${ICO.users}</span><div class="label">Активные клиенты</div></div>
+      <div class="value">${o.clients_unique_ips_total ?? "—"}</div>
+      <div class="extra">${o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${o.writers_active_total ?? 0}`}</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-yellow">${ICO.sw}</span><div class="label">Смен мастера</div></div>
+      <div class="value">${c.master_switches_total ?? 0}</div>
+      <div class="extra">блокировок GP: ${c.gp_blocked_total ?? 0}</div></div>
+    <div class="card">
+      <div class="card-top"><span class="kpi-ico i-cyan">${ICO.dns}</span><div class="label">DNS-обновления</div></div>
+      <div class="value">${c.dns_updates_total ?? 0}<span class="muted"> ok/</span><span style="color:${dnsErr > 0 ? "var(--red)" : "inherit"}">${dnsErr}</span><span class="muted"> err</span></div>
+      <div class="extra">heartbeats: ${c.heartbeats_total ?? 0} · отчёты: ${c.health_reports_total ?? 0}</div></div>`;
+}
+
+/* ---------------- назначения мастеров (строки доменов) ---------------- */
+
+// fmtTtlMin — компактная длительность из минут (для чипа TTL мастерства).
+function fmtTtlMin(m) {
+  m = Math.round(m);
+  if (m < 120) return m + " мин";
+  if (m < 4320) return (Math.round(m / 6) / 10 + " ч").replace(/\.0 ч$/, " ч");
+  return (Math.round(m / 144) / 10 + " д").replace(/\.0 д$/, " д");
+}
+
+function masterRowHTML(m) {
+  if (!m.node_id) {
+    return `<div class="mrow">
+      <span class="mdot dead"></span>
+      <div class="mmain">
+        <div class="mdomain mono">${esc(m.domain)}</div>
+        <div class="mtarget"><span style="color:var(--red)">мастер не назначен — DNS-записи нет</span></div>
+      </div>
+      <span class="badge no">нет DNS</span></div>`;
+  }
+  const dead = !!m.dead;
+  // V7.9.3: чип принудительной ротации по лимиту времени мастерства
+  let ttlChip = "";
+  if (m.ttl_sec > 0) {
+    if (m.ttl_remaining_sec < 0) {
+      ttlChip = `<span class="badge no">TTL истёк</span>`;
+    } else {
+      const usedMin = Math.max(0, Math.round((m.ttl_sec - m.ttl_remaining_sec) / 60));
+      ttlChip = `<span class="badge unk">${fmtTtlMin(usedMin)} / ${fmtTtlMin(m.ttl_sec / 60)}</span>`;
+    }
+  }
+  return `<div class="mrow">
+    <span class="mdot ${dead ? "warn" : "alive"}"></span>
+    <div class="mmain">
+      <div class="mdomain mono">${esc(m.domain)}</div>
+      <div class="mtarget mono">${esc(m.ip || "?")} · ${esc(m.node_id)}</div>
+    </div>
+    ${nodeTypeBadge(m.node_type)}
+    ${ttlChip}
+    <span class="badge ${dead ? "no" : "ok"}">${dead ? "нода нездорова" : "live"}</span></div>`;
+}
+
+function renderMastersInto(bodyEl, hintEl, o) {
+  const masters = o.masters || [];
+  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  if (hintEl) {
+    const ttlNote = (o.master_ttl_sec || 0) > 0
+      ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60)
+      : " · лимит мастера: выкл";
+    hintEl.textContent = masters.length
+      ? `${aliveMs}/${masters.length} живых${ttlNote}`
+      : "cloudflare.domains пуст";
+  }
+  if (masters.length === 0) {
+    bodyEl.innerHTML = `<div class="empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</div>`;
+    return;
+  }
+  bodyEl.innerHTML = masters.map(masterRowHTML).join("");
+}
+
+/* ---------------- таблица нод ---------------- */
+
+// V7.9: тип ноды (менеджер прокси), присылается агентом в /register.
+const NODE_TYPE_META = {
+  classic:  {label: "Classic",  cls: "unk",      title: "классический telemt"},
+  mtproxyl: {label: "MTProxyL", cls: "t-purple", title: "форк MTProxyL (/opt/mtproxyl/)"},
+  meko:     {label: "MEKO",     cls: "t-cyan",   title: "фикс MEKO (/opt/mtpr-simple/)"},
+};
+function nodeTypeBadge(t) {
+  const m = NODE_TYPE_META[t];
+  if (!m) return ""; // старый агент тип не присылает — бейджа нет
+  return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+}
+
+function renderNodes(o) {
+  const body = $("nodes-body");
+  const domMap = (o.masters || []).map((m) => `${m.domain}→${m.ip || "—"}`).join(", ");
+  const all = o.nodes || [];
+  // V7.9.11: карантин — отдельная таблица сверху (в пул не входит, бан близко)
+  const quar = all.filter((n) => n.quarantine);
+  const main = all.filter((n) => !n.quarantine);
+  $("nodes-hint").textContent = `${o.nodes_total} нод${quar.length ? " · карантин: " + quar.length : ""} · DNS: ${domMap || o.domains.join(", ")}`;
+  $("quar-block").hidden = quar.length === 0;
+  if (quar.length) {
+    $("quar-body").innerHTML = quar.map((n) => {
+      const age = Math.max(0, Math.round((Date.now() - new Date(n.quarantine.entered_at).getTime()) / 1000));
+      return `<tr class="rowlink" data-id="${esc(n.node_id)}">
+        <td class="idcell" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+        <td><span class="ip">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span></td>
+        <td class="mono">${fmtDur(age)} назад</td>
+        <td><span class="badge no">${n.quarantine.attempt}/${n.quarantine.max}</span></td>
+        <td><span class="muted">${n.quarantine.reverify
+          ? "перепроверка старого ip — ok вернёт в пул, fail — повторный бан"
+          : "ждём вердикт GP — восстановление или бан по IP"}</span></td>
+      </tr>`;
+    }).join("");
+  }
+  if (main.length === 0) {
+    body.innerHTML = `<tr><td colspan="12" class="empty">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст — ноды регистрируются через POST /register"}</td></tr>`;
+    return;
+  }
+  body.innerHTML = main.map((n) => {
+    const avail = n.availability_pct ?? 0;
+    // GP: значок = текущий статус; первый % — доля успешных РФ-проб в ПОСЛЕДНЕЙ
+    // независимой верификации (ratio measurement'а); «вериф. N%» — доля успешных
+    // верификаций за всё время (GPChecksOK/GPChecksTotal жизни node_id).
+    const gpTxt = n.gp_checks_total > 0
+      ? `${chip(n.globalping_ok)} <span class="muted mono" title="последняя верификация · % успешных за всё время">${(n.globalping_ratio * 100).toFixed(0)}% · вериф. ${n.gp_verified_pct.toFixed(0)}%</span>`
+      : chip(n.globalping_ok);
+    // «Клиенты» = уникальные активные IP из метрик ноды (НЕ me_writers —
+    // writers это апстрим-подключения к Telegram ME, их сумма и была багом).
+    const clients = n.clients_unique_ips ?? null;
+    const clientsCell = clients === null
+      ? `<span class="muted">—</span>`
+      : `<span>${clients}</span>`;
+    const hbCls = n.heartbeat_age_sec > 45 ? "bad" : "";
+    const status = n.is_master && n.queue_position === 0
+      ? `<span class="reason">мастер, но вне очереди!</span>`
+      : (n.unhealthy_reason ? `<span class="reason">${esc(n.unhealthy_reason)}</span>`
+        : (n.report_error ? `<span class="reason">${esc(n.report_error)}</span>` : `<span class="muted">—</span>`));
+    const mdoms = n.master_domains || [];
+    const role = n.is_master
+      ? `<span class="badge master" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>`
+      : (n.queue_position > 0 ? `<span class="badge queue">#${n.queue_position}</span>` : `<span class="badge unk">вне очереди</span>`);
+    return `<tr class="rowlink ${n.is_master ? "master" : ""}" data-id="${esc(n.node_id)}">
+      <td class="idcell" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+      <td><span class="ip">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span></td>
+      <td>${role}</td>
+      <td>${chip(n.healthy)}</td>
+      <td>${gpTxt}</td>
+      <td><span title="серия падений ${n.metrics_fail_streak || 0} · последний отчёт: ${n.metrics_ok ? "ok" : "FAIL"}">${chip(n.metrics_healthy ?? n.metrics_ok, "metrics ok", "metrics fail")}</span></td>
+      <td><div class="avail"><div class="bar"><div style="width:${avail}%;background:${availColor(avail)}"></div></div><span class="mono">${avail.toFixed(1)}%</span></div></td>
+      <td class="mono">${clientsCell}</td>
+      <td class="${hbCls} mono">${fmtDur(n.heartbeat_age_sec)} назад</td>
+      <td class="mono">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
+      <td class="mono">${n.master_stints > 0 ? fmtDur(n.master_time_sec) + " · ×" + n.master_stints : "—"}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join("");
+}
+
+$("nodes-body").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
+});
+$("quar-body").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
+});
+
+/* ---------------- события ---------------- */
+
+function renderEventsInto(el, list) {
+  if (!list || list.length === 0) {
+    el.innerHTML = `<li class="empty">Событий пока нет</li>`;
+    return;
+  }
+  el.innerHTML = list.map((ev) => {
+    const m = EV_META[ev.type] || {label: ev.type, cls: "ev-neutral"};
+    return `<li>
+      <span class="ev-time" title="${esc(ev.at)}">${fmtClock(ev.at)}</span>
+      <span class="ev-type ${m.cls}">${m.label}</span>
+      ${ev.node_id ? `<span class="ev-node">${esc(ev.node_id)}</span>` : ""}
+      ${ev.ip ? `<span class="ev-node" style="color:var(--blue)">${esc(ev.ip)}</span>` : ""}
+      ${ev.domain ? `<span class="ev-node" style="color:var(--purple)">${esc(ev.domain)}</span>` : ""}
+      ${ev.detail ? `<span class="ev-detail">${esc(ev.detail)}</span>` : ""}
+    </li>`;
+  }).join("");
+}
+
+function filteredEvents() {
+  return state.events.filter((ev) => {
+    if (evFilter === "all") return true;
+    const meta = EV_META[ev.type];
+    return meta ? meta.grp === evFilter : true;
+  });
+}
+
+$("ev-filters").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-f]");
+  if (!b) return;
+  evFilter = b.dataset.f;
+  document.querySelectorAll("#ev-filters button").forEach((x) => x.classList.toggle("active", x === b));
+  renderEventsInto($("events-list"), filteredEvents());
+});
+
+/* ---------------- нода: детальная статистика (V7.7) ---------------- */
+
+async function loadNode(id) {
+  const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
+  const r = currentRoute();
+  if (r.view === "node" && r.id === id) {
+    state.node = d;
+    renderNodeDetail(d);
+  }
+}
+
+
+// V7.9: спарклайн клиентов с ховером: наводишь курсор — подсказка со временем
+// и числом подключений в этой точке + вертикальная направляющая и точка.
+// pts: [{at, v}]. Разметка — абсолютно-позиционные оверлеи над SVG (CSS
+// .sparkwrap), значения маппятся на индекс ближайшего сэмпла.
+function clientsSparkInteractive(pts) {
+  if (pts.length < 2) {
+    return `<div class="muted" style="padding:6px 0">пока мало данных — накапливается раз в metrics_ms</div>`;
+  }
+  const w = 600, hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+  const step = w / (pts.length - 1);
+  const xy = pts.map((p, i) => [i * step, hgt - 5 - (p.v / max) * (hgt - 12)]);
+  const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  return `<div class="sparkwrap" id="clients-sparkwrap">
+    <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
+      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="rgba(99,102,241,.13)"/>
+      <polyline points="${s}" fill="none" stroke="var(--accent2)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="spark-guide" id="clients-guide"></div>
+    <div class="spark-dot" id="clients-dot"></div>
+    <div class="spark-tip" id="clients-tip"></div>
+  </div>`;
+}
+
+function attachSparkHover(pts) {
+  const wrap = $("clients-sparkwrap");
+  const svg = $("clients-spark");
+  if (!wrap || !svg || pts.length < 2 || !svg.getBoundingClientRect) return;
+  const guide = $("clients-guide"), dot = $("clients-dot"), tip = $("clients-tip");
+  const hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+  wrap.addEventListener("mousemove", (e) => {
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    let frac = (e.clientX - rect.left) / rect.width;
+    frac = Math.min(1, Math.max(0, frac));
+    const i = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
+    const xFrac = i / (pts.length - 1);
+    const xPx = xFrac * rect.width;
+    const yUnit = hgt - 5 - (pts[i].v / max) * (hgt - 12); // Y точки в юнитах viewBox
+    const yPx = (yUnit / hgt) * rect.height;
+    guide.style.left = xPx.toFixed(1) + "px";
+    dot.style.left = xPx.toFixed(1) + "px";
+    dot.style.top = yPx.toFixed(1) + "px";
+    tip.textContent = `${fmtClock(pts[i].at)} · ${pts[i].v} подкл.`;
+    tip.style.left = Math.min(Math.max(xPx, 62), rect.width - 62).toFixed(1) + "px";
+    wrap.classList.add("hover");
+  });
+  wrap.addEventListener("mouseleave", () => wrap.classList.remove("hover"));
+}
+
+function renderNodeDetail(d) {
+  const n = d.node || {};
+  const mdoms = n.master_domains || [];
+  const clients = n.clients_unique_ips ?? null;
+  // Роль — ОДНА взаимоисключающая плашка (мастер / позиция в очереди / вне
+  // очереди). Отдельный fully-healthy-чип был дублем: queue_position===0 и
+  // fully_healthy===false — одно и то же состояние, показывалось дважды.
+  const roleChip = n.is_master
+    ? `<span class="badge master" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>`
+    : (n.queue_position > 0
+        ? `<span class="badge queue">очередь #${n.queue_position}</span>`
+        : `<span class="badge unk">вне очереди</span>`);
+  // metrics-чип — по ЗАЩЁЛКЕ (V7.9.4): именно она решает судьбу мастерства.
+  // При идущей серии падений показываем «серия N/F» рядом с чипом.
+  const hcFail = (d.hc && d.hc.fail_threshold) || "?";
+  const mStreak = n.metrics_fail_streak || 0;
+  const mChip = chip(n.metrics_healthy ?? n.metrics_ok, "metrics ok", "metrics fail")
+    + (mStreak > 0
+      ? ` <span class="muted" style="font-size:11px">серия ${mStreak}/${hcFail}</span>`
+      : "");
+  const chips = [
+    chip(n.healthy, "TCP ok", "TCP fail"),
+    chip(n.globalping_ok, "GP ok", "GP fail"),
+    mChip,
+    roleChip,
+    nodeTypeBadge(n.node_type),
+  ].join(" ");
+  const reason = n.unhealthy_reason
+    ? `<div class="nd-reason"><span class="reason">${esc(n.unhealthy_reason)}</span></div>` : "";
+
+  const statDefs = [
+    {l: "Доступность", v: `${(n.availability_pct ?? 0).toFixed(1)}%`, e: `отчётов ok: ${n.reports_ok ?? 0}/${n.reports_total ?? 0}`,
+     cls: (n.availability_pct ?? 0) >= 99 ? "good" : (n.availability_pct ?? 0) >= 95 ? "warn" : "bad"},
+    {l: "GP верификации", v: `${(n.gp_verified_pct ?? 0).toFixed(1)}%`, e: `верификаций всего: ${n.gp_checks_total ?? 0}`,
+     cls: (n.gp_verified_pct ?? 0) >= 99 ? "good" : (n.gp_verified_pct ?? 0) >= 90 ? "warn" : "bad"},
+    {l: "Клиенты", v: clients === null ? "—" : String(clients),
+     e: clients === null ? "нет данных" : "уникальные активные IP"},
+    {l: "Мастерство", v: (n.master_stints ?? 0) > 0 ? fmtDur(n.master_time_sec) : "—", e: `stint'ов: ${n.master_stints ?? 0}`},
+    {l: "Heartbeat", v: `${fmtDur(n.heartbeat_age_sec)} назад`, e: `всего: ${n.heartbeats_total ?? 0}`, cls: n.heartbeat_age_sec > 45 ? "bad" : ""},
+    {l: "Отчёт", v: n.report_age_sec < 0 ? "—" : `${fmtDur(n.report_age_sec)} назад`,
+     e: n.report_error ? `ошибка: ${n.report_error}` : "metrics / globalping"},
+  ];
+  const stats = statDefs.map((s) => `<div class="card">
+      <div class="label">${s.l}</div>
+      <div class="value ${s.cls || ""}" style="font-size:20px">${s.v}</div>
+      <div class="extra">${esc(s.e)}</div></div>`).join("");
+
+  // последняя верификация Globalping по площадкам (с V7.7 регистратор хранит деталь)
+  const gp = d.gp_last || null;
+  const gpHist = d.gp_hist || [];
+  let gpSide;
+  if (gp) {
+    gpSide = `<div class="gp-side">
+      <div class="gp-big ${gp.ok ? "good" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
+      <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+      <div class="extra">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
+      <div class="extra">проверено: ${esc(fmtAgo(gp.at))}</div>
+      <div class="mono muted" style="margin-top:9px;font-size:11px;word-break:break-all">measurement ${esc(gp.measurement_id)}</div>
+    </div>`;
+  } else {
+    gpSide = `<div class="gp-side">
+      <div class="empty" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
+      <div class="extra">текущий статус: ${chip(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+    </div>`;
+  }
+  const probesTbl = gp && (gp.probes || []).length
+    ? `<div class="tbl-wrap"><table>
+        <thead><tr><th>Площадка</th><th>Сеть</th><th>Статус пробы</th><th>HTTP</th><th>Итог</th></tr></thead>
+        <tbody>${gp.probes.map((p) => `<tr>
+          <td class="mono">${esc(p.country || "?")}${p.city ? " · " + esc(p.city) : ""}</td>
+          <td class="mono muted">${esc(p.network || "—")}${p.asn ? " (AS" + p.asn + ")" : ""}</td>
+          <td class="mono">${esc(p.status || "—")}</td>
+          <td class="mono">${p.http_code || "—"}</td>
+          <td>${chip(p.ok)}</td>
+        </tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty">строк проб нет${gp ? " (measurement ещё выполнялся, когда его скачали)" : ""}</div>`;
+
+  const tcpHist = d.tcp_hist || [];
+  const tcpTicks = tcpHist.slice(-96).map((p) =>
+    `<div class="tick ${p.ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — ${p.ok ? "ok" : "FAIL"}"></div>`).join("");
+  const gpBars = gpHist.map((p) => {
+    const h = 6 + Math.round((p.ratio || 0) * 50);
+    const cls = p.ok ? "" : (p.ratio >= 0.35 ? "mid" : "fail");
+    return `<div class="gbar ${cls}" style="height:${h}px" title="${esc(fmtClock(p.at))} — ratio ${(p.ratio * 100).toFixed(0)}% (${p.probes_ok}/${p.probes_total})"></div>`;
+  }).join("");
+  const repHist = d.report_hist || [];
+  const repTicks = repHist.slice(-96).map((p) =>
+    `<div class="tick ${p.metrics_ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — metrics ${p.metrics_ok ? "ok" : "FAIL"}"></div>`).join("");
+  const clientPts = repHist.filter((p) => p.clients >= 0).map((p) => ({at: p.at, v: p.clients}));
+  const spark = clientsSparkInteractive(clientPts);
+
+  $("node-detail").innerHTML = `
+    <div class="card nd-head">
+      <div>
+        <div class="nd-id">${esc(n.node_id)}</div>
+        <div class="nd-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        <div style="margin-top:6px"><a class="back-link" style="margin:0;display:inline-flex" href="/statistics/${encodeURIComponent(n.node_id)}" target="_blank" rel="noopener">публичная страница ↗</a></div>
+      </div>
+      <div class="nd-chips">${chips}</div>
+      ${reason}
+    </div>
+    <div class="stat-grid">${stats}</div>
+    <section class="block">
+      <div class="block-head">
+        <h2>Globalping — независимая верификация</h2>
+      </div>
+      <div class="gp-grid">${gpSide}${probesTbl}</div>
+    </section>
+    <section class="block">
+      <div class="block-head">
+        <h2>История проверок</h2>
+      </div>
+      <div class="chart-body">
+        <div class="chart-cap">Globalping — ratio по верификациям <span class="hint">всего ${gpHist.length}</span></div>
+        <div class="bars">${gpBars || '<span class="muted">пока нет верификаций</span>'}</div>
+        <div class="chart-cap">TCP-probe регистратора <span class="hint">последние ${Math.min(tcpHist.length, 96)}</span></div>
+        <div class="ticks">${tcpTicks || '<span class="muted">пока нет данных</span>'}</div>
+        <div class="chart-cap">Отчёты metrics <span class="hint">последние ${Math.min(repHist.length, 96)}</span></div>
+        <div class="ticks">${repTicks || '<span class="muted">пока нет данных</span>'}</div>
+        <div class="chart-cap">Активные клиенты (unique IP)</div>
+        ${spark}
+      </div>
+    </section>
+    <section class="block">
+      <div class="block-head">
+        <h2>События ноды</h2>
+        <span class="hint">последние 100</span>
+      </div>
+      <ul class="events" id="nd-events" style="max-height:none"></ul>
+    </section>`;
+  renderEventsInto($("nd-events"), d.events || []);
+  attachSparkHover(clientPts);
+}
+
+/* ---------------- DNS-вью ---------------- */
+
+
+/* ---------------- шапка + баннер ---------------- */
+
+function renderHeader(o) {
+  $("hdr-sub").textContent = `доменов: ${o.domains.length} · SNI: ${o.tls_domain} · аптайм: ${fmtDur(o.uptime_sec)}`;
+  $("nav-nodes-count").textContent = o.nodes_total || "";
+}
+
+function renderBanner(o) {
+  const masters = o.masters || [];
+  const unassigned = masters.filter((m) => !m.node_id).map((m) => m.domain);
+  const dead = masters.filter((m) => m.node_id && m.dead).map((m) => m.domain);
+  const banner = $("alert-banner");
+  if (o.nodes_fully_healthy === 0) {
+    banner.textContent = "⚠ В пуле нет здоровых нод — DNS остался на последних мастерах.";
+    banner.classList.add("show");
+  } else if (unassigned.length > 0) {
+    banner.textContent = "⚠ Домены без мастера: " + unassigned.join(", ") + " — A-записи для них не выставлены.";
+    banner.classList.add("show");
+  } else if (dead.length > 0) {
+    banner.textContent = "⚠ Мастер нездоров у доменов: " + dead.join(", ") + " — скоро переключатся.";
+    banner.classList.add("show");
+  } else if (o.nodes_fully_healthy < masters.length) {
+    banner.textContent = `⚠ Нод меньше, чем доменов (${o.nodes_fully_healthy}/${masters.length}): резерва нет.`;
+    banner.classList.add("show");
+  } else if (o.nodes_fully_healthy === masters.length) {
+    banner.textContent = "⚠ Резерва нет: нод ровно столько, сколько доменов. При блокировке любой переключать будет некуда.";
+    banner.classList.add("show");
+  } else {
+    banner.classList.remove("show");
+  }
+}
+
+/* ---------------- роутер (V7.7: категории вместо одной страницы) ---------------- */
+
+const VIEW_META = {
+  overview: {title: "Обзор"},
+  nodes:    {title: "Ноды пула"},
+  dns:      {title: "Мастера и DNS"},
+  events:   {title: "Журнал событий"},
+  settings: {title: "Настройки"},
+};
+
+function currentRoute() {
+  const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts[0] === "nodes" && parts[1]) return {view: "node", id: decodeURIComponent(parts[1])};
+  return {view: VIEW_META[parts[0]] ? parts[0] : "overview"};
+}
+
+function route() {
+  const r = currentRoute();
+  document.querySelectorAll(".view").forEach((v) => { v.hidden = v.id !== "view-" + r.view; });
+  document.querySelectorAll(".nav-item").forEach((a) =>
+    a.classList.toggle("active", a.dataset.view === (r.view === "node" ? "nodes" : r.view)));
+  $("view-title").textContent = r.view === "node" ? "Нода · " + r.id : VIEW_META[r.view].title;
+  if (r.view === "node") {
+    if (state.nodeId !== r.id) {
+      state.nodeId = r.id;
+      state.node = null;
+      $("node-detail").innerHTML = `<div class="empty">загрузка…</div>`;
+    }
+    loadNode(r.id).catch((e) => {
+      $("node-detail").innerHTML = `<div class="empty">не удалось загрузить ноду: ${esc(e.message)}<br>возможно, она уже удалена из пула</div>`;
+    });
+  }
+  if (r.view === "settings" && !state.settingsLoaded) {
+    loadSettings().then(() => { state.settingsLoaded = true; }).catch(() => {});
+  }
+  renderAll();
+}
+
+function renderAll() {
+  const o = state.ov;
+  if (o) {
+    renderHeader(o);
+    renderBanner(o);
+    const r = currentRoute();
+    if (r.view === "overview") {
+      renderKpis(o);
+      renderGPStats(o);
+      renderEventsInto($("events-mini"), state.events.slice(0, 8));
+    } else if (r.view === "nodes") {
+      renderNodes(o);
+    } else if (r.view === "dns") {
+      renderMastersInto($("masters-full"), $("dns-hint"), o);
+    } else if (r.view === "events") {
+      renderEventsInto($("events-list"), filteredEvents());
+    }
+  }
+  const r = currentRoute();
+  if (r.view === "node" && state.node && state.nodeId === r.id) renderNodeDetail(state.node);
+}
+
+window.addEventListener("hashchange", route);
+
+/* ---------------- цикл обновления ---------------- */
+
+async function refresh() {
+  const [ov, ev] = await Promise.all([
+    api("/panel/api/overview"),
+    api("/panel/api/events?limit=300"),
+  ]);
+  hideLogin();
+  state.ov = ov;
+  state.events = ev.events || [];
+  const r = currentRoute();
+  if (r.view === "node") await loadNode(r.id).catch(() => {});
+  $("last-upd").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
+  $("live-text").textContent = "live";
+  renderAll();
+}
+
+/* ---------------- настройки ---------------- */
+
+let toastTimer = null;
+function showToast(text, isErr) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.toggle("err", !!isErr);
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 5000);
+}
+
+let usersModel = {};
+
+function renderUsersEditor() {
+  const body = $("users-body");
+  const names = Object.keys(usersModel).sort();
+  if (names.length === 0) {
+    body.innerHTML = `<tr><td class="muted">нет пользователей</td></tr>`;
+    return;
+  }
+  body.innerHTML = names.map((n) => `<tr>
+    <td class="mono">${esc(n)}</td>
+    <td><input type="text" class="mono" data-user="${esc(n)}" value="${esc(usersModel[n])}" spellcheck="false"></td>
+    <td style="width:40px"><button class="act danger" data-del="${esc(n)}" title="Удалить">✕</button></td>
+  </tr>`).join("");
+}
+
+$("users-body").addEventListener("click", (e) => {
+  const del = e.target.closest("button[data-del]");
+  if (del) { delete usersModel[del.dataset.del]; renderUsersEditor(); }
+});
+$("users-body").addEventListener("input", (e) => {
+  const inp = e.target.closest("input[data-user]");
+  if (inp) usersModel[inp.dataset.user] = inp.value.trim();
+});
+
+function randHex(n) {
+  const b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+$("s-user-add").onclick = () => {
+  let i = 1;
+  while (usersModel["user" + i] !== undefined) i++;
+  usersModel["user" + i] = randHex(16);
+  renderUsersEditor();
+};
+$("s-user-gen").onclick = () => {
+  const name = "u" + randHex(3);
+  usersModel[name] = randHex(16);
+  renderUsersEditor();
+};
+
+async function loadSettings() {
+  const data = await api("/panel/api/config");
+  const c = data.config, st = data.static;
+  $("s-sni").value = c.shared_proxy.tls_domain;
+  usersModel = {...(c.shared_proxy.users || {})};
+  renderUsersEditor();
+  $("s-cf-token").value = c.cloudflare.api_token;
+  $("s-cf-zone").value = c.cloudflare.zone_id;
+  $("s-cf-domains").value = (c.cloudflare.domains || []).join("\n");
+  $("s-cf-ttl").value = c.cloudflare.dns_ttl;
+  $("s-cf-proxied").checked = !!c.cloudflare.proxied;
+  $("s-nd-heartbeat").value = c.node_defaults.heartbeat_ms;
+  $("s-nd-globalping").value = c.node_defaults.globalping_ms;
+  $("s-nd-metrics").value = c.node_defaults.metrics_ms;
+  $("s-nd-sync").value = c.node_defaults.sync_ms;
+  $("s-rot-ttl").value = c.rotation ? c.rotation.master_ttl_minutes : 30;
+  $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
+  $("s-gp-base").value = c.globalping.api_base;
+  $("s-panel-token").value = c.panel.token;
+  $("s-panel-events").value = c.panel.events_max;
+  $("s-static").textContent =
+    `static (требуют рестарта): http=${st.http_addr} state=${st.state_file}\n` +
+    `healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select=${st.selection_interval_ms}мс ` +
+    `hb_ttl=${st.heartbeat_ttl_sec}с fail=${st.fail_threshold} recover=${st.recover_threshold} freshness=${st.report_freshness_min}мин prune=${st.prune_unhealthy_min}мин`;
+}
+$("cfg-reload").onclick = () => loadSettings().then(() => showToast("Настройки перечитаны")).catch(() => {});
+
+async function saveSection(payload, note) {
+  const resp = await fetch("/panel/api/config", {
+    method: "PUT",
+    headers: {"Authorization": "Bearer " + getToken(), "Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401) { showLogin(true); throw new Error("unauthorized"); }
+  if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+  let msg = note || "Сохранено";
+  const bits = [];
+  if (data.persisted === false) bits.push("⚠ в файл НЕ записано: " + (data.persist_warning || ""));
+  if (data.dns_push) {
+    const up = (data.dns_push.updated || []).length, er = (data.dns_push.errors || []).length;
+    bits.push(`DNS-push: ${up} ok / ${er} err`);
+  }
+  showToast(bits.length ? msg + " · " + bits.join(" · ") : msg, data.persisted === false);
+  return data;
+}
+
+$("s-sni-save").onclick = () =>
+  saveSection({shared_proxy: {tls_domain: $("s-sni").value.trim(), users: usersModel}}, "SNI сохранён")
+    .catch((e) => showToast(e.message, true));
+
+$("s-users-save").onclick = () =>
+  saveSection({shared_proxy: {tls_domain: $("s-sni").value.trim(), users: usersModel}}, "Пользователи сохранены")
+    .catch((e) => showToast(e.message, true));
+
+$("s-cf-save").onclick = () => {
+  const domains = $("s-cf-domains").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  saveSection({cloudflare: {
+    api_token: $("s-cf-token").value.trim(),
+    zone_id: $("s-cf-zone").value.trim(),
+    domains,
+    dns_ttl: parseInt($("s-cf-ttl").value, 10) || 60,
+    proxied: $("s-cf-proxied").checked,
+  }}, "Cloudflare сохранён").catch((e) => showToast(e.message, true));
+};
+
+const dnsPush = async () => {
+  try {
+    const resp = await fetch("/panel/api/dns-push", {method: "POST", headers: {"Authorization": "Bearer " + getToken()}});
+    const data = await resp.json();
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    showToast(`DNS-push: ${(data.updated || []).join(", ") || "—"}${(data.errors || []).length ? " · ошибки: " + data.errors.join("; ") : ""}`,
+      (data.errors || []).length > 0 && (data.updated || []).length === 0);
+  } catch (e) { showToast(e.message, true); }
+};
+$("s-dns-push").onclick = dnsPush;
+$("s-dns-push2").onclick = dnsPush;
+
+$("s-nd-save").onclick = () =>
+  saveSection({node_defaults: {
+    heartbeat_ms: parseInt($("s-nd-heartbeat").value, 10) || 0,
+    globalping_ms: parseInt($("s-nd-globalping").value, 10) || 0,
+    metrics_ms: parseInt($("s-nd-metrics").value, 10) || 0,
+    sync_ms: parseInt($("s-nd-sync").value, 10) || 0,
+  }}, "Интервалы сохранены").catch((e) => showToast(e.message, true));
+
+$("s-rot-save").onclick = () =>
+  saveSection({rotation: {master_ttl_minutes: Math.max(0, parseInt($("s-rot-ttl").value, 10) || 0)}}, "Лимит мастерства сохранён")
+    .catch((e) => showToast(e.message, true));
+
+$("s-hc-quar-save").onclick = () =>
+  saveSection({healthcheck: {quarantine_attempts: Math.max(1, parseInt($("s-hc-quar").value, 10) || 3)}}, "Карантин сохранён")
+    .catch((e) => showToast(e.message, true));
+
+$("s-gp-save").onclick = () =>
+  saveSection({globalping: {api_base: $("s-gp-base").value.trim()}}, "Globalping сохранён")
+    .catch((e) => showToast(e.message, true));
+
+$("s-panel-save").onclick = () => {
+  const newTok = $("s-panel-token").value.trim();
+  saveSection({panel: {token: newTok, events_max: parseInt($("s-panel-events").value, 10) || 500}}, "Параметры панели сохранены")
+    .then(() => {
+      if (newTok && newTok !== getToken()) {
+        localStorage.setItem(LS_KEY, newTok);
+        showToast("Токен обновлён — сессия переключена на новый токен");
+      }
+    })
+    .catch((e) => showToast(e.message, true));
+};
+
+/* ---------------- init ---------------- */
+
+if (!getToken()) showLogin(false);
+route();
+refresh().catch((err) => { if (err.message !== "unauthorized") console.warn(err); });
+setInterval(() => { refresh().catch(() => { $("live-text").textContent = "нет связи"; }); }, 5000);
+</script>
+</body>
+</html>

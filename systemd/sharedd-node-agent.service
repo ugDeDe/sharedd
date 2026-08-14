@@ -1,0 +1,15 @@
+[Unit]
+Description=sharedd — агент HA-ноды (MTProto proxy pool)
+After=network-online.target telemt.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/sharedd-node-agent -config /etc/sharedd/node.toml
+Restart=always
+RestartSec=5
+# root нужен, чтобы перезаписывать telemt.toml с сохранением чужих owner/mode
+User=root
+StateDirectory=sharedd
+
+[Install]
+WantedBy=multi-user.target

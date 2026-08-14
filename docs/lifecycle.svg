@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="540" viewBox="0 0 880 540" role="img" aria-label="Жизненный цикл ноды">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#7d8aa3"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+      .state-t { font-size: 15px; font-weight: 700; }
+      .state-s { font-size: 11px; }
+      .plate-t { font-size: 12px; fill: #cbd5e1; }
+      .wire    { fill: none; stroke: #7d8aa3; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect x="6" y="6" width="868" height="528" rx="16" fill="#0a0f1a" stroke="rgba(148,163,184,.16)"/>
+
+  <!-- стрелки -->
+  <path class="wire" marker-end="url(#arr)" d="M 330 110 C 305 142, 275 165, 245 200"/>
+  <path class="wire" marker-end="url(#arr)" d="M 300 200 C 320 168, 345 145, 375 110"/>
+  <path class="wire" stroke-dasharray="6 5" marker-end="url(#arr)" d="M 200 276 L 200 370"/>
+  <path class="wire" marker-end="url(#arr)" d="M 550 110 C 575 142, 605 165, 635 200"/>
+  <path class="wire" marker-end="url(#arr)" d="M 645 200 C 615 168, 590 145, 565 110"/>
+  <path class="wire" marker-end="url(#arr)" d="M 655 276 L 655 370"/>
+  <path class="wire" marker-end="url(#arr)" d="M 705 370 L 705 276"/>
+  <path class="wire" marker-end="url(#arr)" d="M 640 446 C 630 505, 520 520, 480 500 C 462 491, 463 455, 465 430 L 466 300 C 466 250, 464 150, 465 112"/>
+
+  <!-- плашки-подписи поверх стрелок -->
+  <g>
+    <rect x="180" y="140" width="280" height="44" rx="8" fill="#0f172a" stroke="rgba(148,163,184,.3)"/>
+    <text class="plate-t" x="320" y="158" text-anchor="middle">⇣ 3 плохих локальных проверки подряд</text>
+    <text class="plate-t" x="320" y="176" text-anchor="middle">⇡ позеленела → 410 → пере-регистрация</text>
+
+    <rect x="125" y="318" width="150" height="32" rx="8" fill="#0f172a" stroke="rgba(148,163,184,.3)"/>
+    <text class="plate-t" x="200" y="339" text-anchor="middle">heartbeat-TTL истёк</text>
+
+    <rect x="470" y="140" width="300" height="44" rx="8" fill="#0f172a" stroke="rgba(148,163,184,.3)"/>
+    <text class="plate-t" x="620" y="158" text-anchor="middle">⇣ верифицированный GP-фейл</text>
+    <text class="plate-t" x="620" y="176" text-anchor="middle">⇡ верифицированное восстановление</text>
+
+    <rect x="545" y="305" width="270" height="44" rx="8" fill="#0f172a" stroke="rgba(148,163,184,.3)"/>
+    <text class="plate-t" x="680" y="323" text-anchor="middle">⇣ попытки исчерпаны · TTL · dead-окно</text>
+    <text class="plate-t" x="680" y="341" text-anchor="middle">⇡ тот же IP: одна перепроверка</text>
+
+    <rect x="440" y="478" width="240" height="32" rx="8" fill="#0f172a" stroke="rgba(148,163,184,.3)"/>
+    <text class="plate-t" x="560" y="499" text-anchor="middle">новый IP → бан снят</text>
+  </g>
+
+  <!-- состояния -->
+  <g>
+    <rect x="320" y="34" width="240" height="76" rx="14" fill="rgba(52,211,153,.10)" stroke="rgba(52,211,153,.6)" stroke-width="1.5"/>
+    <text class="state-t" x="440" y="66" text-anchor="middle" fill="#a7f3d0">✅ Здорова</text>
+    <text class="state-s" x="440" y="88" text-anchor="middle" fill="rgba(167,243,208,.75)">в очереди мастеров</text>
+
+    <rect x="80" y="200" width="240" height="76" rx="14" fill="rgba(148,163,184,.08)" stroke="rgba(148,163,184,.45)" stroke-width="1.5"/>
+    <text class="state-t" x="200" y="232" text-anchor="middle" fill="#cbd5e1">🤫 Тихое лечение</text>
+    <text class="state-s" x="200" y="254" text-anchor="middle" fill="rgba(203,213,225,.7)">агент замолкает и чинится</text>
+
+    <rect x="560" y="200" width="240" height="76" rx="14" fill="rgba(251,191,36,.09)" stroke="rgba(251,191,36,.55)" stroke-width="1.5"/>
+    <text class="state-t" x="680" y="232" text-anchor="middle" fill="#fde68a">🧪 Карантин GP</text>
+    <text class="state-s" x="680" y="254" text-anchor="middle" fill="rgba(253,230,138,.7)">лимит попыток верификации</text>
+
+    <rect x="80" y="370" width="240" height="76" rx="14" fill="rgba(148,163,184,.04)" stroke="rgba(148,163,184,.4)" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <text class="state-t" x="200" y="402" text-anchor="middle" fill="#94a3b8">выпала из пула</text>
+    <text class="state-s" x="200" y="424" text-anchor="middle" fill="rgba(148,163,184,.7)">вернётся пере-регистрацией</text>
+
+    <rect x="560" y="370" width="240" height="76" rx="14" fill="rgba(251,113,133,.10)" stroke="rgba(251,113,133,.6)" stroke-width="1.5"/>
+    <text class="state-t" x="680" y="402" text-anchor="middle" fill="#fda4af">⛔ Бан по IP</text>
+    <text class="state-s" x="680" y="424" text-anchor="middle" fill="rgba(253,164,175,.7)">kill агенту · запись в истории</text>
+  </g>
+</svg>

@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>sharedd · дашборд блокировок</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%236366f1"/><stop offset="1" stop-color="%2322d3ee"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(%23g)"/><text x="32" y="44" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<style>
+  :root {
+    --bg: #05070d; --bg2: #0a0f1a;
+    --card: rgba(15, 22, 36, .72);
+    --border: rgba(148, 163, 184, .13); --border-strong: rgba(148, 163, 184, .26);
+    --text: #e7ecf5; --muted: #8694aa;
+    --green: #34d399; --red: #fb7185; --yellow: #fbbf24; --blue: #60a5fa; --purple: #c084fc;
+    --accent1: #6366f1; --accent2: #22d3ee;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { color-scheme: dark; }
+  body {
+    background:
+      radial-gradient(920px 520px at 12% -12%, rgba(99,102,241,.15), transparent 62%),
+      radial-gradient(820px 500px at 90% -14%, rgba(34,211,238,.09), transparent 62%),
+      radial-gradient(760px 640px at 50% 118%, rgba(192,132,252,.06), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    font: 14px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 40px; }
+  header.top {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 15px 22px 16px; margin-bottom: 22px;
+    background: rgba(5,7,13,.8);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-inner { max-width: 1180px; margin: 0 auto; width: 100%; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #fff; font-size: 13px;
+    box-shadow: 0 6px 20px rgba(99,102,241,.45), inset 0 1px 0 rgba(255,255,255,.3);
+    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  }
+  header h1 { font-size: 19px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  a.ghost {
+    display: inline-flex; align-items: center;
+    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 10px; padding: 5px 12px; font-size: 12.5px;
+  }
+  a.ghost:hover { color: var(--text); border-color: var(--border-strong); }
+  .pill {
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+    font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(148,163,184,.06);
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .pill.live .dot { animation: pulse 1.6s infinite; }
+  .pill.err .dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .card {
+    position: relative; overflow: hidden;
+    background: linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.35);
+    display: flex; flex-direction: column; min-height: 112px;
+  }
+  .card .k { color: var(--muted); font-size: 12px; }
+  .card .v { font-size: 30px; font-weight: 750; font-variant-numeric: tabular-nums; margin-top: auto; }
+  .card .v small { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .card .ico {
+    position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(148,163,184,.08); font-size: 15px;
+  }
+
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: rgba(148,163,184,.05); }
+  .seg button {
+    background: transparent; border: 0; color: var(--muted); cursor: pointer;
+    padding: 7px 16px; font-size: 12.5px; font-weight: 600;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active { color: #fff; background: linear-gradient(135deg, rgba(99,102,241,.4), rgba(34,211,238,.25)); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; box-shadow: 0 10px 26px rgba(0,0,0,.35); margin-bottom: 18px;
+  }
+  .panel-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  /* (3) фиксированная ширина заголовка: длинный текст «Периодичность…»
+     не сдвигает range-табы; на узких экранах — обрезка с многоточием */
+  .panel-head h2 { font-size: 15px; font-weight: 700; min-width: 480px; max-width: 480px;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel-head .grow { flex: 1; }
+  #chart-box { position: relative; }
+  #chart { width: 100%; height: auto; display: block; }
+  #tip {
+    position: absolute; pointer-events: none; display: none; z-index: 5;
+    background: rgba(10,15,26,.96); border: 1px solid var(--border-strong); border-radius: 10px;
+    padding: 8px 10px; font-size: 12px; box-shadow: 0 8px 22px rgba(0,0,0,.5);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  #tip .t1 { color: var(--muted); font-size: 11px; }
+  #tip .t2 { font-weight: 700; margin-top: 2px; }
+  .empty { color: var(--muted); text-align: center; padding: 46px 0; font-size: 13px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { color: var(--muted); font-weight: 600; text-align: left; padding: 7px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  td.mono, .mono { font-family: var(--mono); font-size: 11.5px; }
+  tbody tr:hover { background: rgba(148,163,184,.045); }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size: 11.5px; text-align: center; margin-top: 26px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="logo">DD</div>
+    <div>
+      <h1>Дашборд блокировок</h1>
+      <div class="sub">терминальные баны нод (без восстановления) · история в SQLite</div>
+    </div>
+    <div class="top-right">
+      <span class="pill live" id="live-pill"><span class="dot"></span><span id="live-text">обновлено</span></span>
+      <a class="ghost" href="/statistics">Статистика нод</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="cards">
+    <div class="card"><span class="ico">⛔</span><div class="k" id="k1-cap">Баны GP (без восстановления)</div><div class="v" id="k1">—</div></div>
+    <div class="card"><span class="ico">⏱</span><div class="k">Периодичность банов <span class="muted">(средний интервал)</span></div><div class="v" id="k2">—</div></div>
+    <div class="card"><span class="ico">⌛</span><div class="k">Время жизни ноды <span class="muted">(регистрация → бан)</span></div><div class="v" id="k3">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2 id="chart-title">Баны GP</h2>
+      <div class="grow"></div>
+      <div class="seg" id="metric-seg">
+        <button data-m="bans" class="active">Баны</button>
+        <button data-m="gap">Периодичность</button>
+        <button data-m="life">Время жизни</button>
+      </div>
+      <div class="seg" id="range-seg">
+        <button data-r="day" class="active">Сегодня</button>
+        <button data-r="week">Неделя</button>
+        <button data-r="month">Месяц</button>
+      </div>
+    </div>
+    <div id="chart-box">
+      <svg id="chart" viewBox="0 0 860 280" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="tip"></div>
+    </div>
+    <div class="note" id="chart-note"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Последние баны за период</h2></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Время</th><th>Нода</th><th>IP</th><th>Время жизни</th><th>Интервал с прошлого</th></tr></thead>
+        <tbody id="recent"><tr><td colspan="5" class="muted">загрузка…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>sharedd · метрики блокировок хранятся постоянно (bans), журнал событий ротируется · обновление каждые 60 сек</footer>
+</div>
+
+<script>
+"use strict";
+var state = { range: "day", metric: "bans", data: null };
+var RANGE_LABEL = { day: "за сегодня", week: "за 7 дней", month: "за 30 дней" };
+var METRIC_TITLE = { bans: "Баны GP", gap: "Периодичность банов (интервал между блокировками)", life: "Среднее время жизни ноды" };
+
+function $(id) { return document.getElementById(id); }
+
+function fmtDur(sec) {
+  if (sec == null || sec < 0) return "—";
+  if (sec >= 86400) return (sec / 86400).toFixed(1) + " дн";
+  if (sec >= 3600) return (sec / 3600).toFixed(1) + " ч";
+  if (sec >= 60) return Math.round(sec / 60) + " мин";
+  return Math.round(sec) + " с";
+}
+function fmtDurLong(sec) {
+  if (sec == null || sec < 0) return "—";
+  var d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  if (d > 0) return d + " дн " + h + " ч";
+  if (h > 0) return h + " ч " + m + " мин";
+  if (m > 0) return m + " мин";
+  return Math.round(sec) + " с";
+}
+function fmtTs(sec, range) {
+  var d = new Date(sec * 1000);
+  var p = function (n) { return (n < 10 ? "0" : "") + n; };
+  var hm = p(d.getHours()) + ":" + p(d.getMinutes());
+  if (range === "day") return hm;
+  return p(d.getDate()) + "." + p(d.getMonth() + 1) + (range === "month" ? "" : " " + hm);
+}
+function bucketVal(b, m) {
+  if (m === "bans") return b.bans;
+  if (m === "gap") return b.avg_gap_sec != null ? b.avg_gap_sec : null;
+  return b.avg_lifetime_sec != null ? b.avg_lifetime_sec : null;
+}
+
+var NS = "http://www.w3.org/2000/svg";
+function el(name, attrs) {
+  var e = document.createElementNS(NS, name);
+  for (var k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function renderChart() {
+  var svg = $("chart"), tip = $("tip");
+  svg.innerHTML = "";
+  var d = state.data;
+  if (!d) return;
+  var W = 860, H = 280, padL = 46, padR = 12, padT = 14, padB = 30;
+  var cw = W - padL - padR, ch = H - padT - padB;
+  var buckets = d.buckets, m = state.metric;
+  var vals = buckets.map(function (b) { return bucketVal(b, m); });
+  var maxV = 0, i;
+  for (i = 0; i < vals.length; i++) if (vals[i] != null && vals[i] > maxV) maxV = vals[i];
+  if (m === "bans") maxV = Math.max(maxV, 2);
+  if (maxV === 0) {
+    $("chart-note").textContent = d.history_ok ? "За период банов нет." : "История недоступна (БД не открыта).";
+    var em = el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: "var(--muted)", "font-size": 13 });
+    em.textContent = d.history_ok ? "нет данных за период" : "история недоступна";
+    svg.appendChild(em);
+    return;
+  }
+  maxV = maxV * 1.15;
+  var n = buckets.length;
+  var stepX = cw / n;
+  var y = function (v) { return padT + ch - (v / maxV) * ch; };
+
+  // сетка + подписи Y
+  var ticks = 4;
+  for (i = 0; i <= ticks; i++) {
+    var v = maxV * i / ticks, yy = y(v);
+    svg.appendChild(el("line", { x1: padL, y1: yy, x2: W - padR, y2: yy, stroke: "rgba(148,163,184,.12)", "stroke-width": 1 }));
+    var lbl = el("text", { x: padL - 8, y: yy + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 10 });
+    lbl.textContent = m === "bans" ? String(Math.round(v)) : fmtDur(v);
+    svg.appendChild(lbl);
+  }
+  // подписи X (редкие)
+  var labEvery = Math.max(1, Math.ceil(n / 8));
+  for (i = 0; i < n; i += labEvery) {
+    var lx = padL + i * stepX + stepX / 2;
+    var lt = el("text", { x: lx, y: H - 10, "text-anchor": "middle", fill: "var(--muted)", "font-size": 10 });
+    lt.textContent = fmtTs(buckets[i].start_ts, state.range);
+    svg.appendChild(lt);
+  }
+
+  var color = m === "bans" ? "#fb7185" : (m === "gap" ? "#60a5fa" : "#fbbf24");
+  var color2 = m === "bans" ? "rgba(251,113,133,.25)" : (m === "gap" ? "rgba(96,165,250,.22)" : "rgba(251,191,36,.22)");
+  var pts = [];
+  if (m === "bans") {
+    var bw = Math.max(4, Math.min(26, stepX * 0.62));
+    for (i = 0; i < n; i++) {
+      if (vals[i] == null || vals[i] === 0) { pts.push(null); continue; }
+      var x = padL + i * stepX + (stepX - bw) / 2;
+      var bar = el("rect", { x: x, y: y(vals[i]), width: bw, height: padT + ch - y(vals[i]), rx: 3, fill: color2, stroke: color, "stroke-width": 1.2 });
+      svg.appendChild(bar);
+      pts.push({ x: x + bw / 2, y: y(vals[i]), v: vals[i], ts: buckets[i].start_ts });
+    }
+  } else {
+    // (2) график цельный: точки соединяются и через пустые бакеты
+    // («нет данных» за час/сутки); разрыв остаётся только в тултипе.
+    var pathD = "", areaD = "";
+    for (i = 0; i < n; i++) {
+      if (vals[i] == null) { pts.push(null); continue; }
+      var px = padL + i * stepX + stepX / 2, py = y(vals[i]);
+      pathD += (pathD ? " L" : "M") + px.toFixed(1) + " " + py.toFixed(1);
+      areaD += (areaD ? " L" : "M" + px.toFixed(1) + " " + (padT + ch) + " L") + px.toFixed(1) + " " + py.toFixed(1);
+      pts.push({ x: px, y: py, v: vals[i], ts: buckets[i].start_ts });
+    }
+    if (pathD) {
+      var lastX = 0;
+      for (i = n - 1; i >= 0; i--) if (pts[i]) { lastX = pts[i].x; break; }
+      var firstX = 0;
+      for (i = 0; i < n; i++) if (pts[i]) { firstX = pts[i].x; break; }
+      var area = el("path", { d: areaD + " L" + lastX.toFixed(1) + " " + (padT + ch) + " L" + firstX.toFixed(1) + " " + (padT + ch) + " Z", fill: color2, stroke: "none" });
+      svg.appendChild(area);
+      svg.appendChild(el("path", { d: pathD, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      for (i = 0; i < n; i++) if (pts[i] && pts[i].v != null) {
+        svg.appendChild(el("circle", { cx: pts[i].x, cy: pts[i].y, r: 3, fill: "#0a0f1a", stroke: color, "stroke-width": 1.6 }));
+      }
+    }
+  }
+
+  // hover: зоны наведения + перекрестие + тултип
+  var cur = el("line", { x1: 0, y1: padT, x2: 0, y2: padT + ch, stroke: "rgba(231,236,245,.35)", "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
+  svg.appendChild(cur);
+  var hov = el("circle", { r: 4.5, fill: color, visibility: "hidden" });
+  svg.appendChild(hov);
+  var showTip = function (i, clientX, clientY) {
+    var b = buckets[i], v = vals[i];
+    cur.setAttribute("x1", padL + i * stepX + stepX / 2); cur.setAttribute("x2", padL + i * stepX + stepX / 2);
+    cur.setAttribute("visibility", "visible");
+    if (pts[i]) { hov.setAttribute("cx", pts[i].x); hov.setAttribute("cy", pts[i].y); hov.setAttribute("visibility", "visible"); }
+    else hov.setAttribute("visibility", "hidden");
+    var t1 = fmtTs(b.start_ts, state.range);
+    if (state.range !== "day") t1 = new Date(b.start_ts * 1000).toLocaleDateString("ru-RU");
+    tip.querySelector(".t1").textContent = t1;
+    tip.querySelector(".t2").textContent = v == null ? "нет данных" : (m === "bans" ? (v + " бан" + (v === 1 ? "" : "ов")) : fmtDurLong(v));
+    var box = $("chart-box").getBoundingClientRect();
+    var x = clientX - box.left + 14, yy = clientY - box.top - 10;
+    tip.style.display = "block";
+    if (x + tip.offsetWidth > box.width - 8) x = clientX - box.left - tip.offsetWidth - 14;
+    tip.style.left = x + "px"; tip.style.top = Math.max(0, yy) + "px";
+  };
+  for (i = 0; i < n; i++) {
+    (function (idx) {
+      var zone = el("rect", { x: padL + idx * stepX, y: padT, width: stepX, height: ch, fill: "transparent" });
+      zone.addEventListener("mousemove", function (ev) { showTip(idx, ev.clientX, ev.clientY); });
+      zone.addEventListener("mouseleave", function () {
+        cur.setAttribute("visibility", "hidden"); hov.setAttribute("visibility", "hidden"); tip.style.display = "none";
+      });
+      svg.appendChild(zone);
+    })(i);
+  }
+  tip.innerHTML = '<div class="t1"></div><div class="t2"></div>';
+}
+
+function renderKPI() {
+  var d = state.data; if (!d) return;
+  $("k1").innerHTML = String(d.kpi.bans) + ' <small>' + RANGE_LABEL[state.range] + '</small>';
+  $("k2").textContent = d.kpi.avg_gap_sec != null ? fmtDur(d.kpi.avg_gap_sec) : "—";
+  $("k3").textContent = d.kpi.avg_lifetime_sec != null ? fmtDur(d.kpi.avg_lifetime_sec) : "—";
+  $("k1-cap").textContent = d.history_ok ? "Баны GP (без восстановления)" : "Баны GP — история недоступна (БД не открыта)";
+  var dead = d.by_reason && d.by_reason.dead ? d.by_reason.dead : 0;
+  $("chart-note").textContent = dead > 0
+    ? "За период также терминально завершено по dead (порт/метрики не отвечали): " + dead + " — в метриках банов GP не участвуют."
+    : "";
+}
+
+function renderRecent() {
+  var d = state.data; if (!d) return;
+  var tb = $("recent");
+  if (!d.recent || d.recent.length === 0) {
+    tb.innerHTML = '<tr><td colspan="5" class="muted">за период банов нет</td></tr>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < d.recent.length; i++) {
+    var b = d.recent[i];
+    html += "<tr><td class='muted'>" + new Date(b.ts).toLocaleString("ru-RU") + "</td>" +
+      "<td class='mono'>" + b.node_id + "</td>" +
+      "<td class='mono muted'>" + (b.ip_masked || "—") + "</td>" +
+      "<td>" + (b.lifetime_sec >= 0 ? fmtDurLong(b.lifetime_sec) : "—") + "</td>" +
+      "<td>" + (b.gap_sec >= 0 ? fmtDurLong(b.gap_sec) : "—") + "</td></tr>";
+  }
+  tb.innerHTML = html;
+}
+
+function load() {
+  fetch("/dashboard/api?range=" + state.range, { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .then(function (d) {
+      state.data = d;
+      $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
+      renderKPI(); renderChart(); renderRecent();
+      var now = new Date();
+      $("live-text").textContent = "обновлено " + now.toLocaleTimeString("ru-RU");
+      $("live-pill").className = "pill live";
+    })
+    .catch(function () {
+      $("live-text").textContent = "нет связи";
+      $("live-pill").className = "pill err";
+    });
+}
+
+$("range-seg").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button"); if (!b) return;
+  state.range = b.dataset.r;
+  var bs = $("range-seg").querySelectorAll("button");
+  for (var i = 0; i < bs.length; i++) bs[i].className = bs[i] === b ? "active" : "";
+  load();
+});
+$("metric-seg").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button"); if (!b) return;
+  state.metric = b.dataset.m;
+  var bs = $("metric-seg").querySelectorAll("button");
+  for (var i = 0; i < bs.length; i++) bs[i].className = bs[i] === b ? "active" : "";
+  if (state.data) {
+    $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
+    renderChart();
+  }
+});
+document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
+setInterval(load, 60000);
+load();
+</script>
+</body>
+</html>

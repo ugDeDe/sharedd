@@ -1,0 +1,16 @@
+[Unit]
+Description=sharedd — HA Registry для MTProto-прокси
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/sharedd-registry -config /etc/sharedd/registry.toml
+Restart=always
+RestartSec=5
+User=sharedd-registry
+# systemd сам создаст /var/lib/sharedd с владельцем сервиса (защита от
+# "write state error: permission denied" при root-владельце каталога)
+StateDirectory=sharedd
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
