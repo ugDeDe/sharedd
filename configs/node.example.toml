@@ -1,9 +1,9 @@
-# Минимальный конфиг ноды (V6). Всё остальное нода выясняет сама:
-#   - публичный IP: внешние echo-сервисы (IPv4) → fallback на исходящий интерфейс
-#   - node.id: случайный, персистится в /var/lib/sharedd/node_id
-#   - тайминги heartbeat/globalping/metrics/sync: приезжают с регистратора в /config
-#   - URL метрик: из telemt.toml (metrics_listen > metrics_port > 127.0.0.1:9090)
-#   - fake-SNI/секреты: из /config регистратора
+# Минимальный конфиг ноды. Всё остальное нода выясняет сама:
+# - публичный IP: внешние echo-сервисы (IPv4) → fallback на исходящий интерфейс
+# - node.id: случайный, персистится в /var/lib/sharedd/node_id
+# - тайминги heartbeat/globalping/metrics/sync: приезжают с регистратора в /config
+# - URL метрик: из telemt.toml (metrics_listen > metrics_port > 127.0.0.1:9090)
+# - fake-SNI/секреты: из /config регистратора
 
 [registry]
 # базовый регистратор проекта
@@ -11,18 +11,18 @@ url = "https://registrar.ddproxy.xyz"
 
 [telemt]
 # install_node.sh определяет путь автоматически:
-#   ванильный telemt:              /etc/telemt/telemt.toml
-#   MTProxyL (режим superexpert):  /opt/mtproxyl/superexpert.toml
-#     Агент правит ИМЕННО superexpert.toml: генерируемый mtproxy/config.toml
-#     MTProxyL пересобирает из своих настроек (правки затрутся), а в superexpert-
-#     режиме config.toml копируется из superexpert.toml при (ре)старте прокси.
-#     Поэтому изменения применяются при ближайшем 'mtproxyl restart'.
+# ванильный telemt: /etc/telemt/telemt.toml
+# MTProxyL (режим superexpert): /opt/mtproxyl/superexpert.toml
+# Агент правит ИМЕННО superexpert.toml: генерируемый mtproxy/config.toml
+# MTProxyL пересобирает из своих настроек (правки затрутся), а в superexpert-
+# режиме config.toml копируется из superexpert.toml при (ре)старте прокси.
+# Поэтому изменения применяются при ближайшем 'mtproxyl restart'.
 config_path = "/etc/telemt/telemt.toml"
-# V6: ключ mode удалён — интеграция только через файл (telemt REST API не используется).
+# ключ mode удалён — интеграция только через файл (telemt REST API не используется).
 
 [sync]
 # Агент дописывает общий конфиг прямо в telemt.toml: пользователи [access.users],
-# актуальный SNI в tls_domains, metrics_listen; mask_host НЕ трогается (V7.3),
+# актуальный SNI в tls_domains, metrics_listen; mask_host НЕ трогается,
 # а при явном mask = true в [censorship] держит [censorship.exclusive_mask]
 # с маппингом SNI на самого себя ("sni" = "sni:443") — маскировка под настоящий сайт.
 # Права/владелец файла сохраняются (temp+rename с переносом uid/gid/mode).

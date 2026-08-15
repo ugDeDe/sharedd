@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// V7.9.7: регистратор в карантине после prune отвечает 429 + Retry-After —
+// Регистратор в карантине после prune отвечает 429 + Retry-After —
 // агент обязан считать retryAfter и молчать до дедлайна (гейт в heartbeatLoop).
 
 func TestRegister429CarriesRetryAfter(t *testing.T) {

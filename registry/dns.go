@@ -1,6 +1,6 @@
 package main
 
-// DNS-операции с Cloudflare (V7.8+).
+// DNS-операции с Cloudflare.
 //
 // Managed-домен всегда ведёт A-записью на IP своей ноды-мастера. Плюс
 // зачистка «сиротских» доменов: домен, вычеркнутый из managed-списка, теряет
@@ -52,7 +52,7 @@ func (r *Registry) applyDNSTarget(domain, nodeID, ip string) {
 }
 
 // upsertARecord: домен = единственная A-запись на ip. Конфликтующие CNAME
-// того же имени удаляются (наследие selfmask-эксперимента V7.8 — CNAME и A
+// того же имени удаляются (наследие selfmask-эксперимента — CNAME и A
 // на одном имени несовместимы), дубли A сводятся к одной записи.
 func (r *Registry) upsertARecord(domain, ip string) error {
 	cf, zoneID, ttl, proxied := r.cfSnapshot()
@@ -100,6 +100,57 @@ func (r *Registry) upsertARecord(domain, ip string) error {
 		return err
 	}
 	log.Printf("dns updated: %s A -> %s", domain, ip)
+	return nil
+}
+
+// UpsertCNAMERecord — домен = единственная CNAME-запись на target (
+// СРМД сворачивает лишние домены на выживших). Конфликтующие A/AAAA того же
+// имени удаляются (до сворачивания домен жил A-записью на IP мастера),
+// дубли CNAME схлопываются в одну. Разворачивание обратно в A делает
+// upsertARecord — он, в свою очередь, вычищает CNAME.
+func (r *Registry) upsertCNAMERecord(domain, target string) error {
+	cf, zoneID, ttl, proxied := r.cfSnapshot()
+	ctx := context.Background()
+	rc := cloudflare.ZoneIdentifier(zoneID)
+
+	recs, _, err := cf.ListDNSRecords(ctx, rc, cloudflare.ListDNSRecordsParams{Name: domain})
+	if err != nil {
+		log.Printf("cloudflare list error for %s: %v", domain, err)
+		return fmt.Errorf("list: %w", err)
+	}
+	var firstCNAME *cloudflare.DNSRecord
+	for i := range recs {
+		rec := recs[i]
+		switch strings.ToUpper(rec.Type) {
+		case "A", "AAAA":
+			log.Printf("dns %s: removing stale %s -> %s (writing CNAME %s)", domain, rec.Type, rec.Content, target)
+			if derr := cf.DeleteDNSRecord(ctx, rc, rec.ID); derr != nil {
+				return fmt.Errorf("delete stale %s: %w", rec.Type, derr)
+			}
+		case "CNAME":
+			if firstCNAME == nil {
+				firstCNAME = &recs[i]
+			} else if derr := cf.DeleteDNSRecord(ctx, rc, rec.ID); derr != nil {
+				log.Printf("dns %s: failed to delete duplicate CNAME -> %s: %v", domain, rec.Content, derr)
+			}
+		}
+	}
+	if firstCNAME != nil {
+		_, err = cf.UpdateDNSRecord(ctx, rc, cloudflare.UpdateDNSRecordParams{
+			ID: firstCNAME.ID, Type: "CNAME", Name: domain, Content: target,
+			TTL: ttl, Proxied: &proxied,
+		})
+	} else {
+		_, err = cf.CreateDNSRecord(ctx, rc, cloudflare.CreateDNSRecordParams{
+			Type: "CNAME", Name: domain, Content: target,
+			TTL: ttl, Proxied: &proxied,
+		})
+	}
+	if err != nil {
+		log.Printf("cloudflare update error for %s: %v", domain, err)
+		return err
+	}
+	log.Printf("dns updated: %s CNAME -> %s", domain, target)
 	return nil
 }
 

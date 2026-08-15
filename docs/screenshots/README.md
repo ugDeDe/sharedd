@@ -11,6 +11,7 @@
 | `panel-nodes.png` | Панель → «Ноды» (таблица пула) |
 | `panel-node.png` | Панель → страница ноды (чипы + GP по площадкам + графики) |
 | `panel-dns.png` | Панель → «Мастера и DNS» |
+| `panel-srmd.png` | Панель → «СРМД» (таблица «домен \| активные пользователи» + настройки) |
 | `panel-events.png` | Панель → «Журнал» |
 | `panel-settings.png` | Панель → «Настройки» |
 | `statistics-node.png` | Публичная `/statistics/<node_id>` |

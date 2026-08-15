@@ -13,23 +13,23 @@ import (
 //go:embed stats.html
 var statsHTML []byte
 
-// ── Публичная статистика ноды (V7.9.4) ──────────────────────────────────
+// ── Публичная статистика ноды ──────────────────────────────────
 //
 // Открытая (без panel-токена) копия страницы подробностей ноды:
 //
-//	GET /statistics            — HTML-оболочка (список нод или страница ноды,
-//	                             клиент разбирает id из URL сам);
-//	GET /statistics/<node_id>  — та же оболочка (node_id или hex-суффикс);
-//	GET /statistics/api/list   — JSON всех нод (обезличенный);
-//	GET /statistics/api/node   — JSON одной ноды (обезличенный), ?id=...
+//	GET /statistics — HTML-оболочка (список нод или страница ноды,
+//	 клиент разбирает id из URL сам);
+//	GET /statistics/<node_id> — та же оболочка (node_id или hex-суффикс);
+//	GET /statistics/api/list — JSON всех нод (обезличенный);
+//	GET /statistics/api/node — JSON одной ноды (обезличенный), ?id=...
 //
 // Чувствительное вырезается НА СЕРВЕРЕ, до сериализации ответа:
-//   - IP ноды маскируется (первые два октета: 203.0.x.x) — и в карточке, и
-//     во всех текстах событий (все IPv4 в detail прогоняются через маску);
-//   - measurement_id Globalping НЕ отдаётся нигде: по нему публичное API
-//     Globalping отдаёт target — т.е. полный IP ноды (утечка);
-//   - в событиях нет поля ip; detail санитизируется (маска IPv4 + вырезание
-//     measurement id).
+// - IP ноды маскируется (первые два октета: 203.0.x.x) — и в карточке, и
+// во всех текстах событий (все IPv4 в detail прогоняются через маску);
+// - measurement_id Globalping НЕ отдаётся нигде: по нему публичное API
+// Globalping отдаёт target — т.е. полный IP ноды (утечка);
+// - в событиях нет поля ip; detail санитизируется (маска IPv4 + вырезание
+// measurement id).
 //
 // Белый список полей — явный (publicNode/publicEvent/publicGPDetail): новые
 // поля приватного API сюда не утекут сами по себе.
@@ -95,7 +95,7 @@ type publicNode struct {
 	MasterStints      int       `json:"master_stints"`
 	MasterTimeSec     int64     `json:"master_time_sec"`
 	NodeType          string    `json:"node_type,omitempty"`
-	// MasterTTLRemainingSec — см. publicNodeListItem (V7.9.13).
+	// MasterTTLRemainingSec — см. publicNodeListItem.
 	MasterTTLRemainingSec *int64 `json:"master_ttl_remaining_sec,omitempty"`
 }
 
@@ -267,7 +267,6 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 		"report_hist": c.ReportHist,
 		"gp_last":     gpLast,
 		"events":      r.publicEventsLocked(c.NodeID, 100),
-		"version":     registryVersion,
 		"hc": map[string]int{
 			"fail_threshold":    max(1, r.cfg.Healthcheck.FailThreshold),
 			"recover_threshold": max(1, r.cfg.Healthcheck.RecoverThreshold),
@@ -288,7 +287,7 @@ type publicNodeListItem struct {
 	Port          int      `json:"port"`
 	IsMaster      bool     `json:"is_master"`
 	MasterDomains []string `json:"master_domains,omitempty"`
-	// MasterTTLRemainingSec (V7.9.13) — через сколько мастер будет
+	// MasterTTLRemainingSec — через сколько мастер будет
 	// переключён по таймеру (минимум по доменам ноды); <0 — лимит истёк,
 	// ждём здоровую замену; nil — TTL выключен/не назначен.
 	MasterTTLRemainingSec *int64   `json:"master_ttl_remaining_sec,omitempty"`
@@ -315,7 +314,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	for _, id := range ids {
 		c := r.state.Candidates[id]
 		if c.Quarantine != nil {
-			continue // V7.9.11: карантин — нода не обслуживает, из публичной статы убрана
+			continue // карантин — нода не обслуживает, из публичной статы убрана
 		}
 		it := publicNodeListItem{
 			NodeID:          c.NodeID,
@@ -341,7 +340,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, it)
 	}
-	resp := map[string]any{"version": registryVersion, "nodes": out}
+	resp := map[string]any{"nodes": out}
 	r.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")

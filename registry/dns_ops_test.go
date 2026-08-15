@@ -14,7 +14,7 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 )
 
-// fakeCF — in-memory реализация cfDNSAPI (V7.8): хранит записи зоны,
+// fakeCF — in-memory реализация cfDNSAPI: хранит записи зоны,
 // честно делает list/create/update/delete. Ошибки можно инжектить флагами.
 type fakeCF struct {
 	mu      sync.Mutex
@@ -143,8 +143,8 @@ func applyChanges(t *testing.T, r *Registry, changes []domainChange) {
 	}
 }
 
-// V7.9: мастер пишется ТОЛЬКО A-записью на свой IP (selfmask-CNAME выпилен);
-// заодно upsert сносит CNAME того же имени — наследие эксперимента V7.8
+// Мастер пишется ТОЛЬКО A-записью на свой IP (selfmask-CNAME выпилен);
+// заодно upsert сносит CNAME того же имени — наследие эксперимента
 // (CNAME и A на одном имени несовместимы, такой хвост должен исчезать сам).
 func TestMasterWritesAAndCleansStaleCNAME(t *testing.T) {
 	fc := newFakeCF()
@@ -184,7 +184,7 @@ func TestMasterWritesAAndCleansStaleCNAME(t *testing.T) {
 	}
 }
 
-// V7.9: перерегистрация с новым node_type обновляет его; пустой тип
+// Перерегистрация с новым node_type обновляет его; пустой тип
 // (старый агент) хранимое значение НЕ затирает.
 func TestRegisterCarriesNodeType(t *testing.T) {
 	r := newTestRegistry(t)
@@ -228,7 +228,7 @@ func TestRegisterCarriesNodeType(t *testing.T) {
 	}
 }
 
-// V7.8: домен, удалённый из managed-списка, зачищается из Cloudflare — но
+// Домен, удалённый из managed-списка, зачищается из Cloudflare — но
 // ТОЛЬКО его A/AAAA/CNAME: TXT и чужие (никогда не управлявшиеся) записи зоны
 // остаются нетронутыми. Ошибка CF → retry на следующем тике.
 func TestSweepOrphansKeepsForeign(t *testing.T) {

@@ -1,6 +1,6 @@
 package main
 
-// Управление прокси-сервисом (V7.9.1).
+// Управление прокси-сервисом.
 //
 // Правка telemt.toml из sync-цикла раньше делалась «на живую»: файл писался,
 // а работающий прокси его не перечитывал — юзеры/SNI лежали мёртвым грузом до
@@ -173,7 +173,7 @@ func ensureProxyUp(cfg *NodeConfig) error {
 		return waitMetricsReady(cfg, proxyUpTimeout)
 	}
 	if unit != "" {
-		log.Printf("proxy not answering; restarting %s ...", unit)
+		log.Printf("proxy not answering; restarting %s...", unit)
 		if err := proxyCtl("restart", unit); err != nil {
 			return err
 		}

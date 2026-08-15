@@ -108,10 +108,10 @@ func TestConfigEditorHotApply(t *testing.T) {
 	if parsed.SharedProxy.TLSDomain != "www.new-sni.com" || parsed.SharedProxy.Users["bob"] == "" {
 		t.Fatalf("persisted TOML wrong: %+v", parsed.SharedProxy)
 	}
-	// .bak появляется при повторной записи
+	//.bak появляется при повторной записи
 	putConfig(t, r, `{"node_defaults":{"heartbeat_ms":20000,"globalping_ms":300000,"metrics_ms":60000,"sync_ms":60000}}`, "")
 	if _, err := os.Stat(r.cfg.configPath + ".bak"); err != nil {
-		t.Fatal("expected .bak after second write")
+		t.Fatal("expected.bak after second write")
 	}
 	nc = getNodeFacingConfig(t, r)
 	if nc.Intervals.HeartbeatMs != 20000 {
@@ -250,7 +250,7 @@ func TestConfigPersistFailureStillApplies(t *testing.T) {
 	}
 }
 
-// V7.9.12 #2: число GP-попыток карантина правится из настроек панели —
+// #2: число GP-попыток карантина правится из настроек панели —
 // применяется на лету и персистится в TOML.
 func TestConfigEditorQuarantineAttempts(t *testing.T) {
 	r := newTestRegistryWithConfigFile(t)

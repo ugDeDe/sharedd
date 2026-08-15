@@ -93,7 +93,7 @@ type ipResolver struct {
 	cached    string
 	fetchedAt time.Time
 	services  bool   // последний успех был через echo-сервисы (не интерфейс)
-	fixed     string // V7.9.11: [node] public_ip — ручной адрес, детект не нужен
+	fixed     string // [node] public_ip — ручной адрес, детект не нужен
 }
 
 func newIPResolver() *ipResolver { return &ipResolver{} }
@@ -104,7 +104,7 @@ func (r *ipResolver) Current(force bool) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.fixed != "" { // V7.9.11: ручной публичный адрес
+	if r.fixed != "" { // ручной публичный адрес
 		return r.fixed, nil
 	}
 	if !force && r.cached != "" && r.services && time.Since(r.fetchedAt) < ipCacheTTL {

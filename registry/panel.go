@@ -14,8 +14,6 @@ import (
 //go:embed panel.html
 var panelHTML []byte
 
-const registryVersion = "7.9.14"
-
 // writersMetric — gauge активных ME-райтеров telemt (апстрим-подключения к
 // Telegram middle-end, приходит в metrics_snapshot от нод). ВАЖНО: это НЕ
 // клиенты — раньше панель ошибочно подавала сумму writers как "клиентов".
@@ -74,7 +72,7 @@ func (r *Registry) mountPanel(mux *http.ServeMux) {
 		json.NewEncoder(w).Encode(r.buildOverview())
 	})
 
-	// редактор конфигурации + ручной DNS-push + детальная статистика ноды (V7.7)
+	// редактор конфигурации + ручной DNS-push + детальная статистика ноды
 	mux.HandleFunc("GET /panel/api/config", r.handleGetConfig)
 	mux.HandleFunc("PUT /panel/api/config", r.handlePutConfig)
 	mux.HandleFunc("POST /panel/api/dns-push", r.handleDNSPush)
@@ -114,14 +112,14 @@ type panelNode struct {
 	NodeID        string   `json:"node_id"`
 	IP            string   `json:"ip"`
 	Port          int      `json:"port"`
-	IsMaster      bool     `json:"is_master"` // V7: держит ≥1 домен
+	IsMaster      bool     `json:"is_master"` // держит ≥1 домен
 	MasterDomains []string `json:"master_domains,omitempty"`
 	QueuePosition int      `json:"queue_position"` // 0 = вне очереди мастерства
 	Healthy       bool     `json:"healthy"`        // tcp
 	FullyHealthy  bool     `json:"fully_healthy"`
 	GlobalpingOK  bool     `json:"globalping_ok"`
 	MetricsOK     bool     `json:"metrics_ok"` // вердикт ПОСЛЕДНЕГО отчёта (сырой)
-	// MetricsHealthy (V7.9.4) — защёлка по fail/recover-порогам; именно она
+	// MetricsHealthy — защёлка по fail/recover-порогам; именно она
 	// участвует в fully-healthy и ротации мастеров. MetricsFailStreak —
 	// текущая серия подряд плохих отчётов (для подсказок «серия 1 из 3»).
 	MetricsHealthy    bool      `json:"metrics_healthy"`
@@ -143,9 +141,9 @@ type panelNode struct {
 	GPVerifiedPct    float64  `json:"gp_verified_pct"`
 	MasterStints     int      `json:"master_stints"`
 	MasterTimeSec    int64    `json:"master_time_sec"`
-	// NodeType (V7.9): classic/mtproxyl/meko — бейдж типа менеджера в панели.
+	// NodeType: classic/mtproxyl/meko — бейдж типа менеджера в панели.
 	NodeType string `json:"node_type,omitempty"`
-	// Quarantine (V7.9.11): не-nil — нода в GP-карантине, рендерится
+	// Quarantine: не-nil — нода в GP-карантине, рендерится
 	// отдельной таблицей (не в основном списке нод).
 	Quarantine *panelQuarantine `json:"quarantine,omitempty"`
 }
@@ -155,28 +153,36 @@ type panelQuarantine struct {
 	Attempt   int       `json:"attempt"`            // текущая неудачная попытка (1-based)
 	Max       int       `json:"max"`                // quarantine_attempts — предел до бана
 	EnteredAt time.Time `json:"entered_at"`         // когда посажена
-	Reverify  bool      `json:"reverify,omitempty"` // V7.9.12: перепроверка старого забаненного ip
+	Reverify  bool      `json:"reverify,omitempty"` // перепроверка старого забаненного ip
 }
 
-// panelMaster — V7: кому назначен managed-домен.
+// PanelMaster — кому назначен managed-домен.
 type panelMaster struct {
 	Domain   string `json:"domain"`
 	NodeID   string `json:"node_id,omitempty"`
 	IP       string `json:"ip,omitempty"`
 	Dead     bool   `json:"dead,omitempty"` // назначен, но нода пропала/нездорова
 	NodeType string `json:"node_type,omitempty"`
-	// V7.9.3 (TTL мастерства): TTLSec — действующий лимит (0 = выкл);
+	// (TTL мастерства): TTLSec — действующий лимит (0 = выкл);
 	// TTLRemainingSec — сколько осталось до принудительной ротации
 	// (<0 = лимит истёк, ждём здоровую замену).
 	TTLSec          int64 `json:"ttl_sec,omitempty"`
 	TTLRemainingSec int64 `json:"ttl_remaining_sec,omitempty"`
+	// (СРМД): Clients — последние известные активные клиенты домена
+	// (уникальные IP по общему секрету; nil = не измерялось); CNameTarget —
+	// домен свёрнут СРМД и живёт CNAME-записью на этот домен (мастера нет).
+	Clients     *int   `json:"clients,omitempty"`
+	CNameTarget string `json:"cname_target,omitempty"`
 }
 
-// panelGPBan — один «бан» Globalping (V7.8). Бан = globalping_blocked, после
-// которого нода НЕ восстановилась: либо ушла из пула заблокированной
-// (закрыт node_expired/node_replaced/node_pruned/node_terminated), либо всё
-// ещё заблокирована (active). Пара blocked→recovered баном НЕ считается —
-// это самоустранившийся сбой.
+// panelGPBan — один «бан» Globalping. Бан = globalping_blocked, после
+// которого адрес НЕ восстановился: либо нода ушла из пула заблокированной
+// (закрыт node_expired/node_replaced/node_pruned/node_terminated), либо он
+// всё ещё заблокирован (active). Пара blocked→recovered баном НЕ считается —
+// это самоустранившийся сбой. ОДИН IP считается баном ОДИН РАЗ: повторные
+// баны того же адреса (перепроверки) новую запись не создают, а
+// восстановление адреса (gp снова зелёный / reverify прошёл) убирает запись
+// из статистики вовсе.
 type panelGPBan struct {
 	NodeID      string    `json:"node_id"`
 	IP          string    `json:"ip,omitempty"`
@@ -187,7 +193,7 @@ type panelGPBan struct {
 	ClosedBy    string    `json:"closed_by,omitempty"` // node_expired / node_replaced
 }
 
-// panelStats — агрегаты по журналу событий (V7.8): баны GP, периодичность
+// panelStats — агрегаты по журналу событий: баны GP, периодичность
 // банов и DNS-смен, среднее время мастерства. Всё считается форвард-проходом
 // по state.Events — метрики соответствуют тому, что админ видит в журнале.
 type panelStats struct {
@@ -220,19 +226,54 @@ const gpBanHistoryCap = 15
 // buildPanelStatsLocked — агрегаты по журналу: баны GP, периодичности,
 // мастерство. ВЫЗЫВАТЬ под r.mu (минимум RLock). Чистый форвард-проход,
 // O(events); журнал ограничен events_max, так что это дёшево.
+//
+// Семантика банов: ОДИН IP = ОДИН бан. Повторный globalping_blocked того же
+// адреса (перепроверка, ре-бан) новую запись не открывает — адрес уже учтён.
+// Восстановление адреса (globalping_recovered либо ban_lifted после
+// reverify) убирает его бан из статистики полностью, даже если нода с этим
+// адресом уже ушла из пула. Уход ноды (expired/replaced/pruned/terminated)
+// бан НЕ убирает: адрес остаётся заблокированным, запись просто закрывается.
 func (r *Registry) buildPanelStatsLocked(now time.Time) panelStats {
 	st := panelStats{EventsWindow: len(r.state.Events)}
 
-	type openBan struct {
-		start time.Time
-		ip    string
-		cause string
+	type ipBan struct {
+		ip       string
+		start    time.Time
+		nodeID   string
+		cause    string
+		closedAt time.Time // нода ушла из пула; ноль — ещё активен
+		closedBy string
 	}
-	pending := map[string]openBan{} // nodeID → открытый blocked
-	nodesSeen := map[string]bool{}  // ноды хотя бы с одним баном
-	var banStarts []time.Time       // начала банов (для периодичности)
-	var dnsTimes []time.Time        // per-domain смены DNS
-	var bans []panelGPBan           // хронологический порядок
+	byIP := map[string]*ipBan{}   // адрес → его бан (пока не восстановится)
+	byNode := map[string]*ipBan{} // nodeID → бан его адреса
+	nodesSeen := map[string]bool{}
+	var banStarts []time.Time // начала банов (для периодичности)
+	var dnsTimes []time.Time  // per-domain смены DNS
+
+	openBan := func(ev Event) {
+		if ev.IP == "" || byIP[ev.IP] != nil {
+			return // без адреса не пишем; этот адрес уже учтён как бан
+		}
+		b := &ipBan{ip: ev.IP, start: ev.At, nodeID: ev.NodeID, cause: ev.Detail}
+		byIP[ev.IP] = b
+		if ev.NodeID != "" {
+			byNode[ev.NodeID] = b
+		}
+	}
+	liftBan := func(ev Event) {
+		b := byIP[ev.IP]
+		if b == nil {
+			// восстановление без ip в событии — ищем по ноде
+			b = byNode[ev.NodeID]
+		}
+		if b == nil {
+			return
+		}
+		delete(byIP, b.ip)
+		if byNode[b.nodeID] == b {
+			delete(byNode, b.nodeID)
+		}
+	}
 
 	type stintKey struct{ node, domain string }
 	openStints := map[stintKey]time.Time{}
@@ -242,29 +283,20 @@ func (r *Registry) buildPanelStatsLocked(now time.Time) panelStats {
 	for _, ev := range r.state.Events {
 		switch ev.Type {
 		case EventGlobalpingBlocked:
-			// повторный blocked без recovered не перезаписывает начало бана
-			if _, ok := pending[ev.NodeID]; !ok {
-				pending[ev.NodeID] = openBan{start: ev.At, ip: ev.IP, cause: ev.Detail}
-			}
+			openBan(ev)
 		case EventGlobalpingRecovered:
-			// восстановилась — НЕ бан, сбой самоустранился
-			delete(pending, ev.NodeID)
-		// V7.9.11: pruned и терминально завершённая нода тоже закрывают бан
-		// без восстановления (та же семантика «ушла из пула заблокированной»).
+			// адрес снова зелёный — бана нет (сбой самоустранился, либо
+			// восстановился уже забаненный адрес — запись убирается)
+			liftBan(ev)
+		case EventBanLifted:
+			// reverify прошёл — адрес восстановлен, бан из статистики долой
+			liftBan(ev)
 		case EventNodeExpired, EventNodeReplaced, EventNodePruned, EventNodeTerminated:
-			if b, ok := pending[ev.NodeID]; ok {
-				delete(pending, ev.NodeID)
-				ip := b.ip
-				if ip == "" {
-					ip = ev.IP
-				}
-				bans = append(bans, panelGPBan{
-					NodeID: ev.NodeID, IP: ip, StartedAt: b.start,
-					DurationSec: int64(ev.At.Sub(b.start).Seconds()),
-					Cause:       b.cause, ClosedBy: ev.Type,
-				})
-				banStarts = append(banStarts, b.start)
-				nodesSeen[ev.NodeID] = true
+			// нода ушла из пула заблокированной — бан адреса остаётся,
+			// запись закрывается (адрес ведь не восстановился)
+			if b := byNode[ev.NodeID]; b != nil && b.closedAt.IsZero() {
+				b.closedAt = ev.At
+				b.closedBy = ev.Type
 			}
 		case EventDNSUpdated:
 			// только per-domain смены; агрегированные manual-push без домена
@@ -294,14 +326,22 @@ func (r *Registry) buildPanelStatsLocked(now time.Time) panelStats {
 		}
 	}
 
-	// незакрытые баны — активные (нода заблокирована и торчит в пуле)
-	for nodeID, b := range pending {
-		bans = append(bans, panelGPBan{
-			NodeID: nodeID, IP: b.ip, StartedAt: b.start, Active: true,
-			DurationSec: int64(now.Sub(b.start).Seconds()), Cause: b.cause,
-		})
+	// собираем не восстановившиеся баны: закрытые (нода ушла) и активные
+	var bans []panelGPBan
+	for ip, b := range byIP {
+		pb := panelGPBan{NodeID: b.nodeID, IP: ip, StartedAt: b.start, Cause: b.cause}
+		if b.closedAt.IsZero() {
+			pb.Active = true
+			pb.DurationSec = int64(now.Sub(b.start).Seconds())
+		} else {
+			pb.DurationSec = int64(b.closedAt.Sub(b.start).Seconds())
+			pb.ClosedBy = b.closedBy
+		}
+		bans = append(bans, pb)
 		banStarts = append(banStarts, b.start)
-		nodesSeen[nodeID] = true
+		if b.nodeID != "" {
+			nodesSeen[b.nodeID] = true
+		}
 	}
 	// незакрытые stint'ы — текущие мастера: время до «сейчас»
 	for _, at := range openStints {
@@ -338,23 +378,26 @@ type panelOverview struct {
 	Domains   []string      `json:"domains"`
 	TLSDomain string        `json:"tls_domain"`
 	Masters   []panelMaster `json:"masters"`
-	// MasterTTLSec (V7.9.3): действующий лимит мастерства, сек (0 = выкл.).
+	// MasterTTLSec: действующий лимит мастерства, сек (0 = выкл.).
 	MasterTTLSec      int64   `json:"master_ttl_sec"`
 	NodesTotal        int     `json:"nodes_total"`
 	NodesTCPOK        int     `json:"nodes_tcp_ok"`
 	NodesGPVerified   int     `json:"nodes_gp_verified"`
 	NodesMetricsOK    int     `json:"nodes_metrics_ok"`
 	NodesFullyHealthy int     `json:"nodes_fully_healthy"`
-	NodesQuarantined  int     `json:"nodes_quarantined"` // V7.9.11: в GP-карантине
+	NodesQuarantined  int     `json:"nodes_quarantined"` // в GP-карантине
 	QueueSize         int     `json:"queue_size"`
 	WritersActive     float64 `json:"writers_active_total"`
 	// ClientsUniqueTotal — сумма unique-IP клиентов по нодам, приславшим метрику.
 	// nil = ни одна нода её не присылает (старые агенты / user_enabled=false).
 	ClientsUniqueTotal *float64 `json:"clients_unique_ips_total"`
 	Counters           Counters `json:"counters"`
-	// Stats (V7.8): баны GP, периодичность банов/DNS-смен, среднее мастерство.
+	// Stats: баны GP, периодичность банов/DNS-смен, среднее мастерство.
 	Stats panelStats  `json:"stats"`
 	Nodes []panelNode `json:"nodes"`
+	// SRMD: система распределения и масштабирования доменов —
+	// таблица «домен | активные пользователи» + её настройки/алерт.
+	SRMD *panelSRMD `json:"srmd,omitempty"`
 }
 
 // buildOverview собирает снимок состояния пула для панели (под RLock).
@@ -368,6 +411,10 @@ func (r *Registry) buildOverview() panelOverview {
 	cfgDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
 	cfgTLSDomain := r.cfg.SharedProxy.TLSDomain
 	ttl := time.Duration(resolveMasterTTLMinutes(r.cfg.Rotation.MasterTTLMinutes)) * time.Minute
+	// Настройки СРМД (тоже hot-apply)
+	srmdEnabled := r.cfg.SRMD.Enabled != nil && *r.cfg.SRMD.Enabled
+	srmdBase := strings.TrimSpace(r.cfg.SRMD.BaseDomain)
+	srmdMaxN := resolveSRMDMaxNodes(r.cfg.SRMD.MaxNodesPerDomain)
 	r.cfgMu.RUnlock()
 	ov := panelOverview{
 		StartedAt:    r.startedAt,
@@ -402,7 +449,7 @@ func (r *Registry) buildOverview() panelOverview {
 		queuePos[c] = i + 1
 	}
 
-	// V7: per-domain мастера. holdsBy — nodeID → его домены (для роли ноды),
+	// Per-domain мастера. holdsBy — nodeID → его домены (для роли ноды),
 	// masters — карточка раскладки по доменам из конфига.
 	holdsBy := make(map[string][]string, len(r.state.Assignments))
 	for d, id := range r.state.Assignments {
@@ -419,6 +466,14 @@ func (r *Registry) buildOverview() panelOverview {
 		}
 		domainsSeen[d] = true
 		m := panelMaster{Domain: d}
+		// Таблица клиентов СРМД и CNAME-статус домена
+		if cl, ok := r.state.SRMD.DomainClients[d]; ok {
+			v := cl
+			m.Clients = &v
+		}
+		if cn := r.state.SRMD.CNames[d]; cn != "" {
+			m.CNameTarget = cn
+		}
 		if id := r.state.Assignments[d]; id != "" {
 			m.NodeID = id
 			if c := r.state.Candidates[id]; c != nil {
@@ -429,7 +484,7 @@ func (r *Registry) buildOverview() panelOverview {
 				m.Dead = true
 			}
 			// TTL мастерства: заполняем, только когда назначение отсчитано
-			// (V7.9.3+ лениво инициализирует since на первом evaluate).
+			// (лениво инициализирует since на первом evaluate).
 			if since := r.state.AssignmentsSince[d]; ttl > 0 && !since.IsZero() {
 				m.TTLSec = int64(ttl.Seconds())
 				m.TTLRemainingSec = int64(ttl.Seconds()) - int64(now.Sub(since).Seconds())
@@ -459,7 +514,7 @@ func (r *Registry) buildOverview() panelOverview {
 		if c.GlobalpingOK {
 			ov.NodesGPVerified++
 		}
-		if c.MetricsHealthy { // V7.9.4: счётчик по защёлке, а не по сырому последнему отчёту
+		if c.MetricsHealthy { // счётчик по защёлке, а не по сырому последнему отчёту
 			ov.NodesMetricsOK++
 		}
 		if n.FullyHealthy {
@@ -484,11 +539,13 @@ func (r *Registry) buildOverview() panelOverview {
 
 	ov.QueueSize = len(queue)
 	ov.Stats = r.buildPanelStatsLocked(now)
+	// Снимок СРМД (таблица доменов, нужное число доменов, алерт)
+	ov.SRMD = r.buildPanelSRMDLocked(len(queue), srmdEnabled, srmdBase, srmdMaxN)
 	return ov
 }
 
 // buildPanelNodeLocked собирает panelNode по кандидату — общий конструктор для
-// overview и страницы ноды (V7.7). Вызывать под r.mu (минимум RLock).
+// overview и страницы ноды. Вызывать под r.mu (минимум RLock).
 func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomains []string, now time.Time) panelNode {
 	n := panelNode{
 		NodeID:            c.NodeID,
@@ -518,7 +575,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		MasterTimeSec:     c.MasterTimeSec(now),
 		NodeType:          c.NodeType,
 	}
-	if c.Quarantine != nil { // V7.9.11
+	if c.Quarantine != nil { //
 		n.Quarantine = &panelQuarantine{
 			Attempt: c.Quarantine.Attempts, Max: r.cfg.QuarantineAttempts,
 			EnteredAt: c.Quarantine.EnteredAt, Reverify: c.Quarantine.Reverify,
@@ -571,7 +628,7 @@ func (r *Registry) masterDomainsLocked(id string) []string {
 	return domains
 }
 
-// handlePanelNode — GET /panel/api/node?id=…: детальная статистика ноды (V7.7).
+// handlePanelNode — GET /panel/api/node?id=…: детальная статистика ноды.
 // Агрегаты + истории TCP/GP/metrics-проверок (кольцевые буферы), деталь
 // последней верификации Globalping по площадкам и журнал событий этой ноды.
 func (r *Registry) handlePanelNode(w http.ResponseWriter, req *http.Request) {
@@ -608,7 +665,7 @@ func (r *Registry) handlePanelNode(w http.ResponseWriter, req *http.Request) {
 		"report_hist": c.ReportHist,
 		"gp_last":     c.GPLast,
 		"events":      events,
-		// hc (V7.9.4): пороги защёлок для подсказок панели («серия 1 из 3»)
+		// hc: пороги защёлок для подсказок панели («серия 1 из 3»)
 		"hc": map[string]int{
 			"fail_threshold":    max(1, r.cfg.Healthcheck.FailThreshold),
 			"recover_threshold": max(1, r.cfg.Healthcheck.RecoverThreshold),

@@ -37,7 +37,7 @@ mv "$STAGE/$PKG_NAME" "$STAGE/pkg/$PKG_NAME"
 cp "$REPO_ROOT/configs/registry.example.toml" "$STAGE/pkg/"
 cp "$REPO_ROOT/systemd/sharedd-registry.service" "$STAGE/pkg/"
 
-# полный установщик: registry + Caddy (авто-TLS) + веб-панель (V4)
+# полный установщик: registry + Caddy (авто-TLS) + веб-панель
 install -m 0755 "$REPO_ROOT/scripts/install_registry.sh" "$STAGE/pkg/install_full.sh"
 
 

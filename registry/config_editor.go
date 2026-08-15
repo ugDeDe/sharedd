@@ -19,11 +19,11 @@ import (
 //
 // Hot-apply секции: shared_proxy (SNI, users), cloudflare (токен/зона/домены/ttl/proxied),
 // node_defaults (интервалы нод), globalping (api_base/token), panel (token, events_max),
-// rotation (лимит мастерства), healthcheck.quarantine_attempts (V7.9.12 — число
+// rotation (лимит мастерства), healthcheck.quarantine_attempts (— число
 // GP-попыток в карантине до бана; читается на каждом отчёте, ticker'ов нет).
 // Применённые значения сразу обслуживаются рантаймом (GET /config для нод, pushAssignments,
 // верификация Globalping, авторизация панели), а затем персистятся обратно в TOML-файл
-// (атомарно: temp + rename, с .bak-копией). Остальные healthcheck/http/state —
+// (атомарно: temp + rename, с.bak-копией). Остальные healthcheck/http/state —
 // намеренно read-only: их тайминги вшиты в запущенные ticker'ы, смена требует рестарта.
 //
 // Ограничение: удаление пользователя из shared_proxy.users НЕ удаляет его на нодах
@@ -58,14 +58,23 @@ type editablePanel struct {
 	EventsMax int    `json:"events_max"`
 }
 
-// editableRotation — V7.9.3: лимит времени мастерства (мин; 0 = выкл.).
+// EditableRotation — лимит времени мастерства (мин; 0 = выкл.).
 type editableRotation struct {
 	MasterTTLMinutes int `json:"master_ttl_minutes"`
 }
 
-// editableHealthcheck — V7.9.12: число GP-попыток карантина до бана по IP.
+// EditableHealthcheck — число GP-попыток карантина до бана по IP.
 type editableHealthcheck struct {
 	QuarantineAttempts int `json:"quarantine_attempts"`
+}
+
+// EditableSRMD — Система Распределения и Масштабирования Доменов.
+// Enabled=false по умолчанию — автоматическое создание доменов должно быть
+// явным выбором оператора. BaseDomain пусто = первый из cloudflare.domains.
+type editableSRMD struct {
+	Enabled           bool   `json:"enabled"`
+	BaseDomain        string `json:"base_domain"`
+	MaxNodesPerDomain int    `json:"max_nodes_per_domain"`
 }
 
 // editableConfig — тело PUT /panel/api/config; nil-секция = не трогать (merge-семантика).
@@ -78,6 +87,7 @@ type editableConfig struct {
 	Panel        *editablePanel        `json:"panel,omitempty"`
 	Rotation     *editableRotation     `json:"rotation,omitempty"`
 	Healthcheck  *editableHealthcheck  `json:"healthcheck,omitempty"`
+	SRMD         *editableSRMD         `json:"srmd,omitempty"`
 }
 
 var (
@@ -118,8 +128,8 @@ func validateEditable(in *editableConfig) error {
 		if strings.TrimSpace(cf.ZoneID) == "" || len(cf.ZoneID) > 64 {
 			return fmt.Errorf("cloudflare.zone_id: пусто или длиннее 64 символов")
 		}
-		if len(cf.Domains) == 0 || len(cf.Domains) > 20 {
-			return fmt.Errorf("cloudflare.domains: нужно 1..20 доменов")
+		if len(cf.Domains) == 0 || len(cf.Domains) > 50 {
+			return fmt.Errorf("cloudflare.domains: нужно 1..50 доменов")
 		}
 		for _, d := range cf.Domains {
 			if !validHostname(strings.TrimSpace(d)) {
@@ -168,6 +178,14 @@ func validateEditable(in *editableConfig) error {
 	if hc := in.Healthcheck; hc != nil {
 		if hc.QuarantineAttempts < 1 || hc.QuarantineAttempts > 20 {
 			return fmt.Errorf("healthcheck.quarantine_attempts: допустимо 1..20, получено %d", hc.QuarantineAttempts)
+		}
+	}
+	if s := in.SRMD; s != nil {
+		if b := strings.TrimSpace(s.BaseDomain); b != "" && !validHostname(b) {
+			return fmt.Errorf("srmd.base_domain: %q не hostname", b)
+		}
+		if s.MaxNodesPerDomain < 1 || s.MaxNodesPerDomain > 1000 {
+			return fmt.Errorf("srmd.max_nodes_per_domain: допустимо 1..1000, получено %d", s.MaxNodesPerDomain)
 		}
 	}
 	return nil
@@ -231,6 +249,12 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		Healthcheck: &editableHealthcheck{
 			QuarantineAttempts: r.cfg.QuarantineAttempts,
 		},
+		// СРМД — эффективные значения (enabled по умолчанию выкл).
+		SRMD: &editableSRMD{
+			Enabled:           r.cfg.SRMD.Enabled != nil && *r.cfg.SRMD.Enabled,
+			BaseDomain:        r.cfg.SRMD.BaseDomain,
+			MaxNodesPerDomain: resolveSRMDMaxNodes(r.cfg.SRMD.MaxNodesPerDomain),
+		},
 	}
 	static := staticConfigInfo{
 		HTTPAddr:            r.cfg.HTTP.Addr,
@@ -252,6 +276,14 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 
 func mapsClone(m map[string]string) map[string]string {
 	return maps.Clone(m)
+}
+
+// orDash — пустое значение в журналах/деталях показываем прочерком.
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
 }
 
 // handlePutConfig — PUT /panel/api/config: валидация → hot-apply → персист → аудит.
@@ -336,6 +368,17 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		r.cfg.Healthcheck.QuarantineAttempts = hc.QuarantineAttempts
 		changed = append(changed, fmt.Sprintf("healthcheck(quarantine_attempts=%d)", hc.QuarantineAttempts))
 	}
+	if s := in.SRMD; s != nil {
+		// Hot-apply — читается srmdRebalanceLocked на каждом тике
+		// селекции; эффект (создание/сворачивание доменов) наступает после
+		// srmdStableTicks устойчивого условия.
+		v := s.Enabled
+		r.cfg.SRMD.Enabled = &v
+		r.cfg.SRMD.BaseDomain = strings.TrimSpace(s.BaseDomain)
+		r.cfg.SRMD.MaxNodesPerDomain = s.MaxNodesPerDomain
+		changed = append(changed, fmt.Sprintf("srmd(enabled=%t,base=%s,max_nodes_per_domain=%d)",
+			s.Enabled, orDash(r.cfg.SRMD.BaseDomain), s.MaxNodesPerDomain))
+	}
 	if len(changed) > 0 {
 		persistErr = r.persistConfigLocked()
 	}
@@ -359,7 +402,7 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 
 	// cloudflare-секция менялась → сначала раскладка (новым доменам нужен мастер),
 	// потом немедленная запись всех записей по назначениям, и в конце —
-	// зачистка доменов, выведенных из managed-списка (V7.8; только тех, кем
+	// зачистка доменов, выведенных из managed-списка (; только тех, кем
 	// управляли раньше — чужие записи зоны не трогаем)
 	push := map[string]any{}
 	if in.Cloudflare != nil {
@@ -392,7 +435,7 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 	rawDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
 	r.cfgMu.RUnlock()
 
-	type target struct{ nodeID, ip string }
+	type target struct{ nodeID, ip, cname string }
 	names := make([]string, 0, len(rawDomains))
 	targets := make([]target, 0, len(rawDomains))
 	r.mu.RLock()
@@ -402,8 +445,11 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 			continue
 		}
 		var t target
-		if c := r.state.Candidates[r.state.Assignments[d]]; c != nil {
-			t = target{c.NodeID, c.IP}
+		// Свёрнутые СРМД домены пушим CNAME'ом, а не A-записью
+		if cn := r.state.SRMD.CNames[d]; cn != "" {
+			t.cname = cn
+		} else if c := r.state.Candidates[r.state.Assignments[d]]; c != nil {
+			t = target{nodeID: c.NodeID, ip: c.IP}
 		}
 		names = append(names, d)
 		targets = append(targets, t)
@@ -412,6 +458,14 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 
 	for i, d := range names {
 		t := targets[i]
+		if t.cname != "" {
+			if err := r.upsertCNAMERecord(d, t.cname); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", d, err))
+			} else {
+				updated = append(updated, fmt.Sprintf("%s → CNAME %s", d, t.cname))
+			}
+			continue
+		}
 		if t.ip == "" {
 			errs = append(errs, d+": no assigned master")
 			continue
@@ -451,11 +505,14 @@ func (r *Registry) handleDNSPush(w http.ResponseWriter, req *http.Request) {
 }
 
 // persistConfigLocked перезаписывает TOML-файл конфигурации текущим состоянием.
-// Формат: полный Marshal (комментарии файла теряются — оригинал остаётся в .bak).
+// Формат: полный Marshal (комментарии файла теряются — оригинал остаётся в.bak).
 // Атомарно: temp в том же каталоге + rename; mode сохраняется от старого файла.
 // ВЫЗЫВАТЬ под cfgMu (write).
 func (r *Registry) persistConfigLocked() error {
 	path := r.cfg.configPath
+	if path == "" {
+		return fmt.Errorf("config path is empty (registry запущен без -config?)")
+	}
 	data, err := toml.Marshal(r.cfg.RegistryConfig)
 	if err != nil {
 		return fmt.Errorf("marshal toml: %w", err)

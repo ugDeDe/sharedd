@@ -15,7 +15,7 @@ import (
 )
 
 // sectionHeaderRe — заголовок TOML-таблицы. Толерантен к пробелам внутри скобок
-// и хвостовым комментариям: "[ access.users ]  # users".
+// и хвостовым комментариям: "[ access.users ] # users".
 var sectionHeaderRe = regexp.MustCompile(`^\[\s*([A-Za-z0-9_.\-]+)\s*\]\s*(#.*)?$`)
 
 // arrayTableHeaderRe — начало array-table ("[[server.listeners]]"). НЕ цель поиска
@@ -25,7 +25,7 @@ var sectionHeaderRe = regexp.MustCompile(`^\[\s*([A-Za-z0-9_.\-]+)\s*\]\s*(#.*)?
 var arrayTableHeaderRe = regexp.MustCompile(`^\[\[`)
 
 // keyRe — ключ в начале строки ТОМЛа. Обязан включать `.` и `"`: quoted-ключи
-// с точками — норма таблиц вида [censorship.exclusive_mask] ("m.beboo.ru" = ...).
+// с точками — норма таблиц вида [censorship.exclusive_mask] ("m.beboo.ru" =...).
 var keyRe = regexp.MustCompile(`^([A-Za-z0-9_.\-"]+)\s*=`)
 
 func isAnyTableHeader(line string) bool {
@@ -430,10 +430,10 @@ func fetchSharedConfig(registryURL string) (SharedConfig, error) {
 }
 
 // applySharedConfig — единая точка применения /config: кэш + интервалы + telemt.toml.
-// V6: интеграция ТОЛЬКО через файл (построчный патч telemt.toml) — telemt REST API
+// Интеграция ТОЛЬКО через файл (построчный патч telemt.toml) — telemt REST API
 // выпилен (не работал в реальных раскладках). Работает одинаково и с ванильным
 // telemt, и с MTProxyL (она владеет тем же файлом).
-// V7.9.1: запись файла идёт через applySharedConfigManaged — с остановкой и
+// Запись файла идёт через applySharedConfigManaged — с остановкой и
 // рестартом прокси (конфиг на работающем прокси не применяется сам).
 func applySharedConfig(cfg *NodeConfig, shared SharedConfig) {
 	sharedConfigCache.Set(shared)
@@ -471,7 +471,7 @@ func computeSharedConfigPatch(cfg *NodeConfig, shared SharedConfig) (newLines []
 
 	anyChange := false
 
-	// mask_host НЕ вычищаем (V7.3, смена поведения V6): раз конфиг его содержит —
+	// mask_host НЕ вычищаем (, смена поведения): раз конфиг его содержит —
 	// это выбор оператора (например, MTProxyL QuickSettings). Активное
 	// прощупывание нашего SNI вместо этого накрываем exclusive_mask на
 	// настоящий сайт — см. ниже.
@@ -532,12 +532,12 @@ var applySvcMu sync.Mutex
 
 // applySharedConfigManaged — боевой конвейер применения /config к telemt.toml:
 //
-//  1. стоп прокси (systemd-юнит telemt.service и т.п.);
-//  2. патч и сохранение конфига (атомарно, с сохранением владельца/прав);
-//  3. старт прокси;
-//  4. ожидание подъёма — поллим /metrics до HTTP 200 (это же и проверка,
-//     что конфиг принят: с кривым конфигом прокси не поднимется);
-//  5. прокси не встал за таймаут → откат файла на исходную версию + рестарт.
+// 1. стоп прокси (systemd-юнит telemt.service и т.п.);
+// 2. патч и сохранение конфига (атомарно, с сохранением владельца/прав);
+// 3. старт прокси;
+// 4. ожидание подъёма — поллим /metrics до HTTP 200 (это же и проверка,
+// что конфиг принят: с кривым конфигом прокси не поднимется);
+// 5. прокси не встал за таймаут → откат файла на исходную версию + рестарт.
 //
 // Без изменений (changed=false) прокси вообще не трогаем — никаких лишних
 // рестартов на каждом sync-тике.

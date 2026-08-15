@@ -15,7 +15,7 @@ func newTestRegistry(t *testing.T) *Registry {
 	cfg := &resolvedRegistryConfig{}
 	cfg.State.File = filepath.Join(t.TempDir(), "state.json")
 	cfg.Cloudflare.APIToken = "dummy" // not used in these code paths
-	// один домен по умолчанию: поведение совпадает с V6 «один мастер»
+	// один домен по умолчанию: поведение совпадает с «один мастер»
 	cfg.Cloudflare.Domains = []string{"d1.example.com"}
 	cfg.Healthcheck.FailThreshold = 3
 	cfg.Healthcheck.RecoverThreshold = 2
@@ -74,7 +74,7 @@ func TestCandidateHealthGating(t *testing.T) {
 		t.Fatal("globalping fail must disqualify")
 	}
 	c.GlobalpingOK = true
-	c.MetricsHealthy = false // V7.9.4: судьбу решает защёлка, не сырой MetricsOK
+	c.MetricsHealthy = false // судьбу решает защёлка, не сырой MetricsOK
 	if c.IsFullyHealthy(15 * time.Minute) {
 		t.Fatal("metrics fail must disqualify")
 	}
@@ -197,7 +197,7 @@ func TestStatePersistAndLoad(t *testing.T) {
 	if _, ok := r2.state.Candidates["node-x"]; !ok {
 		t.Fatal("state must survive reload")
 	}
-	// (V7.9.10: миграции active_node V4–V6 и её теста больше нет — флотилия
+	// (миграции active_node и её теста больше нет — флотилия
 	// давно на per-domain назначениях, state-файлы тех лет не существует.)
 }
 
@@ -256,7 +256,7 @@ func TestQueueRepositioning(t *testing.T) {
 	// telemt на A умирает (metrics fail), агент продолжает heartbeat — кандидат НЕ удаляется
 	time.Sleep(2 * time.Millisecond)
 	r.state.Candidates["A"].MetricsOK = false
-	r.state.Candidates["A"].MetricsHealthy = false // V7.9.4: роняем защёлку
+	r.state.Candidates["A"].MetricsHealthy = false // роняем защёлку
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "A", "B")
 	if r.state.Candidates["A"].FullyHealthy || !r.state.Candidates["A"].QueuedAt.IsZero() {
@@ -283,7 +283,7 @@ func TestQueueRepositioning(t *testing.T) {
 	assertSingleChange(t, changes, "d1.example.com", "B", "A")
 }
 
-// TestPerDomainMasters — V7: каждый managed-домен держит СВОЕГО мастера.
+// TestPerDomainMasters — каждый managed-домен держит СВОЕГО мастера.
 // Свободная нода НЕ отнимает единственный домен у другого (стабильность
 // раскладки: лишний перевод A-записи — это микропотеря клиентов).
 func TestPerDomainMasters(t *testing.T) {
@@ -320,13 +320,13 @@ func TestPerDomainMasters(t *testing.T) {
 
 	// A умирает — d1 достаётся наименее загруженному (C держит 0, B — один)
 	r.state.Candidates["A"].MetricsOK = false
-	r.state.Candidates["A"].MetricsHealthy = false // V7.9.4: роняем защёлку
+	r.state.Candidates["A"].MetricsHealthy = false // роняем защёлку
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "A", "C")
 
 	// A чинится и простаивает — расстановка остаётся (C держит 1, B держит 1)
 	r.state.Candidates["A"].MetricsOK = true
-	r.state.Candidates["A"].MetricsHealthy = true // V7.9.4: поднимаем защёлку
+	r.state.Candidates["A"].MetricsHealthy = true // поднимаем защёлку
 	r.state.Candidates["A"].LastReportAt = time.Now()
 	if changes := r.evaluateAssignments(time.Now()); len(changes) != 0 {
 		t.Fatalf("recovered idle A must not ripple assignments, got %+v", changes)
@@ -339,14 +339,14 @@ func TestPerDomainMasters(t *testing.T) {
 
 	// Умирает и C — оба домена оседают на последней живой ноде
 	r.state.Candidates["C"].MetricsOK = false
-	r.state.Candidates["C"].MetricsHealthy = false // V7.9.4: роняем защёлку
+	r.state.Candidates["C"].MetricsHealthy = false // роняем защёлку
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "C", "A")
 	if r.state.Assignments["d1.example.com"] != "A" || r.state.Assignments["d2.example.com"] != "A" {
 		t.Fatalf("A must hold both domains, got %+v", r.state.Assignments)
 	}
 
-	// Здоровых не осталось вообще — назначения НЕ снимаются (V6-паритет:
+	// Здоровых не осталось вообще — назначения НЕ снимаются (паритет:
 	// A-записи остаются на последних мастерах), но stint фиксируем закрытым
 	r.state.Candidates["A"].Healthy = false
 	if changes := r.evaluateAssignments(time.Now()); len(changes) != 0 {
@@ -371,7 +371,7 @@ func TestPerDomainMasters(t *testing.T) {
 	}
 }
 
-// TestFillEmptyRebalance — V7 fill-empty: нод меньше, чем доменов, — мастер
+// TestFillEmptyRebalance — fill-empty: нод меньше, чем доменов, — мастер
 // дотягивает всех «сирот»; как только появляется свободная здоровая нода,
 // один сирота мигрирует к ней (не терять клиентов при падении мастера).
 // Полной подгонки под равенство («3/1 → 2/2») НЕТ — стабильность дороже.
@@ -432,7 +432,7 @@ func TestFillEmptyRebalance(t *testing.T) {
 	}
 }
 
-// TestRegisterCarriesAssignments — V7: нода перерегистрировалась с тем же IP
+// TestRegisterCarriesAssignments — нода перерегистрировалась с тем же IP
 // под новым ID → домены переносятся на новый ID МОЛЧА (IP не изменился,
 // A-записи корректны: DNS не трогаем, master_lost/elected не генерируем).
 func TestRegisterCarriesAssignments(t *testing.T) {

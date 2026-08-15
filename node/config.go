@@ -13,7 +13,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Зашитые дефолты (V2: бесконфиговая нода — настраивается только registry.url,
+// Зашитые дефолты (бесконфиговая нода — настраивается только registry.url,
 // telemt.config_path и sync.apply_to_telemt).
 const (
 	defaultTelemtConfigPath   = "/etc/telemt/telemt.toml"
@@ -38,7 +38,7 @@ type NodeConfig struct {
 
 	Telemt struct {
 		ConfigPath string `toml:"config_path"`
-		// V6: режим mode/auto/file/api УДАЛЁН — интеграция только через файл
+		// Режим mode/auto/file/api УДАЛЁН — интеграция только через файл
 		// telemt.toml (telemt REST API не используется). Ключ mode в старых
 		// конфигах просто игнорируется (toml пропускает неизвестные поля).
 	} `toml:"telemt"`
@@ -47,7 +47,7 @@ type NodeConfig struct {
 		ApplyToTelemt bool `toml:"apply_to_telemt"`
 	} `toml:"sync"`
 
-	// Watchdog (V7.9.11): dead_kill_ms — непрерывно красные локальные
+	// Watchdog: dead_kill_ms — непрерывно красные локальные
 	// проверки (scrape telemt /metrics) дольше этого окна → терминальное
 	// само-завершение ноды (класс dead, см. terminate.go): агент пишет в лог
 	// msgDead, кладёт tombstone, шлёт /retire регистратору и останавливает
@@ -56,14 +56,14 @@ type NodeConfig struct {
 		DeadKillMs int `toml:"dead_kill_ms"`
 	} `toml:"watchdog"`
 
-	// Node (V7.9.11): public_ip — ручное задание публичного IPv4, если
+	// Node: public_ip — ручное задание публичного IPv4, если
 	// авто-детект недоступен/непригоден (жёсткий DNAT, hairpin NAT,
 	// вывешенный адрес не совпадает с исходящим). Пусто = авто-детект.
 	Node struct {
 		PublicIP string `toml:"public_ip"`
 	} `toml:"node"`
 
-	// Globalping (V7.9.11): api_base — переопределение API (совместимое
+	// Globalping: api_base — переопределение API (совместимое
 	// зеркало/прокси; как [globalping] api_base у регистратора).
 	Globalping struct {
 		APIBase string `toml:"api_base"`
@@ -97,7 +97,7 @@ func nodeConfigPathFlag() string {
 	return "/etc/sharedd/node.toml"
 }
 
-// applyOnceFlag — режим one-shot конвейера (V7.9.2): -apply-once / --apply-once.
+// applyOnceFlag — режим one-shot конвейера: -apply-once / --apply-once.
 // Сканируем os.Args ВРУЧНУЮ: nodeConfigPathFlag уже владеет своим FlagSet'ом, а
 // второй FlagSet по тем же аргументам оборвётся на первом неизвестном флаге.
 func applyOnceFlag() bool {
@@ -134,7 +134,7 @@ func loadNodeConfig() (*NodeConfig, error) {
 	return &cfg, nil
 }
 
-// resolveNodeID — всегда случайный персистентный ID (V2: других режимов нет).
+// resolveNodeID — всегда случайный персистентный ID (других режимов нет).
 // ID генерируется один раз и сохраняется в state-файл: он определяет место ноды
 // в очереди регистратора (RegisteredAt), поэтому не должен меняться на рестартах.
 func resolveNodeID() (string, error) {

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// V7.9.6: рипер неактивных — нода, непрерывно вне очереди здоровых дольше
+// Рипер неактивных — нода, непрерывно вне очереди здоровых дольше
 // prune_unhealthy_min, удаляется из пула (живой агент с мёртвым прокси
 // больше не висит в списке вечно, «вся красная»).
 
@@ -164,7 +164,7 @@ func TestHeartbeatUnknownNodeGetsGone(t *testing.T) {
 	}
 }
 
-// ---------- V7.9.7: карантин после prune ----------
+// ---------- карантин после prune ----------
 
 func TestPruneBanSchedule(t *testing.T) {
 	want := []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour, 3 * time.Hour, 3 * time.Hour}
@@ -194,7 +194,7 @@ func pruneSickNode(t *testing.T, r *Registry, id, ip string) {
 }
 
 // prune кладёт карантин: немедленная пере-регистрация отклоняется
-// (вертящаяся дверь V7.9.6 закрыта).
+// (вертящаяся дверь закрыта).
 func TestPruneCreatesTombstoneAndBlocksRegister(t *testing.T) {
 	r := newTestRegistry(t)
 	pruneSickNode(t, r, "dead", "1.1.1.1")
@@ -288,7 +288,7 @@ func TestHealthyJoinClearsTombstone(t *testing.T) {
 	}
 }
 
-// HTTP-слой: 429 + Retry-After + тело с retry_after_sec для агента V7.9.7+.
+// HTTP-слой: 429 + Retry-After + тело с retry_after_sec для агента +.
 func TestRegisterEndpointReturns429DuringBan(t *testing.T) {
 	r := newTestRegistry(t)
 	r.state.PruneStrikes = map[string]*PruneTombstone{

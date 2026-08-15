@@ -37,7 +37,7 @@ mv "$STAGE/$PKG_NAME" "$STAGE/pkg/$PKG_NAME"
 cp "$REPO_ROOT/configs/node.example.toml" "$STAGE/pkg/"
 cp "$REPO_ROOT/systemd/sharedd-node-agent.service" "$STAGE/pkg/"
 
-# полный установщик с базовым регистратором registrar.ddproxy.xyz (V6)
+# полный установщик с базовым регистратором registrar.ddproxy.xyz
 install -m 0755 "$REPO_ROOT/scripts/install_node.sh" "$STAGE/pkg/install_full.sh"
 
 

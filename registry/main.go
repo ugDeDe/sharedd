@@ -35,7 +35,7 @@ type Candidate struct {
 	FullyHealthy bool      `json:"fully_healthy"`
 	QueuedAt     time.Time `json:"queued_at"`
 
-	// UnhealthySince (V7.9.6) — момент последнего выхода из очереди здоровых
+	// UnhealthySince — момент последнего выхода из очереди здоровых
 	// (= старт непрерывного «всё красное» эпизода). Ноль — нода в очереди.
 	// Используется рипером prune (sweepExpired): непрерывно вне очереди
 	// дольше PruneUnhealthyTTL → удаление из пула. Персистится в state.
@@ -43,11 +43,11 @@ type Candidate struct {
 	// нездоровыми на момент апгрейда, и свежезарегистрированных).
 	UnhealthySince time.Time `json:"unhealthy_since,omitempty"`
 
-	// DeadBothSince (V7.9.11) — старт непрерывного окна класса dead:
+	// DeadBothSince — старт непрерывного окна класса dead:
 	// TCP-защёлка красная И метрик нет (отчёты протухли или красные).
 	// Достиг TerminateDeadTTL → терминальное завершение (sweepExpired).
 	DeadBothSince time.Time `json:"dead_both_since,omitempty"`
-	// Quarantine (V7.9.11) — нода в GP-карантине («всё зелёное, кроме
+	// Quarantine — нода в GP-карантине («всё зелёное, кроме
 	// globalping»): панель показывает отдельной таблицей, prune-рипер не
 	// трогает; вердикт — счётчик попыток → бан по IP или восстановление.
 	Quarantine *QuarantineState `json:"quarantine,omitempty"`
@@ -56,7 +56,7 @@ type Candidate struct {
 	GlobalpingMeasurementID string  `json:"globalping_measurement_id"`
 	GlobalpingVerifiedRatio float64 `json:"globalping_verified_ratio"`
 	MetricsOK               bool    `json:"metrics_ok"` // сырой вердикт ПОСЛЕДНЕГО отчёта (мигает от любого чиха)
-	// MetricsHealthy (V7.9.4) — защёлка metrics-здоровья по fail/recover-
+	// MetricsHealthy — защёлка metrics-здоровья по fail/recover-
 	// порогам, полный аналог TCP-защёлки Healthy: в fully-healthy входит
 	// ИМЕННО она, а не MetricsOK последнего отчёта. false — только после
 	// FailThreshold ПОДРЯД неудачных отчётов; обратно true — после
@@ -72,7 +72,7 @@ type Candidate struct {
 
 	Port int `json:"port"`
 
-	// NodeType (V7.9): classic/mtproxyl/meko — тип менеджера прокси на ноде,
+	// NodeType: classic/mtproxyl/meko — тип менеджера прокси на ноде,
 	// информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
 
@@ -89,7 +89,7 @@ type Candidate struct {
 	MasterSeconds int64     `json:"master_seconds"`
 	MasterSince   time.Time `json:"master_since,omitempty"`
 
-	// История для детальной страницы ноды (V7.7): кольцевые буферы точек,
+	// История для детальной страницы ноды: кольцевые буферы точек,
 	// персистятся вместе с State. GPLast — деталь последнего measurement'а
 	// Globalping (результаты по площадкам), заполняется только при прохождении
 	// независимой верификации (measurement успешно скачан и распарсен).
@@ -99,7 +99,7 @@ type Candidate struct {
 	GPLast     *GPDetail     `json:"gp_last,omitempty"`
 }
 
-// ── история точек проверок (V7.7) ───────────────────────────────────────
+// ── история точек проверок ───────────────────────────────────────
 
 const (
 	tcpHistCap    = 360 // тик probeLoop = ProbeInterval (10с по дефолту) → ~1 час
@@ -159,32 +159,36 @@ func pushRing[T any](s []T, v T, limit int) []T {
 
 type State struct {
 	Candidates map[string]*Candidate `json:"candidates"`
-	// Assignments — V7: per-domain мастера, domain → node_id. Каждый managed-
+	// Assignments — per-domain мастера, domain → node_id. Каждый managed-
 	// домен держит свою ноду; при дефиците нод мастера забирают «сиротские»
 	// домены (fill-empty), при появлении свободной ноды сирота отдаётся ей.
 	Assignments map[string]string `json:"assignments,omitempty"`
-	// AssignmentsSince — V7.9.3: domain → момент текущего назначения. База TTL
+	// AssignmentsSince — domain → момент текущего назначения. База TTL
 	// мастерства ([rotation] master_ttl_minutes); персистится — отсчёт не
 	// сбрасывается рестартом регистратора. Назначениям, доставшимся от версий
-	// до V7.9.3, поле инициализируется лениво на ближайшем evaluate (с этого
+	// до, поле инициализируется лениво на ближайшем evaluate (с этого
 	// момента и начнётся отсчёт лимита).
 	AssignmentsSince map[string]time.Time `json:"assignments_since,omitempty"`
 	Events           []Event              `json:"events,omitempty"`
 	Counters         Counters             `json:"counters"`
-	// PruneStrikes — V7.9.7: карантин вычищенных рипером нод (node_id →
+	// PruneStrikes — карантин вычищенных рипером нод (node_id →
 	// запись). До BannedUntil /register отклоняется 429; серия strikes
 	// наращивает карантин, вход ноды в очередь здоровых серию обнуляет.
 	PruneStrikes map[string]*PruneTombstone `json:"prune_strikes,omitempty"`
-	// ManagedDomains (V7.8) — все домены, которыми регистратор когда-либо
+	// ManagedDomains — все домены, которыми регистратор когда-либо
 	// управлял (бывшие домены конфига ∪ ключи назначений). Только для них
 	// разрешена зачистка DNS при удалении из конфига — чужие записи зоны
 	// (другие сервисы) сюда не попадают и не трогаются никогда.
 	ManagedDomains []string `json:"managed_domains,omitempty"`
-	// Terminated — V7.9.11: оперативный блок-лист убитых нод (node_id →
+	// Terminated — оперативный блок-лист убитых нод (node_id →
 	// запись). Обращение под таким id получает 403+terminate (нода пишет
 	// Message в лог и останавливается); ip_ban с НОВОГО ip не блокируется.
 	// Вечная история всех банов — в SQLite (bans), сюда она не нужна.
 	Terminated map[string]*TerminatedRecord `json:"terminated,omitempty"`
+	// SRMD — Система Распределения и Масштабирования Доменов
+	// (см. srmd.go): таблица последних значений клиентов по доменам,
+	// свёрнутые в CNAME домены и память созданных инкрементов.
+	SRMD SRMDState `json:"srmd,omitempty"`
 }
 
 type Registry struct {
@@ -193,7 +197,7 @@ type Registry struct {
 	mu    sync.RWMutex // state (кандидаты, журнал, счётчики)
 	state State
 
-	// db — V7.9.11: вечная история (SQLite). nil = работаем без неё
+	// Db — вечная история (SQLite). nil = работаем без неё
 	// (файл не открылся / отключено) — пул и панель не страдают.
 	db *historyDB
 
@@ -204,16 +208,25 @@ type Registry struct {
 	startedAt   time.Time
 	eventsDirty bool // журнал изменился с последнего persistStateLocked (под mu)
 
-	// ttlOverdue — V7.9.3: домены с истёкшим TTL мастерства, для которых УЖЕ
+	// TtlOverdue — домены с истёкшим TTL мастерства, для которых УЖЕ
 	// залогировано «нет здоровой замены» (in-memory anti-spam: лог раз за
 	// эпизод, сбрасывается при ротации/смене держателя или рестарте процесса).
 	// Пишется только из evaluateAssignments — под r.mu.
 	ttlOverdue map[string]bool
 
-	// banLogTick — V7.9.7: последний лог отказа /register по карантину на
+	// BanLogTick — последний лог отказа /register по карантину на
 	// node_id (in-memory anti-spam: старые агенты без Retry-After долбят
 	// register по каждому heartbeat — в журнал не чаще раза в минуту).
 	banLogTick map[string]time.Time
+
+	// СРМД. srmdExpandTicks/srmdFoldTicks — анти-флап счётчики
+	// подряд идущих тиков селекции с условием «доменов не хватает» /
+	// «слишком много» (действие после srmdStableTicks подряд). srmdPending —
+	// отложенные CNAME-записи свёрнутых доменов (пишет flushSRMDDNS вне
+	// локов). Всё под r.mu.
+	srmdExpandTicks int
+	srmdFoldTicks   int
+	srmdPending     []srmdDNSAction
 }
 
 // newCFClient — фабрика Cloudflare-клиента (var ради подмены в тестах).
@@ -262,14 +275,14 @@ func main() {
 	go reg.selectionLoop()
 	go reg.expiryLoop()
 	go reg.eventPersistLoop()
-	go reg.historyDBLoop() // V7.9.11: ротация событий в SQLite (баны вечны)
+	go reg.historyDBLoop() // ротация событий в SQLite (баны вечны)
 	reg.serveHTTP()
 }
 
 type registerRequest struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType (V7.9): classic/mtproxyl/meko — информационный бейдж в панели.
+	// NodeType: classic/mtproxyl/meko — информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
 }
 
@@ -306,7 +319,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			http.Error(w, "node_id, ip required", http.StatusBadRequest)
 			return
 		}
-		// V7.9.11: терминально убитая нода; V7.9.12: ip_ban по ТОМУ ЖЕ ip
+		// Терминально убитая нода; ip_ban по ТОМУ ЖЕ ip
 		// не вечен — даём одну GP-перепроверку (reverify в registerWithReverify;
 		// ложные глобалпинги, прокси был выключен при отладке). dead —
 		// бессрочен, агенту kill-сигнал. Совпадение по ip с ЧУЖОЙ записью —
@@ -324,7 +337,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			return
 		}
 		if banUntil, banned := r.registerWithReverify(body, rec); banned {
-			// V7.9.7: карантин после prune — 429 + Retry-After. Агенты V7.9.7+
+			// Карантин после prune — 429 + Retry-After. Агенты +
 			// уважают Retry-After и молчат до дедлайна; старые продолжат
 			// долбиться по heartbeat'ам — отказ дешёвый, лог троттлится.
 			retryAfter := int(time.Until(banUntil).Seconds()) + 1
@@ -355,7 +368,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			c.HeartbeatsTotal++
 			r.state.Counters.Heartbeats++
 		}
-		// V7.9.11: heartbeat от терминально убитой ноды — kill-сигнал
+		// Heartbeat от терминально убитой ноды — kill-сигнал
 		// (403+terminate). IP берём из соединения: для ip_ban сменившийся ip
 		// блока не имеет — обычный 410 «перерегистрируйся» (register,
 		// пусть и перезаписью, снимет терминальную запись по смене ip).
@@ -371,7 +384,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			return
 		}
 		if !ok {
-			// V7.9.6: ноду удалили (heartbeat-expiry / prune-рипер). Без явного
+			// Ноду удалили (heartbeat-expiry / prune-рипер). Без явного
 			// отказа живой агент удалённой ноды слал бы heartbeat'ы в пустоту
 			// вечно и никогда не вернулся бы в пул. Агент на любой статус !=200
 			// пере-регистрируется (node/main.go heartbeatLoop).
@@ -384,7 +397,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 
 	mux.HandleFunc("POST /report", r.handleHealthReport)
 
-	// POST /retire (V7.9.11) — агент сообщает о само-завершении по классу
+	// POST /retire — агент сообщает о само-завершении по классу
 	// dead (локальные проверки красные > terminate_dead_min): регистратор
 	// обязан записать бан в вечную историю, даже если кандидат уже выпал
 	// по heartbeat-TTL, пока нода молчала. Привязка доверия — RemoteAddr ==
@@ -412,7 +425,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 		r.mu.Lock()
 		if c, ok := r.state.Candidates[body.NodeID]; ok {
 			c.IP = body.IP // на случай дрифта после регистрации
-			// V7.9.12: само-завершение ноды ВО ВРЕМЯ карантина — это выход
+			// Само-завершение ноды ВО ВРЕМЯ карантина — это выход
 			// из карантина, т.е. бан по ip (её класс уже определён GP).
 			if c.Quarantine != nil && body.Reason == BanReasonDead {
 				body.Reason = BanReasonIPBan
@@ -462,13 +475,13 @@ func (r *Registry) buildMux() *http.ServeMux {
 	})
 
 	r.mountPanel(mux)
-	r.mountStats(mux)     // V7.9.4: публичная статистика нод (/statistics/...)
-	r.mountDashboard(mux) // V7.9.11: публичный дашборд блокировок (/dashboard/...)
+	r.mountStats(mux)     // публичная статистика нод (/statistics/...)
+	r.mountDashboard(mux) // публичный дашборд блокировок (/dashboard/...)
 
 	return mux
 }
 
-// writeTerminate — kill-сигнал агенту (V7.9.11): 403 + флаг terminate.
+// writeTerminate — kill-сигнал агенту: 403 + флаг terminate.
 // Агент пишет Message в лог дословно, кладёт tombstone и останавливает
 // службу (node/terminate.go); повторных регистраций быть не должно.
 func (r *Registry) writeTerminate(w http.ResponseWriter, rec *TerminatedRecord) {
@@ -482,14 +495,14 @@ func (r *Registry) writeTerminate(w http.ResponseWriter, rec *TerminatedRecord) 
 }
 
 // register — /register для ноды. Возвращает (banUntil, true), если нода под
-// карантином V7.9.7 (вычищена рипером и BannedUntil ещё не истёк) — хендлер
+// карантином (вычищена рипером и BannedUntil ещё не истёк) — хендлер
 // отвечает 429 + Retry-After, в state ничего не пишется (событие тоже не
 // плодим: отказов много, лента одна — подробности уже есть в node_pruned).
 func (r *Registry) register(body registerRequest) (time.Time, bool) {
 	return r.registerWithReverify(body, nil)
 }
 
-// registerWithReverify — register + reverify-трек V7.9.12: rec не-nil,
+// RegisterWithReverify — register + reverify-трек rec не-nil,
 // когда нода регистрируется со СТАРОГО gp-забаненного ip (своего или чужого
 // по наследству IP). Терминальная запись снимается, кандидат уходит в
 // карантин с одной решающей попыткой (applyReverifyLocked).
@@ -499,7 +512,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 
 	now := time.Now()
 
-	// V7.9.11: ip_ban-запись снимается регистрацией с НОВОГО ip — оператор
+	// Ip_ban-запись снимается регистрацией с НОВОГО ip — оператор
 	// выполнил инструкцию «запустите службу заново после его смены». Бан в
 	// истории БД при этом остаётся (он был «без восстановления»).
 	r.terminateLiftIfIPChangedLocked(body.NodeID, body.IP, now)
@@ -507,7 +520,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 	if existing, ok := r.state.Candidates[body.NodeID]; ok {
 		detail := "re-registered"
 		if existing.IP != body.IP {
-			// V7.9.13: смена ip В КАРАНТИНЕ — старый ip фиксируем как
+			// Смена ip В КАРАНТИНЕ — старый ip фиксируем как
 			// блокировку (bans row + stale-запись), нода живёт на новом.
 			if existing.Quarantine != nil {
 				r.quarantineIPChangeLocked(existing, body.IP, now)
@@ -522,7 +535,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 			existing.NodeType = body.NodeType
 		}
 		existing.LastHeartbeat = now
-		if reverify != nil { // V7.9.12 (крайний случай: кандидат ещё жив)
+		if reverify != nil { // (крайний случай: кандидат ещё жив)
 			r.applyReverifyLocked(existing, reverify, now)
 		}
 		r.state.Counters.Registrations++
@@ -532,7 +545,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 		return time.Time{}, false
 	}
 
-	// V7.9.7: карантин после prune. Нода (либо предыдущая регистрация с тем
+	// Карантин после prune. Нода (либо предыдущая регистрация с тем
 	// же IP — переустановка агента с новым id серию не отмывает) вычищена
 	// рипером, карантин ещё не истёк → регистрация отклоняется. Лог
 	// троттлим: старые агенты без Retry-After долбятся по каждому heartbeat.
@@ -574,12 +587,12 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 		RegisteredAt:  now,
 		LastHeartbeat: now,
 		Healthy:       false,
-		// V7.9.4: с нуля защёлка закрыта — в очередь здоровых войдёт после
+		// С нуля защёлка закрыта — в очередь здоровых войдёт после
 		// recover_threshold подряд удачных отчётов (~2 × metrics_ms).
 		MetricsHealthy: false,
 		NodeType:       body.NodeType,
 	}
-	if reverify != nil { // V7.9.12: тот же забаненный ip — одна попытка
+	if reverify != nil { // тот же забаненный ip — одна попытка
 		r.applyReverifyLocked(r.state.Candidates[body.NodeID], reverify, now)
 	}
 	r.state.Counters.Registrations++
@@ -612,7 +625,7 @@ func (r *Registry) probeLoop() {
 				defer wg.Done()
 				ok := tcpProbe(c.IP, c.Port, r.cfg.ProbeTimeout)
 				r.mu.Lock()
-				// V7.9.10: общая анти-флап защёлка (streakStep) — та же
+				// Общая анти-флап защёлка (streakStep) — та же
 				// машина, что и у metrics-отчётов; события/тексты как раньше.
 				var changed bool
 				c.Healthy, c.ConsecutiveFail, c.ConsecutiveOK, changed =
@@ -650,7 +663,7 @@ func (r *Registry) expiryLoop() {
 	ticker := time.NewTicker(r.cfg.HeartbeatTTL / 2)
 	defer ticker.Stop()
 	for range ticker.C {
-		// V7.9.6: sweepExpired объединяет heartbeat-expiry и рипер
+		// SweepExpired объединяет heartbeat-expiry и рипер
 		// неактивных (prune по prune_unhealthy_min) — см. prune.go.
 		r.sweepExpired(time.Now())
 	}
@@ -660,7 +673,7 @@ func (r *Registry) selectionLoop() {
 	ticker := time.NewTicker(r.cfg.SelectionInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		// V7.8: сначала зачистка доменов, выведенных из managed-списка
+		// Сначала зачистка доменов, выведенных из managed-списка
 		// (только тех, кем реально управляли — чужие записи зоны не трогаем).
 		r.sweepOrphans()
 		changes := r.evaluateAssignments(time.Now())
@@ -671,6 +684,9 @@ func (r *Registry) selectionLoop() {
 			log.Printf("domain %s: master -> %s (%s)", ch.Domain, ch.ToID, ch.ToIP)
 			r.applyDNSTarget(ch.Domain, ch.ToID, ch.ToIP)
 		}
+		// CNAME-записи доменов, свёрнутых СРМД в этом (или прошлых
+		// со сбоя) тиках — вне локов, с ретраем при ошибке Cloudflare.
+		r.flushSRMDDNS()
 	}
 }
 
@@ -682,27 +698,27 @@ type domainChange struct {
 	ToIP   string
 }
 
-// evaluateAssignments — ядро V7: единая очередь fully-healthy + PER-DOMAIN
+// EvaluateAssignments — ядро единая очередь fully-healthy + PER-DOMAIN
 // мастера. Вынесено из цикла ради тестов: DNS не трогает, только состояние.
 // Возвращает домены, чей мастер изменился в этом проходе (их пишет DNS-цикл).
 //
 // Модель:
-//   - очередь по непрерывному здоровью — одна на пул (QueuedAt);
-//   - каждый managed-домен имеет СВОЕГО мастера из здоровых: пока держатель
-//     fully healthy — домен не трогаем (стабильность >> симметрия нагрузки,
-//     переключение — это DNS-запись и микропотеря клиентов);
-//   - нод < доменов: мастера дотягивают «сиротские» домены (pass 1 раздаёт
-//     наименее загруженным);
-//   - появилась здоровая нода БЕЗ доменов, а у кого-то их >1 — один сирота
-//     мигрирует к ней (pass 2, fill-empty). Балансировки 3/1 → 2/2 НЕТ:
-//     лишний DNS-черн не оправдан.
-//   - здоровых нет вообще: назначения НЕ снимаются (записи остаются на
-//     последних мастерах — как в V6 с активной нодой).
+// - очередь по непрерывному здоровью — одна на пул (QueuedAt);
+// - каждый managed-домен имеет СВОЕГО мастера из здоровых: пока держатель
+// fully healthy — домен не трогаем (стабильность >> симметрия нагрузки,
+// переключение — это DNS-запись и микропотеря клиентов);
+// - нод < доменов: мастера дотягивают «сиротские» домены (pass 1 раздаёт
+// наименее загруженным);
+// - появилась здоровая нода БЕЗ доменов, а у кого-то их >1 — один сирота
+// мигрирует к ней (pass 2, fill-empty). Балансировки 3/1 → 2/2 НЕТ:
+// лишний DNS-черн не оправдан.
+// - здоровых нет вообще: назначения НЕ снимаются (записи остаются на
+// последних мастерах — как в с активной нодой).
 func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// --- 1. очередь по непрерывному здоровью (как в V6) ---
+	// --- 1. очередь по непрерывному здоровью (как в) ---
 	list := make([]*Candidate, 0, len(r.state.Candidates))
 	joined := make([]*Candidate, 0, len(r.state.Candidates))
 	for _, c := range r.state.Candidates {
@@ -711,14 +727,14 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		case full && !c.FullyHealthy:
 			c.FullyHealthy = true
 			c.QueuedAt = now
-			c.UnhealthySince = time.Time{}   // V7.9.6: вернулась в очередь — часы рипера обнуляются
-			r.clearTombstonesOnJoinLocked(c) // V7.9.7: серия prune оборвалась — карантин забываем
+			c.UnhealthySince = time.Time{}   // вернулась в очередь — часы рипера обнуляются
+			r.clearTombstonesOnJoinLocked(c) // серия prune оборвалась — карантин забываем
 			joined = append(joined, c)
 			log.Printf("candidate %s entered healthy queue (position=%s)", c.NodeID, now.Format(time.RFC3339))
 		case !full && c.FullyHealthy:
 			c.FullyHealthy = false
 			c.QueuedAt = time.Time{}
-			c.UnhealthySince = now // V7.9.6: старт окна непрерывного нездоровья
+			c.UnhealthySince = now // старт окна непрерывного нездоровья
 			r.addEventLocked(Event{
 				Type: EventQueueLeft, NodeID: c.NodeID, IP: c.IP,
 				Detail: c.unhealthyReason(r.cfg.ReportFreshnessTTL),
@@ -726,7 +742,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			log.Printf("candidate %s left healthy queue (unhealthy) — position reset", c.NodeID)
 		}
 		if !full && c.UnhealthySince.IsZero() {
-			// V7.9.6 lazy-arm: нода была нездорова на момент апгрейда (поля в
+			// lazy-arm: нода была нездорова на момент апгрейда (поля в
 			// state не существовало) или регистрируется заранее больной —
 			// окно рипера стартует с ближайшего evaluate.
 			c.UnhealthySince = now
@@ -759,6 +775,12 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		})
 	}
 
+	// --- 1.5. СРМД: масштабирование числа доменов под очередь ---
+	// Обновляет таблицу клиентов по доменам; при включённом [srmd] enabled —
+	// создаёт/разворачивает/сворачивает домены по лимиту нод на домен.
+	// DNS-записи свёрнутых доменов (CNAME) напишет selectionLoop вне локов.
+	srmdChanged := r.srmdRebalanceLocked(now, list)
+
 	// --- 2. эффективный список доменов (hot-edit из панели — под cfgMu) ---
 	r.cfgMu.RLock()
 	rawDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
@@ -771,6 +793,9 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			continue
 		}
 		seen[d] = true
+		if _, folded := r.state.SRMD.CNames[d]; folded {
+			continue // СРМД: домен свёрнут в CNAME — в ротации мастеров не участвует
+		}
 		domains = append(domains, d)
 	}
 	sort.Strings(domains) // детерминированный обход: воспроизводимые раскладки
@@ -820,11 +845,11 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		return best
 	}
 
-	// --- 3. pass 0 (V7.9.3): принудительная ротация по TTL мастерства ---
+	// --- 3. pass 0: принудительная ротация по TTL мастерства ---
 	// Здоровый держатель, у которого истёк лимит, сдаёт домен наименее
 	// загруженной ноде очереди (кроме себя). Замены нет — домен остаётся на
 	// нём: OVERDUE лог один раз на эпизод, панель покажет «TTL истёк».
-	// V7.9.5: сдавший домен уходит в КОНЕЦ очереди (QueuedAt=now + хвост
+	// Сдавший домен уходит в КОНЕЦ очереди (QueuedAt=now + хвост
 	// list). Без этого pickLeastLoaded при равной загрузке всегда брал
 	// раннего в очереди — домен ходил между двумя старшими нодами, даже
 	// когда здоровых больше.
@@ -837,7 +862,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			}
 			since := r.state.AssignmentsSince[d]
 			if since.IsZero() {
-				// назначение досталось от версии до V7.9.3 — отсчёт отныне
+				// назначение досталось из старой версии — отсчёт отныне
 				r.state.AssignmentsSince[d] = now
 				continue
 			}
@@ -864,7 +889,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			delete(r.ttlOverdue, d)
 			r.state.Counters.MasterSwitches++
 			r.state.Counters.MasterTTLRotations++
-			// V7.9.5: истёкший держатель — в конец очереди (и персистентный
+			// Истёкший держатель — в конец очереди (и персистентный
 			// QueuedAt, и живой порядок list для остатка этого тика).
 			if holder := r.state.Candidates[holderID]; holder != nil {
 				holder.QueuedAt = now
@@ -993,7 +1018,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		}
 	}
 
-	if len(changes) > 0 || len(joined) > 0 {
+	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
 		r.persistStateLocked()
 	}
 	return changes
@@ -1010,7 +1035,7 @@ func dropDomain(list []string, d string) []string {
 }
 
 func (r *Registry) persistStateLocked() {
-	data, err := json.MarshalIndent(r.state, "", "  ")
+	data, err := json.MarshalIndent(r.state, "", " ")
 	if err != nil {
 		log.Printf("marshal state error: %v", err)
 		return
@@ -1046,7 +1071,7 @@ func (r *Registry) loadState() {
 	if st.Terminated == nil {
 		st.Terminated = make(map[string]*TerminatedRecord)
 	}
-	// V7.9.4-миграция: metrics-защёлки (MetricsHealthy) в старых state нет —
+	// миграция: metrics-защёлки (MetricsHealthy) в старых state нет —
 	// после апгрейда нельзя ронять всё здоровое: переносим текущее MetricsOK
 	// (вердикт последнего отчёта до выключения) в защёлку. Транзиентно
 	// сфейлившая нода теперь должна доказать восстановление recover-порогом —
