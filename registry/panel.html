@@ -672,13 +672,16 @@
           <div class="tbl-wrap">
             <table>
               <thead>
-                <tr><th>Домен</th><th>Активные клиенты</th><th>DNS-запись</th><th>Мастер</th></tr>
+                <tr><th>Домен</th><th>Активные клиенты</th><th>DNS-запись</th><th>Мастер</th><th>Управление</th></tr>
               </thead>
-              <tbody id="srmd-body"><tr><td colspan="4" class="empty">загрузка…</td></tr></tbody>
+              <tbody id="srmd-body"><tr><td colspan="5" class="empty">загрузка…</td></tr></tbody>
             </table>
           </div>
           <div style="padding:10px 18px 14px; color:var(--muted); font-size:11.5px; line-height:1.5">Клиенты считаются по общему секрету (только пользователи из <span class="mono">shared_proxy.users</span>).
-            Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.</div>
+            Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.
+            Ручной домен можно насильно отдать под контроль СРМД (кнопка «под СРМД») — тогда он сможет сворачиваться
+            в CNAME при сжатии пула; домен СРМД кнопкой «в ручной» возвращается в ручной режим (и разворачивается,
+            если был свёрнут).</div>
         </section>
         <section class="block">
           <div class="block-head">
@@ -935,6 +938,8 @@ const EV_META = {
   srmd_domain_created:   {label: "СРМД: домен создан",   cls: "ev-info",    grp: "master"},
   srmd_domain_folded:    {label: "СРМД: домен свёрнут",  cls: "ev-warn",    grp: "master"},
   srmd_domain_unfolded:  {label: "СРМД: домен развёрнут", cls: "ev-good",   grp: "master"},
+  srmd_domain_taken:     {label: "СРМД: домен взят под контроль", cls: "ev-info", grp: "master"},
+  srmd_domain_released:  {label: "СРМД: домен в ручной режим", cls: "ev-warn", grp: "master"},
 };
 
 const ICON = (p) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
@@ -1008,13 +1013,17 @@ function renderGPStats(o) {
 function renderKpis(o) {
   const c = o.counters || {};
   const masters = o.masters || [];
-  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  // свёрнутые СРМД в CNAME домены мастера не требуют — в «живых назначениях»
+  // считаются только активные домены
+  const active = masters.filter((m) => !m.cname_target);
+  const folded = masters.length - active.length;
+  const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
   const dnsErr = c.dns_errors_total ?? 0;
   $("cards").innerHTML = `
     <div class="card">
       <div class="card-top"><span class="kpi-ico i-gold">${ICO.masters}</span><div class="label">Мастера</div></div>
-      <div class="value ${masters.length > 0 && aliveMs === masters.length ? "good" : "bad"}">${aliveMs}<span class="muted">/</span>${masters.length}</div>
-      <div class="extra">живых назначений</div></div>
+      <div class="value ${active.length > 0 && aliveMs === active.length ? "good" : "bad"}">${aliveMs}<span class="muted">/</span>${active.length}</div>
+      <div class="extra">живых назначений${folded ? " · свёрнуто СРМД: " + folded : ""}</div></div>
     <div class="card">
       <div class="card-top"><span class="kpi-ico i-blue">${ICO.nodes}</span><div class="label">Нод в пуле</div></div>
       <div class="value">${o.nodes_total}</div>
@@ -1091,13 +1100,17 @@ function masterRowHTML(m) {
 
 function renderMastersInto(bodyEl, hintEl, o) {
   const masters = o.masters || [];
-  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  // свёрнутые СРМД в CNAME домены не требуют мастера — счёт «живых» только
+  // по активным доменам; число свёрнутых показываем отдельно
+  const active = masters.filter((m) => !m.cname_target);
+  const folded = masters.length - active.length;
+  const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
   if (hintEl) {
     const ttlNote = (o.master_ttl_sec || 0) > 0
       ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60)
       : " · лимит мастера: выкл";
     hintEl.textContent = masters.length
-      ? `${aliveMs}/${masters.length} живых${ttlNote}`
+      ? `${aliveMs}/${active.length} живых${folded ? " · свёрнуто СРМД: " + folded : ""}${ttlNote}`
       : "cloudflare.domains пуст";
   }
   if (masters.length === 0) {
@@ -1120,7 +1133,7 @@ function renderSRMD(o) {
   $("srmd-created-list").textContent = created.length ? created.join(", ") : "нет";
   const body = $("srmd-body");
   if (!s.domains || s.domains.length === 0) {
-    body.innerHTML = `<tr><td colspan="4" class="empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
     return;
   }
   body.innerHTML = s.domains.map((d) => {
@@ -1137,14 +1150,44 @@ function renderSRMD(o) {
                    : `<span class="muted">нет мастера</span>`);
     const clients = d.clients == null ? `<span class="muted">—</span>`
       : `${d.clients}${d.fresh ? "" : ` <span class="muted" title="последнее известное значение — живой мастер сейчас не присылает метрику">*</span>`}`;
+    // ручной ⇄ СРМД: ручной домен можно насильно отдать СРМД (тогда он сможет
+    // сворачиваться в CNAME), домен СРМД — вернуть в ручной режим
+    const control = d.created
+      ? `<button class="act danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>`
+      : `<button class="act secondary" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
     return `<tr>
       <td class="mono">${esc(d.domain)} ${origin}</td>
       <td class="mono">${clients}</td>
       <td>${rec}</td>
       <td>${master}</td>
+      <td>${control}</td>
     </tr>`;
   }).join("");
 }
+
+// перевод домена ручной ⇄ под контролем СРМД
+async function srmdDomainAction(domain, action) {
+  const resp = await fetch("/panel/api/srmd-domain", {
+    method: "POST",
+    headers: {"Authorization": "Bearer " + getToken(), "Content-Type": "application/json"},
+    body: JSON.stringify({domain, action}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401) { showLogin(true); throw new Error("unauthorized"); }
+  if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+  return data;
+}
+$("srmd-body").addEventListener("click", (e) => {
+  const take = e.target.closest("button[data-srmd-take]");
+  const rel = e.target.closest("button[data-srmd-release]");
+  if (!take && !rel) return;
+  const domain = take ? take.dataset.srmdTake : rel.dataset.srmdRelease;
+  const action = take ? "take" : "release";
+  srmdDomainAction(domain, action)
+    .then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`))
+    .then(() => refresh())
+    .catch((e) => showToast(e.message, true));
+});
 
 async function loadSRMDSettings() {
   const data = await api("/panel/api/config");
@@ -1527,8 +1570,13 @@ function renderHeader(o) {
 
 function renderBanner(o) {
   const masters = o.masters || [];
-  const unassigned = masters.filter((m) => !m.node_id).map((m) => m.domain);
+  // домены, свёрнутые СРМД в CNAME, не «без мастера» — у них просто нет
+  // своей A-записи по определению, предупреждение им не положено
+  const unassigned = masters.filter((m) => !m.node_id && !m.cname_target).map((m) => m.domain);
   const dead = masters.filter((m) => m.node_id && m.dead).map((m) => m.domain);
+  // свёрнутые в CNAME домены не требуют мастера — в сравнениях «ноды против
+  // доменов» участвуют только активные (несвёрнутые)
+  const activeCount = masters.filter((m) => !m.cname_target).length;
   const banner = $("alert-banner");
   if (o.nodes_fully_healthy === 0) {
     banner.textContent = "⚠ В пуле нет здоровых нод — DNS остался на последних мастерах.";
@@ -1543,10 +1591,10 @@ function renderBanner(o) {
   } else if (dead.length > 0) {
     banner.textContent = "⚠ Мастер нездоров у доменов: " + dead.join(", ") + " — скоро переключатся.";
     banner.classList.add("show");
-  } else if (o.nodes_fully_healthy < masters.length) {
-    banner.textContent = `⚠ Нод меньше, чем доменов (${o.nodes_fully_healthy}/${masters.length}): резерва нет.`;
+  } else if (o.nodes_fully_healthy < activeCount) {
+    banner.textContent = `⚠ Нод меньше, чем доменов (${o.nodes_fully_healthy}/${activeCount}): резерва нет.`;
     banner.classList.add("show");
-  } else if (o.nodes_fully_healthy === masters.length) {
+  } else if (o.nodes_fully_healthy === activeCount) {
     banner.textContent = "⚠ Резерва нет: нод ровно столько, сколько доменов. При блокировке любой переключать будет некуда.";
     banner.classList.add("show");
   } else {

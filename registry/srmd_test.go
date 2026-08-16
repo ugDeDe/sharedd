@@ -1,7 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -300,5 +304,79 @@ func TestSRMDFoldGreedyMatchesExample2(t *testing.T) {
 	}
 	if got := r.state.SRMD.DomainClients["shared1.ddproxy.xyz"]; got != 1160 {
 		t.Fatalf("shared1 must end at 380+470+310=1160: got %d", got)
+	}
+}
+
+// Ручной домен можно насильно отдать под контроль СРМД (тогда он
+// сворачивается при сжатии пула), домен СРМД — вернуть в ручной режим
+// (сворачиваться перестаёт; свёрнутый при этом разворачивается).
+func TestSRMDTakeAndReleaseDomain(t *testing.T) {
+	r := srmdTestRegistry(t)
+	r.cfg.PanelEnabled = true // маршруты /panel/* монтируются только с панелью
+	r.cfg.Cloudflare.Domains = append(r.cfg.Cloudflare.Domains, "manual.ddproxy.xyz")
+	mux := r.buildMux()
+
+	post := func(domain, action string) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"domain":%q,"action":%q}`, domain, action)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/panel/api/srmd-domain", strings.NewReader(body)))
+		return rec
+	}
+
+	// ручной → под СРМД
+	if rec := post("manual.ddproxy.xyz", "take"); rec.Code != http.StatusOK {
+		t.Fatalf("take must pass, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// повторный take и release не-срмд-домена — ошибки
+	if rec := post("manual.ddproxy.xyz", "take"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("double take must fail, got %d", rec.Code)
+	}
+	if rec := post("shared.ddproxy.xyz", "release"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("release of manual domain must fail, got %d", rec.Code)
+	}
+	// неизвестный домен
+	if rec := post("nope.example.com", "take"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown domain must 404, got %d", rec.Code)
+	}
+
+	// пул сжался: 1 нода при лимите 3 → нужен 1 домен; взятый под контроль
+	// ручной домен сворачивается в CNAME на основной, основной не трогается
+	addHealthyNode(t, r, "node-a", "10.0.0.1")
+	tickSRMD(t, r)
+	if r.state.SRMD.CNames["manual.ddproxy.xyz"] != "shared.ddproxy.xyz" {
+		t.Fatalf("taken domain must fold onto the base: %v", r.state.SRMD.CNames)
+	}
+	if _, folded := r.state.SRMD.CNames["shared.ddproxy.xyz"]; folded {
+		t.Fatal("base domain must never fold")
+	}
+
+	// release свёрнутого: домен развёрнут, из created убран, отложенная
+	// CNAME-запись отменена
+	if rec := post("manual.ddproxy.xyz", "release"); rec.Code != http.StatusOK {
+		t.Fatalf("release must pass, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(r.state.SRMD.CNames) != 0 {
+		t.Fatalf("released domain must be unfolded: %v", r.state.SRMD.CNames)
+	}
+	if len(r.srmdPending) != 0 {
+		t.Fatalf("pending CNAME write must be cancelled: %v", r.srmdPending)
+	}
+	for _, d := range r.state.SRMD.Created {
+		if d == "manual.ddproxy.xyz" {
+			t.Fatal("released domain must leave the created list")
+		}
+	}
+	// события в журнале
+	var took, released bool
+	for _, ev := range r.state.Events {
+		if ev.Type == EventSRMDDomainTaken && ev.Domain == "manual.ddproxy.xyz" {
+			took = true
+		}
+		if ev.Type == EventSRMDDomainReleased && ev.Domain == "manual.ddproxy.xyz" {
+			released = true
+		}
+	}
+	if !took || !released {
+		t.Fatalf("take/release events missing: took=%v released=%v", took, released)
 	}
 }

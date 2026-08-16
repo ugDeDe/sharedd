@@ -77,6 +77,8 @@ func (r *Registry) mountPanel(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /panel/api/config", r.handlePutConfig)
 	mux.HandleFunc("POST /panel/api/dns-push", r.handleDNSPush)
 	mux.HandleFunc("GET /panel/api/node", r.handlePanelNode)
+	// СРМД: перевод домена ручной ⇄ под контролем СРМД
+	mux.HandleFunc("POST /panel/api/srmd-domain", r.handleSRMDDomain)
 
 	mux.HandleFunc("GET /panel/api/events", func(w http.ResponseWriter, req *http.Request) {
 		if !r.panelAuthorized(req) {

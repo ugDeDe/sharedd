@@ -42,8 +42,10 @@ package main
 // числах СРМД не участвуют.
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -592,4 +594,122 @@ func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg str
 			queueSize, activeCount, maxN)
 	}
 	return s
+}
+
+// ── ручное управление режимом домена: ручной ⇄ под контролем СРМД ───────
+
+// srmdDomainRequest — тело POST /panel/api/srmd-domain.
+type srmdDomainRequest struct {
+	Domain string `json:"domain"`
+	Action string `json:"action"` // take — под контроль СРМД; release — в ручной
+}
+
+// srmdRespondJSON — ответ хендлера СРМД: ok-статус + поле error при отказе.
+func srmdRespondJSON(w http.ResponseWriter, code int, body map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(body)
+}
+
+// handleSRMDDomain — POST /panel/api/srmd-domain: насильный перевод домена
+// между ручным режимом и контролем СРМД.
+//
+// take — ручной домен становится управляемым СРМД (может сворачиваться в
+// CNAME при сжатии пула, разворачиваться при росте). release — обратный
+// перевод: домен больше никогда не сворачивается; если он свёрнут прямо
+// сейчас — разворачивается (CNAME снимется записью A-записи на ближайшей
+// селекции, отложенная CNAME-запись отменяется).
+func (r *Registry) handleSRMDDomain(w http.ResponseWriter, req *http.Request) {
+	if !r.panelAuthorized(req) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body srmdDomainRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		srmdRespondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad json: " + err.Error()})
+		return
+	}
+	body.Domain = strings.TrimSpace(body.Domain)
+	if body.Domain == "" || (body.Action != "take" && body.Action != "release") {
+		srmdRespondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "нужны domain и action=take|release"})
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// каноническое написание — как в managed-списке (сравнение без регистра)
+	r.cfgMu.RLock()
+	canonical := ""
+	for _, d := range r.cfg.Cloudflare.Domains {
+		if strings.EqualFold(strings.TrimSpace(d), body.Domain) {
+			canonical = strings.TrimSpace(d)
+			break
+		}
+	}
+	r.cfgMu.RUnlock()
+	if canonical == "" {
+		srmdRespondJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "домен не в managed-списке: " + body.Domain})
+		return
+	}
+
+	inCreated := false
+	for _, d := range r.state.SRMD.Created {
+		if d == canonical {
+			inCreated = true
+			break
+		}
+	}
+
+	switch body.Action {
+	case "take":
+		if inCreated {
+			srmdRespondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": canonical + " уже под контролем СРМД"})
+			return
+		}
+		r.state.SRMD.Created = append(r.state.SRMD.Created, canonical)
+		r.addEventLocked(Event{
+			Type: EventSRMDDomainTaken, Domain: canonical,
+			Detail: "СРМД: ручной домен взят под контроль — теперь участвует в сворачивании/разворачивании",
+		})
+		log.Printf("srmd: domain %s taken under control (manual -> srmd)", canonical)
+	case "release":
+		if !inCreated {
+			srmdRespondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": canonical + " не под контролем СРМД"})
+			return
+		}
+		kept := r.state.SRMD.Created[:0]
+		for _, d := range r.state.SRMD.Created {
+			if d != canonical {
+				kept = append(kept, d)
+			}
+		}
+		r.state.SRMD.Created = kept
+		// свёрнутый домен разворачиваем: ручной не живёт CNAME'ом
+		if target, folded := r.state.SRMD.CNames[canonical]; folded {
+			delete(r.state.SRMD.CNames, canonical)
+			// отменяем отложенную CNAME-запись этого домена, если есть
+			pend := r.srmdPending[:0]
+			for _, a := range r.srmdPending {
+				if a.Domain != canonical {
+					pend = append(pend, a)
+				}
+			}
+			r.srmdPending = pend
+			r.state.Counters.SRMDUnfolded++
+			r.addEventLocked(Event{
+				Type: EventSRMDDomainUnfolded, Domain: canonical,
+				Detail: "СРМД: домен переведён в ручной режим — развёрнут (был CNAME -> " + target + "), мастер будет назначен на ближайшей селекции",
+			})
+			log.Printf("srmd: domain %s released to manual mode — unfolded (was CNAME -> %s)", canonical, target)
+		} else {
+			log.Printf("srmd: domain %s released to manual mode", canonical)
+		}
+		r.addEventLocked(Event{
+			Type: EventSRMDDomainReleased, Domain: canonical,
+			Detail: "СРМД: домен переведён в ручной режим — СРМД его больше не сворачивает",
+		})
+	}
+	r.persistStateLocked()
+	srmdRespondJSON(w, http.StatusOK, map[string]any{"ok": true, "domain": canonical, "action": body.Action})
 }

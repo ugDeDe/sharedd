@@ -255,3 +255,64 @@ func TestStatsListMasterTTLCountdown(t *testing.T) {
 		t.Fatalf("non-master must not carry ttl remaining: %+v", n)
 	}
 }
+
+// /proxylinks — актуальные tg://proxy-ссылки по доменам, у которых есть свой
+// мастер: secret = «ee» + секрет пользователя + SNI в hex-ASCII; свёрнутые
+// СРМД в CNAME домены и домены без мастера в список не попадают.
+func TestProxyLinks(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.PanelEnabled = true
+	r.cfg.SharedProxy.TLSDomain = "m.beboo.ru"
+	r.cfg.SharedProxy.Users = map[string]string{"u0cb271": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"}
+	r.cfg.Cloudflare.Domains = []string{"shared.ddproxy.xyz", "shared1.ddproxy.xyz", "shared2.ddproxy.xyz"}
+
+	now := time.Now()
+	r.state.Candidates["node-a"] = &Candidate{NodeID: "node-a", IP: "1.2.3.4", Port: 443, RegisteredAt: now, LastHeartbeat: now}
+	r.state.Candidates["node-b"] = &Candidate{NodeID: "node-b", IP: "1.2.3.5", Port: 8443, RegisteredAt: now, LastHeartbeat: now}
+	r.state.Assignments = map[string]string{
+		"shared.ddproxy.xyz":  "node-a", // MASTER — в списке
+		"shared1.ddproxy.xyz": "node-b", // MASTER — в списке
+	}
+	// CNAME под СРМД — не в списке, пока не будет назначен мастер
+	r.state.SRMD.CNames = map[string]string{"shared2.ddproxy.xyz": "shared.ddproxy.xyz"}
+
+	mux := r.buildMux()
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/proxylinks", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxylinks: %d", rec.Code)
+	}
+	var resp struct {
+		Links []proxyLink `json:"links"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Links) != 2 {
+		t.Fatalf("want 2 links (masters only, folded skipped), got %+v", resp.Links)
+	}
+	// hex("m.beboo.ru") = 6d2e6265626f6f2e7275
+	want0 := "tg://proxy?server=shared.ddproxy.xyz&port=443&secret=eedddddddddddddddddddddddddddddddd6d2e6265626f6f2e7275"
+	want1 := "tg://proxy?server=shared1.ddproxy.xyz&port=8443&secret=eedddddddddddddddddddddddddddddddd6d2e6265626f6f2e7275"
+	if resp.Links[0].URL != want0 || resp.Links[0].User != "u0cb271" {
+		t.Fatalf("link[0]: %+v, want url %s", resp.Links[0], want0)
+	}
+	if resp.Links[1].URL != want1 {
+		t.Fatalf("link[1]: %+v, want url %s", resp.Links[1], want1)
+	}
+
+	// назначили мастер свёрнутому домену (развернули) — он появляется в списке
+	delete(r.state.SRMD.CNames, "shared2.ddproxy.xyz")
+	r.state.Assignments["shared2.ddproxy.xyz"] = "node-a"
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/proxylinks", nil))
+	var resp2 struct {
+		Links []proxyLink `json:"links"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("decode2: %v", err)
+	}
+	if len(resp2.Links) != 3 {
+		t.Fatalf("unfolded domain with master must appear, got %+v", resp2.Links)
+	}
+}

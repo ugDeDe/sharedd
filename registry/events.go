@@ -36,6 +36,8 @@ const (
 	EventSRMDDomainCreated  = "srmd_domain_created"  // создан сиротский домен с инкрементом
 	EventSRMDDomainFolded   = "srmd_domain_folded"   // лишний домен свёрнут в CNAME на оставшийся
 	EventSRMDDomainUnfolded = "srmd_domain_unfolded" // свёрнутый домен возвращён в ротацию мастеров
+	EventSRMDDomainTaken    = "srmd_domain_taken"    // ручной домен взят под контроль СРМД
+	EventSRMDDomainReleased = "srmd_domain_released" // домен СРМД переведён обратно в ручной режим
 )
 
 type Event struct {
