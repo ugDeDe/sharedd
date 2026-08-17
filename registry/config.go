@@ -9,7 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// V7.9.11: терминальные классы и история (см. terminate.go, db.go).
+// Терминальные классы и история (см. terminate.go, db.go).
 const (
 	defaultTerminateDeadMinutes = 10 // dead-класс: TCP+metrics молчат дольше — нода завершается
 	defaultQuarantineAttempts   = 3  // неудачных верифицированных GP-проверок в карантине → бан по IP
@@ -51,24 +51,24 @@ type RegistryConfig struct {
 		FailThreshold       int `toml:"fail_threshold"`
 		RecoverThreshold    int `toml:"recover_threshold"`
 		ReportFreshnessMin  int `toml:"report_freshness_min"`
-		// PruneUnhealthyMin (V7.9.6) — через сколько минут НЕПРЕРЫВНО
+		// PruneUnhealthyMin — через сколько минут НЕПРЕРЫВНО
 		// нездоровая нода (вне очереди мастерства) удаляется из пула.
 		// *int как у master_ttl_minutes: ключ отсутствует = дефолт 60,
 		// явный 0 = рипер выключен.
 		PruneUnhealthyMin *int `toml:"prune_unhealthy_min"`
-		// TerminateDeadMin (V7.9.11) — терминальный класс «dead»: TCP-порт
+		// TerminateDeadMin — терминальный класс «dead»: TCP-порт
 		// не отвечает И метрики не поступают непрерывно дольше этого окна →
 		// нода завершается навсегда (MsgDead в её лог). nil = дефолт 10,
 		// явный 0 = выкл (класс разруливает только prune/expiry).
 		TerminateDeadMin *int `toml:"terminate_dead_min"`
-		// QuarantineAttempts (V7.9.11) — сколько ПОДРЯД неудачных
+		// QuarantineAttempts — сколько ПОДРЯД неудачных
 		// независимо верифицированных GP-проверок в карантине (включая ту,
 		// что ноду туда посадила) переводят ноду в бан по IP (MsgIPBan).
 		// 0/отсутствует = дефолт 3.
 		QuarantineAttempts int `toml:"quarantine_attempts"`
 	} `toml:"healthcheck"`
 
-	// Database (V7.9.11) — вечная история в SQLite (events + терминальные
+	// Database — вечная история в SQLite (events + терминальные
 	// баны): питается /dashboard. File отсутствует = рядом со state-файлом
 	// (registry.db); явно пустой File нельзя задать — отключение через
 	// enabled=false. События ротируются (events_retention_days, дефолт 30),
@@ -96,7 +96,7 @@ type RegistryConfig struct {
 		Proxied  bool     `toml:"proxied"`
 	} `toml:"cloudflare"`
 
-	// Rotation (V7.9.3) — принудительная ротация мастерства.
+	// Rotation — принудительная ротация мастерства.
 	// MasterTTLMinutes — максимум НЕПРЕРЫВНОГО времени ноды мастером одного
 	// домена: по истечении selectionLoop насильно передаёт домен следующей
 	// здоровой ноде (round-robin по очереди). Указатель: ключ ОТСУТСТВУЕТ →
@@ -109,6 +109,20 @@ type RegistryConfig struct {
 	Globalping struct {
 		APIBase string `toml:"api_base"`
 	} `toml:"globalping"`
+
+	// SRMD — Система Распределения и Масштабирования Доменов.
+	// Следит за соотношением здоровой очереди нод и числа managed-доменов и
+	// держит не больше MaxNodesPerDomain нод на домен: при росте пула
+	// создаёт сиротские домены с инкрементом от BaseDomain (shared.example.com
+	// → shared1.example.com, shared2.…), при shrinking'е — сворачивает лишние
+	// в CNAME на оставшиеся, балансируя по активным клиентам. Подробности —
+	// в srmd.go. Enabled НИКОГДА не включается по умолчанию (nil = false):
+	// автоматическое создание доменов — явный выбор оператора.
+	SRMD struct {
+		Enabled           *bool  `toml:"enabled"`
+		BaseDomain        string `toml:"base_domain"` // пусто = первый из cloudflare.domains
+		MaxNodesPerDomain int    `toml:"max_nodes_per_domain"`
+	} `toml:"srmd"`
 
 	SharedProxy struct {
 		TLSDomain string            `toml:"tls_domain"`
@@ -135,7 +149,7 @@ type resolvedRegistryConfig struct {
 	ReportFreshnessTTL time.Duration
 	PruneUnhealthyTTL  time.Duration // 0 = рипер выключен
 	PanelEnabled       bool
-	// V7.9.11: терминальные классы и история.
+	// Терминальные классы и история.
 	TerminateDeadTTL   time.Duration // 0 = dead-класс выключен
 	QuarantineAttempts int           // ≥1
 	EventsRetention    time.Duration
@@ -256,7 +270,12 @@ func applyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.Panel.EventsMax == 0 {
 		cfg.Panel.EventsMax = 500
 	}
-	// V7.9.11
+	// СРМД — лимит нод на домен. enabled по умолчанию ВЫКЛЮЧЕН
+	// (nil → false), базовый домен разрешается лениво (первый из cloudflare).
+	if cfg.SRMD.MaxNodesPerDomain == 0 {
+		cfg.SRMD.MaxNodesPerDomain = defaultSRMDMaxNodesPerDomain
+	}
+	//
 	if cfg.Healthcheck.QuarantineAttempts == 0 {
 		cfg.Healthcheck.QuarantineAttempts = defaultQuarantineAttempts
 	}

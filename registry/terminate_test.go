@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// V7.9.11: терминальные классы — GP-карантин («всё зелёное, кроме GP» →
+// Терминальные классы — GP-карантин («всё зелёное, кроме GP» →
 // N попыток → бан по IP навсегда), dead-класс (TCP+метрики молчат >10 мин),
 // доставка kill-сигнала, снятие ip_ban при смене IP, /retire.
 
@@ -96,7 +96,7 @@ func newTerminateTestRegistry(t *testing.T) *Registry {
 }
 
 // giveMasterTime — нода успела поработать мастером (закрытый stint):
-// V7.9.14 — только тогда её бан попадает в историю банов (дашборд/панель).
+// — только тогда её бан попадает в историю банов (дашборд/панель).
 func giveMasterTime(t *testing.T, r *Registry, id string) {
 	t.Helper()
 	r.mu.Lock()
@@ -113,7 +113,7 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 
 	r.register(registerRequest{NodeID: "node-q", IP: "1.1.1.1"})
 	makeGreen(t, r, "node-q")
-	giveMasterTime(t, r, "node-q") // V7.9.14: бан без мастер-тайма в статистику не пишется
+	giveMasterTime(t, r, "node-q") // бан без мастер-тайма в статистику не пишется
 
 	// 1-я неудачная верификация → карантин (attempt 1)
 	mock.setBad(true)
@@ -185,7 +185,7 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 
 // Kill-доставка: dead запрещает перерегистрацию навсегда (403+terminate);
 // ip_ban по ТОМУ ЖЕ ip даёт одну GP-перепроверку (reverify-карантин,
-// V7.9.12), с НОВОГО ip блок снимается сразу.
+// ), с НОВОГО ip блок снимается сразу.
 func TestTerminatedKillDeliveryAndIPLift(t *testing.T) {
 	r := newTerminateTestRegistry(t)
 	now := time.Now()
@@ -227,7 +227,7 @@ func TestTerminatedKillDeliveryAndIPLift(t *testing.T) {
 		t.Fatalf("terminated heartbeat must be 403, got %d", rec.Code)
 	}
 
-	// ip_ban + ТОТ ЖЕ ip → V7.9.12: не kill, а reverify-карантин с одной
+	// Ip_ban + ТОТ ЖЕ ip → не kill, а reverify-карантин с одной
 	// решающей попыткой (attempts = max-1)
 	rec = post("/register", `{"node_id":"node-gp","ip":"3.3.3.3"}`, "")
 	if rec.Code != http.StatusOK {
@@ -269,7 +269,7 @@ func TestTerminatedKillDeliveryAndIPLift(t *testing.T) {
 	}
 }
 
-// Вход в карантин — без предусловий (V7.9.12): любая нода, не прошедшая
+// Вход в карантин — без предусловий: любая нода, не прошедшая
 // globalping, — в карантин, даже красная по tcp/metrics.
 func TestQuarantineEntryWithoutGreen(t *testing.T) {
 	mock := newGPMock(t)
@@ -285,14 +285,14 @@ func TestQuarantineEntryWithoutGreen(t *testing.T) {
 		t.Fatalf("red node must enter quarantine on verified gp fail, got %+v", c.Quarantine)
 	}
 	if c.Healthy || c.MetricsHealthy {
-		t.Fatal("test node must be NOT green — entry precondition was dropped in V7.9.12")
+		t.Fatal("test node must be NOT green — entry precondition was dropped in ")
 	}
 }
 
 // Выход из карантина любым путём, кроме восстановления, — терминальный
-// ip_ban (V7.9.12 #3): expiry по heartbeat-TTL и dead-окно во время
+// ip_ban (#3): expiry по heartbeat-TTL и dead-окно во время
 // карантина завершают ноду как ip_ban, а не node_expired/dead. В историю
-// банов при этом попадает только нода со временем мастерства (V7.9.14).
+// банов при этом попадает только нода со временем мастерства.
 func TestQuarantineDropoutCountsAsBan(t *testing.T) {
 	r := newTerminateTestRegistry(t)
 	r.cfg.TerminateDeadTTL = 10 * time.Minute
@@ -303,11 +303,11 @@ func TestQuarantineDropoutCountsAsBan(t *testing.T) {
 		NodeID: "node-exp", IP: "10.0.0.1", RegisteredAt: now.Add(-time.Hour),
 		LastHeartbeat: now.Add(-2 * r.cfg.HeartbeatTTL),
 		Healthy:       true, MetricsHealthy: true,
-		MasterStints: 1, MasterSeconds: 600, // V7.9.14: её бан — в историю
+		MasterStints: 1, MasterSeconds: 600, // её бан — в историю
 		Quarantine: &QuarantineState{EnteredAt: now.Add(-20 * time.Minute), Attempts: 1},
 	}
 	// дозреет по dead-окну (говорящая, красная по обеим ногам); мастером
-	// не была — бан завершает ноду, но в историю НЕ пишется (V7.9.14)
+	// не была — бан завершает ноду, но в историю НЕ пишется
 	r.state.Candidates["node-dd"] = &Candidate{
 		NodeID: "node-dd", IP: "10.0.0.2", RegisteredAt: now.Add(-time.Hour),
 		LastHeartbeat: now, Healthy: false, MetricsHealthy: false,
@@ -341,10 +341,10 @@ func TestQuarantineDropoutCountsAsBan(t *testing.T) {
 	}
 }
 
-// Reverify-цикл (V7.9.12 #5): старый забаненный ip переподключается → одна
+// Reverify-цикл (#5): старый забаненный ip переподключается → одна
 // решающая GP-проверка: fail возвращает бан (терминальная запись прежняя,
 // НО без новой строки в истории — бан адреса учтён при первом бане,
-// V7.9.14), последующий ok снимает бан окончательно (ban_lifted).
+// ), последующий ok снимает бан окончательно (ban_lifted).
 func TestReverifyLifecycle(t *testing.T) {
 	mock := newGPMock(t)
 	r := newTerminateTestRegistry(t)
@@ -353,7 +353,7 @@ func TestReverifyLifecycle(t *testing.T) {
 
 	r.register(registerRequest{NodeID: "node-w", IP: "1.1.1.1"})
 	makeGreen(t, r, "node-w")
-	giveMasterTime(t, r, "node-w") // первый бан node-w — в историю (V7.9.14)
+	giveMasterTime(t, r, "node-w") // первый бан node-w — в историю
 	mock.setBad(true)
 	for i := 0; i < 3; i++ {
 		sendReport(t, r, "node-w", true, true)
@@ -390,7 +390,7 @@ func TestReverifyLifecycle(t *testing.T) {
 		t.Fatal("failed re-verify must mark the record ReverifyFailed")
 	}
 	bans, _ := r.db.bansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
-	if len(bans) != 1 { // V7.9.14: ре-бан по итогам reverify НЕ кладёт вторую строку — бан адреса уже учтён
+	if len(bans) != 1 { // ре-бан по итогам reverify НЕ кладёт вторую строку — бан адреса уже учтён
 		t.Fatalf("failed re-verify must NOT add a second ip_ban row, got %+v", bans)
 	}
 	if rec := reg("node-w", "1.1.1.1"); rec.Code != http.StatusForbidden {
@@ -406,7 +406,7 @@ func TestReverifyLifecycle(t *testing.T) {
 	if q := r.state.Candidates["node-w"].Quarantine; q == nil || !q.Reverify {
 		t.Fatalf("post-cooldown re-verify mismatch: %+v", q)
 	}
-	// но с НОВОГО ip — свободен и живёт дальше; V7.9.13: выход ИЗ
+	// Но с НОВОГО ip — свободен и живёт дальше; выход ИЗ
 	// reverify-карантина со сменённым ip = блокировка брошенного старого ip
 	// (stale-запись), сама нода на новом адресе чиста.
 	if rec := reg("node-w", "1.1.1.2"); rec.Code != http.StatusOK {
@@ -423,7 +423,7 @@ func TestReverifyLifecycle(t *testing.T) {
 	// отдельная нода: reverify ПРОШЁЛ (GP позеленел) → полное восстановление
 	r.register(registerRequest{NodeID: "node-v", IP: "5.5.5.5"})
 	makeGreen(t, r, "node-v")
-	giveMasterTime(t, r, "node-v") // её первый бан — тоже в историю (V7.9.14)
+	giveMasterTime(t, r, "node-v") // её первый бан — тоже в историю
 	mock.setBad(true)
 	for i := 0; i < 3; i++ {
 		sendReport(t, r, "node-v", true, true)
@@ -450,8 +450,11 @@ func TestReverifyLifecycle(t *testing.T) {
 		t.Fatal("ban_lifted event expected after passed re-verify")
 	}
 	bans, _ = r.db.bansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
-	if len(bans) != 2 { // node-w (первый бан) + node-v; V7.9.14: ре-бан, конверсия ip без мастерства и восстановление строк не плодят
-		t.Fatalf("only first-time bans of master-time nodes must stay in history, got %+v", bans)
+	// остался только бан node-w (ip 1.1.1.1 не восстанавливался): бан node-v
+	// убран из статистики — адрес восстановился через reverify; ре-баны и
+	// конверсия ip без мастерства строк не плодят (один ip — одна строка)
+	if len(bans) != 1 || bans[0].IP != "1.1.1.1" {
+		t.Fatalf("recovered ip ban must be removed from stats, got %+v", bans)
 	}
 
 	// переустановка агента: новый id, старый забаненный ip → тоже reverify
@@ -549,7 +552,7 @@ func TestQuarantinedExemptFromPrune(t *testing.T) {
 
 // /retire: терминальная запись ставится и для говорящей ноды, и для уже
 // выпавшей; в историю банов — только нода со временем мастерства
-// (V7.9.14: у выпавшей кандидата нет, мастер-тайм неизвестен → не пишем);
+// (у выпавшей кандидата нет, мастер-тайм неизвестен → не пишем);
 // чужой RemoteAddr отклоняется.
 func TestRetireEndpoint(t *testing.T) {
 	r := newTerminateTestRegistry(t)
@@ -558,7 +561,7 @@ func TestRetireEndpoint(t *testing.T) {
 	r.state.Candidates["node-r"] = &Candidate{
 		NodeID: "node-r", IP: "6.6.6.6", RegisteredAt: now.Add(-30 * time.Minute),
 		LastHeartbeat: now,
-		MasterStints:  1, MasterSeconds: 300, // V7.9.14: бан со мастер-таймом — в историю
+		MasterStints:  1, MasterSeconds: 300, // бан со мастер-таймом — в историю
 	}
 	r.mu.Unlock()
 	mux := r.buildMux()
@@ -595,7 +598,7 @@ func TestRetireEndpoint(t *testing.T) {
 	}
 
 	// уже выпавшая нода (агент молчал и протух) → терминальная запись
-	// всё равно фиксируется, но строки в истории НЕТ (V7.9.14: кандидата
+	// Всё равно фиксируется, но строки в истории НЕТ (кандидата
 	// нет — время мастерства неизвестно)
 	if rec := post(`{"node_id":"node-gone","ip":"7.7.7.7","reason":"dead"}`, "7.7.7.7"); rec.Code != http.StatusOK {
 		t.Fatalf("retire for expired node must accept, got %d", rec.Code)
@@ -609,7 +612,7 @@ func TestRetireEndpoint(t *testing.T) {
 	}
 }
 
-// V7.9.13 #5: нода вышла из карантина со СМЕНЁННЫМ ip — старый ip
+// #5: нода вышла из карантина со СМЕНЁННЫМ ip — старый ip
 // фиксируется как блокировка (строка bans ip_ban + stale-запись), сама
 // нода живёт и работает на новом ip (карантин снят, блок не снимается
 // «простым лифтом», с старого ip — только reverify-трек).
@@ -620,7 +623,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 	r.state.Candidates["node-mv"] = &Candidate{
 		NodeID: "node-mv", IP: "10.0.0.5", RegisteredAt: now.Add(-time.Hour),
 		LastHeartbeat: now,
-		MasterStints:  1, MasterSeconds: 600, // V7.9.14: бан её старого ip — в историю
+		MasterStints:  1, MasterSeconds: 600, // бан её старого ip — в историю
 		Quarantine: &QuarantineState{EnteredAt: now.Add(-10 * time.Minute), Attempts: 1},
 	}
 	r.mu.Unlock()
@@ -663,7 +666,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 		t.Fatal("stale record must NOT be lifted by a plain ip change")
 	}
 
-	// а кто-то со СТАРОГО ip (даже с новым id) — reverify-трек V7.9.12
+	// а кто-то со СТАРОГО ip (даже с новым id) — reverify-трек
 	mux := r.buildMux()
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(`{"node_id":"node-stranger","ip":"10.0.0.5"}`))
 	resp := httptest.NewRecorder()
@@ -679,7 +682,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 		t.Fatal("re-verify must consume the stale record")
 	}
 
-	// V7.9.14: та же конверсия ip, но нода мастером НЕ была — stale-запись
+	// Та же конверсия ip, но нода мастером НЕ была — stale-запись
 	// и событие как обычно, а строки в истории банов нет.
 	r.mu.Lock()
 	r.state.Candidates["node-mv2"] = &Candidate{
@@ -700,7 +703,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 	}
 }
 
-// V7.9.14: в историю банов (дашборд/панель) попадают только баны нод,
+// В историю банов (дашборд/панель) попадают только баны нод,
 // успевших поработать мастером; завершение, блоки, счётчики и события от
 // наличия мастер-тайма не зависят.
 func TestBanStatsRequireMasterTime(t *testing.T) {

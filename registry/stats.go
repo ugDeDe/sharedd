@@ -2,7 +2,9 @@ package main
 
 import (
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -13,23 +15,23 @@ import (
 //go:embed stats.html
 var statsHTML []byte
 
-// ── Публичная статистика ноды (V7.9.4) ──────────────────────────────────
+// ── Публичная статистика ноды ──────────────────────────────────
 //
 // Открытая (без panel-токена) копия страницы подробностей ноды:
 //
-//	GET /statistics            — HTML-оболочка (список нод или страница ноды,
-//	                             клиент разбирает id из URL сам);
-//	GET /statistics/<node_id>  — та же оболочка (node_id или hex-суффикс);
-//	GET /statistics/api/list   — JSON всех нод (обезличенный);
-//	GET /statistics/api/node   — JSON одной ноды (обезличенный), ?id=...
+//	GET /statistics — HTML-оболочка (список нод или страница ноды,
+//	 клиент разбирает id из URL сам);
+//	GET /statistics/<node_id> — та же оболочка (node_id или hex-суффикс);
+//	GET /statistics/api/list — JSON всех нод (обезличенный);
+//	GET /statistics/api/node — JSON одной ноды (обезличенный), ?id=...
 //
 // Чувствительное вырезается НА СЕРВЕРЕ, до сериализации ответа:
-//   - IP ноды маскируется (первые два октета: 203.0.x.x) — и в карточке, и
-//     во всех текстах событий (все IPv4 в detail прогоняются через маску);
-//   - measurement_id Globalping НЕ отдаётся нигде: по нему публичное API
-//     Globalping отдаёт target — т.е. полный IP ноды (утечка);
-//   - в событиях нет поля ip; detail санитизируется (маска IPv4 + вырезание
-//     measurement id).
+// - IP ноды маскируется (первые два октета: 203.0.x.x) — и в карточке, и
+// во всех текстах событий (все IPv4 в detail прогоняются через маску);
+// - measurement_id Globalping НЕ отдаётся нигде: по нему публичное API
+// Globalping отдаёт target — т.е. полный IP ноды (утечка);
+// - в событиях нет поля ip; detail санитизируется (маска IPv4 + вырезание
+// measurement id).
 //
 // Белый список полей — явный (publicNode/publicEvent/publicGPDetail): новые
 // поля приватного API сюда не утекут сами по себе.
@@ -95,7 +97,7 @@ type publicNode struct {
 	MasterStints      int       `json:"master_stints"`
 	MasterTimeSec     int64     `json:"master_time_sec"`
 	NodeType          string    `json:"node_type,omitempty"`
-	// MasterTTLRemainingSec — см. publicNodeListItem (V7.9.13).
+	// MasterTTLRemainingSec — см. publicNodeListItem.
 	MasterTTLRemainingSec *int64 `json:"master_ttl_remaining_sec,omitempty"`
 }
 
@@ -135,6 +137,84 @@ func (r *Registry) mountStats(mux *http.ServeMux) {
 	// /statistics/api/* по right-longest-match побеждает /statistics/.
 	mux.HandleFunc("GET /statistics/api/list", r.handleStatsList)
 	mux.HandleFunc("GET /statistics/api/node", r.handleStatsNode)
+
+	// публичные прокси-ссылки (tg://proxy) по доменам с живыми мастерами
+	mux.HandleFunc("GET /proxylinks", r.handleProxyLinks)
+}
+
+// ── Публичные прокси-ссылки — /proxylinks ────────────────────────────────
+//
+// JSON с актуальными tg://proxy-ссылками по каждому managed-домену, у
+// которого СВОЙ мастер (назначенная живая нода в пуле). Домены, свёрнутые
+// СРМД в CNAME, в список не попадают — вернутся, когда им снова будет
+// назначен мастер. Секрет ссылки — формат ee (fake-TLS MTProto):
+// «ee» + секрет пользователя (32 hex) + SNI-домен маскировки в hex-ASCII.
+// Эндпойнт открыт без токена (как /statistics): ссылки предназначены для
+// раздачи конечным пользователям.
+
+// proxyLink — одна ссылка конкретного пользователя на конкретный домен.
+type proxyLink struct {
+	Domain string `json:"domain"`
+	Port   int    `json:"port"`
+	User   string `json:"user"`
+	URL    string `json:"url"`
+}
+
+// buildProxyLinksLocked — актуальный список ссылок. ВЫЗЫВАТЬ под r.mu
+// (минимум RLock).
+func (r *Registry) buildProxyLinksLocked() []proxyLink {
+	r.cfgMu.RLock()
+	sni := r.cfg.SharedProxy.TLSDomain
+	users := mapsClone(r.cfg.SharedProxy.Users)
+	rawDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
+	r.cfgMu.RUnlock()
+
+	names := make([]string, 0, len(users))
+	for n := range users {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	sniHex := hex.EncodeToString([]byte(sni))
+
+	seen := make(map[string]bool, len(rawDomains))
+	out := []proxyLink{}
+	for _, d := range rawDomains {
+		d = strings.TrimSpace(d)
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		if _, folded := r.state.SRMD.CNames[d]; folded {
+			continue // свёрнут СРМД в CNAME: покажем, когда будет назначен мастер
+		}
+		c := r.state.Candidates[r.state.Assignments[d]]
+		if c == nil {
+			continue // своего мастера нет — в списке не показываем
+		}
+		port := c.Port
+		if port == 0 {
+			port = 443
+		}
+		for _, n := range names {
+			out = append(out, proxyLink{
+				Domain: d,
+				Port:   port,
+				User:   n,
+				URL:    fmt.Sprintf("tg://proxy?server=%s&port=%d&secret=ee%s%s", d, port, strings.ToLower(users[n]), sniHex),
+			})
+		}
+	}
+	return out
+}
+
+// handleProxyLinks — GET /proxylinks: JSON-список актуальных прокси-ссылок.
+func (r *Registry) handleProxyLinks(w http.ResponseWriter, req *http.Request) {
+	r.mu.RLock()
+	links := r.buildProxyLinksLocked()
+	r.mu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]any{"links": links})
 }
 
 // resolvePublicNodeLocked — точный node_id или его hex-суффикс (без «node-»).
@@ -267,7 +347,6 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 		"report_hist": c.ReportHist,
 		"gp_last":     gpLast,
 		"events":      r.publicEventsLocked(c.NodeID, 100),
-		"version":     registryVersion,
 		"hc": map[string]int{
 			"fail_threshold":    max(1, r.cfg.Healthcheck.FailThreshold),
 			"recover_threshold": max(1, r.cfg.Healthcheck.RecoverThreshold),
@@ -288,7 +367,7 @@ type publicNodeListItem struct {
 	Port          int      `json:"port"`
 	IsMaster      bool     `json:"is_master"`
 	MasterDomains []string `json:"master_domains,omitempty"`
-	// MasterTTLRemainingSec (V7.9.13) — через сколько мастер будет
+	// MasterTTLRemainingSec — через сколько мастер будет
 	// переключён по таймеру (минимум по доменам ноды); <0 — лимит истёк,
 	// ждём здоровую замену; nil — TTL выключен/не назначен.
 	MasterTTLRemainingSec *int64   `json:"master_ttl_remaining_sec,omitempty"`
@@ -315,7 +394,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	for _, id := range ids {
 		c := r.state.Candidates[id]
 		if c.Quarantine != nil {
-			continue // V7.9.11: карантин — нода не обслуживает, из публичной статы убрана
+			continue // карантин — нода не обслуживает, из публичной статы убрана
 		}
 		it := publicNodeListItem{
 			NodeID:          c.NodeID,
@@ -341,7 +420,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, it)
 	}
-	resp := map[string]any{"version": registryVersion, "nodes": out}
+	resp := map[string]any{"nodes": out}
 	r.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")

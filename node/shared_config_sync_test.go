@@ -90,7 +90,7 @@ func TestSectionHeaderWithTrailingComment(t *testing.T) {
 	lines := []string{
 		"[access]",
 		"replay_check_len = 65536",
-		"[ access.users ]  # пользователи прокси",
+		"[ access.users ] # пользователи прокси",
 		"hello = \"00000000000000000000000000000000\"",
 		"",
 		"[censorship]",
@@ -151,7 +151,7 @@ func TestCensorshipMaskEnabled(t *testing.T) {
 	if !censorshipMaskEnabled(splitLines("[censorship]\ntls_domain = \"a.com\"\nmask = true")) {
 		t.Fatal("mask = true must be detected")
 	}
-	if !censorshipMaskEnabled(splitLines("[censorship]\nmask = true  # включено")) {
+	if !censorshipMaskEnabled(splitLines("[censorship]\nmask = true # включено")) {
 		t.Fatal("trailing comment must not break detection")
 	}
 	if censorshipMaskEnabled(splitLines("[censorship]\ntls_domain = \"a.com\"")) {
@@ -169,7 +169,7 @@ func TestCensorshipMaskEnabled(t *testing.T) {
 	}
 }
 
-// mask_host БОЛЬШЕ не вычищается (V7.3); без mask=true exclusive_mask не создаётся.
+// mask_host БОЛЬШЕ не вычищается; без mask=true exclusive_mask не создаётся.
 func TestApplySharedConfigPreservesMaskHost(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "telemt.toml")
@@ -198,7 +198,7 @@ hello = "00000000000000000000000000000000"
 	}
 	content, _ := os.ReadFile(path)
 	if !strings.Contains(string(content), `mask_host = "some-upstream.example"`) {
-		t.Fatalf("mask_host must be preserved (V7.3):\n%s", content)
+		t.Fatalf("mask_host must be preserved:\n%s", content)
 	}
 	if strings.Contains(string(content), "exclusive_mask") {
 		t.Fatalf("mask key absent -> exclusive_mask must NOT be created:\n%s", content)
@@ -430,7 +430,7 @@ func TestEnsurePrimaryTLSDomainBootstrapOnly(t *testing.T) {
 	}
 }
 
-// Ключевое изменение V2: tls_domains ЗАМЕНЯЕТСЯ актуальным SNI, не дописывается.
+// Ключевое изменение tls_domains ЗАМЕНЯЕТСЯ актуальным SNI, не дописывается.
 func TestSetExtraTLSDomainsReplacesStale(t *testing.T) {
 	lines := splitLines(`[censorship]
 tls_domain = "primary.com"
@@ -465,7 +465,7 @@ tls_domain = "primary.com"`)
 	}
 }
 
-// V2: пишем ТОЛЬКО metrics_listen, и только если нет ни listen, ни port.
+// Пишем ТОЛЬКО metrics_listen, и только если нет ни listen, ни port.
 func TestEnsureMetricsListenOnly(t *testing.T) {
 	lines := splitLines("[server]\nport = 443")
 	out, changed := ensureMetricsListen(lines)

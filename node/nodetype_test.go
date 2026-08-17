@@ -22,7 +22,7 @@ func withManagerDirs(t *testing.T) (meko, mtproxyl string) {
 	return meko, mtproxyl
 }
 
-// V7.9: детект типа ноды по каталогу менеджера; без каталогов — classic.
+// Детект типа ноды по каталогу менеджера; без каталогов — classic.
 func TestDetectNodeType(t *testing.T) {
 	meko, mtproxyl := withManagerDirs(t)
 
@@ -59,7 +59,7 @@ func TestNodeTypeLabel(t *testing.T) {
 	}
 }
 
-// V7.9: register шлёт node_type и пиннит lastNodeType только при HTTP 200 —
+// Register шлёт node_type и пиннит lastNodeType только при HTTP 200 —
 // при отказе сервера heartbeat заметит расхождение и повторит.
 func TestRegisterSendsNodeType(t *testing.T) {
 	_, mtproxyl := withManagerDirs(t)

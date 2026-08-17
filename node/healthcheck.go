@@ -273,21 +273,42 @@ func parsePrometheusSamples(text string) []promSample {
 // state-файла регистратора (он персистит снапшот целиком) от безумных конфигов.
 const snapshotMaxUserSeries = 64
 
+// promUserLabel — значение label'а user из строки labels prom-серии
+// (`user="u0cb271"` → «u0cb271», `user="a",x="b"` → «a»). Пусто — label'а
+// нет или он не распознан.
+func promUserLabel(labels string) string {
+	for _, part := range strings.Split(labels, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "user" {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(kv[1]), `"`)
+	}
+	return ""
+}
+
 // buildMetricsSnapshot собирает снимок метрик для регистратора.
 // Возвращает сам снапшот и плоскую карту name→value (для health-гейта).
 //
 // Ключ uniqueIPsMetricName (без labels) — СУММА per-user серий
 // telemt_user_unique_ips_current{user="..."}: уникальные активные клиентские IP
-// ноды. Суммируем по пользователям: один IP, гоняющий несколько secret'ов,
-// посчитается по одному разу на каждого пользователя (приемлемая аппроксимация,
+// ноды. Активные клиенты считаются ТОЛЬКО ПО ОБЩЕМУ СЕКРЕТУ — в
+// сумму входят лишь серии тех пользователей, которых раздаёт регистратор
+// (shared_proxy.users, приходят в /config и живут в sharedConfigCache);
+// локальные юзеры ноды (чужие записи [access.users], которые мы никогда не
+// перезаписываем) в агрегат НЕ входят. sharedUsers пуст (конфиг ещё не
+// приехал с регистратора) — fallback на сумму всех серий, чтобы не рисовать
+// «нет данных» до первого sync. Один IP, гоняющий несколько общих secret'ов,
+// посчитается по разу на каждого пользователя (приемлемая аппроксимация,
 // дедупа по IP в telemt metrics нет). Аналогично userConnsMetricName — сумма
 // активных клиентских подключений. Сами per-user серии тоже кладём
 // (ключи вида name{user="x"}) — регистратор их не трогает, но по /status видно.
 //
-// Агрегаты пишем ТОЛЬКО если per-user серии вообще встретились в выдаче:
-// при [general.telemetry] user_enabled=false telemt их не эмитит, и мы обязаны
-// отличать "нет данных" (ключа нет → панель рисует "—") от "0 клиентов".
-func buildMetricsSnapshot(samples []promSample) (snapshot, values map[string]float64) {
+// Агрегаты пишем ТОЛЬКО если подходящие per-user серии вообще встретились в
+// выдаче: при [general.telemetry] user_enabled=false telemt их не эмитит, и
+// мы обязаны отличать "нет данных" (ключа нет → панель рисует "—") от
+// "0 клиентов".
+func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (snapshot, values map[string]float64) {
 	values = make(map[string]float64, len(samples))
 	for _, s := range samples {
 		values[s.name] = s.value
@@ -297,12 +318,24 @@ func buildMetricsSnapshot(samples []promSample) (snapshot, values map[string]flo
 		"telemt_upstream_connect_attempt_total": values["telemt_upstream_connect_attempt_total"],
 		"telemt_me_reconnect_attempts_total":    values["telemt_me_reconnect_attempts_total"],
 	}
+	// общий секрет: пользователь входит в счёт, только если его раздаёт
+	// регистратор; пустой кэш = конфиг ещё не загружен → считаем всех
+	counted := func(user string) bool {
+		if len(sharedUsers) == 0 {
+			return true
+		}
+		_, ok := sharedUsers[user]
+		return ok
+	}
 	var uniqSum, connSum float64
 	var uniqSeen, connSeen bool
 	userSeries := 0
 	for _, s := range samples {
 		switch s.name {
 		case uniqueIPsMetricName:
+			if !counted(promUserLabel(s.labels)) {
+				continue // локальный (не общий) пользователь — в счёт не входит
+			}
 			uniqSum += s.value
 			uniqSeen = true
 			if s.labels != "" && userSeries < snapshotMaxUserSeries {
@@ -310,6 +343,9 @@ func buildMetricsSnapshot(samples []promSample) (snapshot, values map[string]flo
 				userSeries++
 			}
 		case userConnsMetricName:
+			if !counted(promUserLabel(s.labels)) {
+				continue
+			}
 			connSum += s.value
 			connSeen = true
 		}
@@ -404,7 +440,7 @@ func RunGlobalpingCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 		return report
 	}
 
-	// V7.9.1: не отстреливаем globalping-меasurement в лежащий/рестартующий
+	// Не отстреливаем globalping-меasurement в лежащий/рестартующий
 	// прокси — пробы пойдут в закрытый порт, и верификация нарисует ratio 0
 	// (ложная блокировка). Порт ещё не слушается (старт, рестарт после патча
 	// конфига) — ждём до gpProxyWaitTimeout; не дождались — пропускаем цикл,
@@ -416,7 +452,7 @@ func RunGlobalpingCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 		return report
 	}
 
-	gp := NewGlobalpingChecker(cfg.Globalping.APIBase) // V7.9.11: api_base из конфига
+	gp := NewGlobalpingChecker(cfg.Globalping.APIBase) // api_base из конфига
 	measID, ratio, err := gp.CreateAndAwait(ip, report.Port, report.FakeSNI)
 	report.GlobalpingMeasurementID = measID
 	report.GlobalpingSuccessRatio = ratio
@@ -450,7 +486,9 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 	if err == nil && resp.StatusCode == http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		snapshot, values := buildMetricsSnapshot(parsePrometheusSamples(string(body)))
+		// Клиенты считаются только по общему секрету — в агрегат
+		// входят лишь пользователи из shared-конфига регистратора.
+		snapshot, values := buildMetricsSnapshot(parsePrometheusSamples(string(body)), sharedConfigCache.Get().Users)
 		report.MetricsSnapshot = snapshot
 
 		v, ok := values[healthMetricName]
@@ -469,7 +507,7 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 	}
 
 	// /metrics недоступен — нода нездорова, без обходных путей:
-	// telemt REST API не используем (V6: выпилен, "оно не работает").
+	// Telemt REST API не используем (выпилен, "оно не работает").
 	promErr := ""
 	if err != nil {
 		promErr = "metrics: fetch error: " + err.Error() + " (" + url + ")"
@@ -482,7 +520,7 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 	return report
 }
 
-// TerminatedError (V7.9.11) — регистратор ответил kill-сигналом
+// TerminatedError — регистратор ответил kill-сигналом
 // (403 {"terminate":true,...}): нода убита навсегда, обязана записать
 // Message в лог дословно, положить tombstone и остановиться
 // (terminate.go). Причина: ip_ban — GP-карантин исчерпан, dead — порт/

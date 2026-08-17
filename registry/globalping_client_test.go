@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// V7.9.1: measurement ещё выполняется — верификация обязана ДОЖДАТЬСЯ
+// Measurement ещё выполняется — верификация обязана ДОЖДАТЬСЯ
 // завершения, а не оценивать частичные результаты (источник «ratio 0»).
 func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 	var calls atomic.Int32
@@ -43,7 +43,7 @@ func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 	}
 }
 
-// V7.9.1: measurement так и остался in-progress за таймаут — ошибка + снапшот
+// Measurement так и остался in-progress за таймаут — ошибка + снапшот
 // (вызывающий код трактует верификацию как несостоявшуюся).
 func TestFetchFinishedTimeoutOnStuckMeasurement(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -59,7 +59,7 @@ func TestFetchFinishedTimeoutOnStuckMeasurement(t *testing.T) {
 	}
 }
 
-// V7.9.1: верификация не состоялась (API globalping недоступно) — GP-статус
+// Верификация не состоялась (API globalping недоступно) — GP-статус
 // ноды НЕ трогаем: ни блокировки, ни счётчиков. Иначе сетевой чих рисовал 0.
 func TestHealthReportInconclusiveKeepsGPState(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

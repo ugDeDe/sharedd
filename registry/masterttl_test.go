@@ -19,7 +19,7 @@ func makeFullyHealthyNow(r *Registry, id string) {
 	c.Healthy = true
 	c.GlobalpingOK = true
 	c.MetricsOK = true
-	c.MetricsHealthy = true // V7.9.4: fully-healthy судится по защёлке
+	c.MetricsHealthy = true // fully-healthy судится по защёлке
 	c.LastReportAt = time.Now()
 }
 
@@ -159,7 +159,7 @@ func TestMasterTTLDisabled(t *testing.T) {
 }
 
 func TestMasterTTLRoundRobinAcrossAllNodes(t *testing.T) {
-	// V7.9.5: регрессионный — раньше домен ходил только между двумя старшими
+	// Регрессионный — раньше домен ходил только между двумя старшими
 	// нодами очереди: истёкший мастер СВОЮ позицию сохранял, а pickLeastLoaded
 	// при равной загрузке брал раннего. Теперь сдавший домен — в конец очереди.
 	r := newTestRegistry(t)

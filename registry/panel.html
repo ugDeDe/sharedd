@@ -42,7 +42,7 @@
   ::selection { background: rgba(99,102,241,.42); color: #fff; }
   a { color: var(--blue); text-decoration: none; }
 
-  /* ── каркас: сайдбар + контент (V7.7) ──────────────────────── */
+  /* ── каркас: сайдбар + контент ───────────────────────────────── */
   #app { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; }
   .view[hidden] { display: none; }
   .side {
@@ -226,7 +226,7 @@
     text-shadow: 0 0 14px rgba(251,191,36,.4);
   }
   .badge.queue { color: var(--blue); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); font-family: var(--mono); }
-  /* V7.9: бейджи типа ноды (classic — обычный muted, без класса) */
+  /* бейджи типа ноды (classic — обычный muted, без класса) */
   .badge.t-purple {
     color: var(--purple); background: rgba(192,132,252,.12); border-color: rgba(192,132,252,.38);
     text-shadow: 0 0 14px rgba(192,132,252,.35);
@@ -279,6 +279,16 @@
     background: linear-gradient(135deg, var(--accent1), var(--accent2));
     box-shadow: 0 5px 16px rgba(99,102,241,.4);
   }
+  .filters select, .filters input[type=search] {
+    background: rgba(4,7,14,.7); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 5px 13px; font-size: 12.5px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .filters input[type=search] { min-width: 240px; }
+  .filters select:focus, .filters input[type=search]:focus {
+    outline: none; border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(99,102,241,.2);
+  }
+  .filters .found { margin-left: auto; color: var(--muted); font-size: 12px; font-family: var(--mono); }
 
   /* ── журнал событий ────────────────────────────────────────── */
   .events { list-style: none; padding: 10px 14px 14px; max-height: 460px; overflow-y: auto; }
@@ -313,7 +323,7 @@
 
   .empty { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
 
-  /* ── нода детально (V7.7) ─────────────────────────────────── */
+  /* ── нода детально ──────────────────────────────────────────── */
   .card.nd-head {
     flex-direction: row; align-items: center; gap: 16px; flex-wrap: wrap;
     padding: 18px 20px; margin-bottom: 18px; min-height: 0;
@@ -354,7 +364,7 @@
   .gbar.fail { background: linear-gradient(180deg, rgba(251,113,133,.95), rgba(251,113,133,.4)); }
   .spark { width: 100%; height: 56px; display: block; cursor: crosshair; }
 
-  /* ── V7.9: hover-подсказка спарклайна клиентов на странице ноды ── */
+  /* ── hover-подсказка спарклайна клиентов на странице ноды ──────── */
   .sparkwrap { position: relative; }
   .spark-guide {
     position: absolute; top: 0; bottom: 0; width: 1px;
@@ -534,6 +544,9 @@
       <a class="nav-item" href="#/dns" data-view="dns">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4 10z"/></svg>
         Мастера и DNS</a>
+      <a class="nav-item" href="#/srmd" data-view="srmd" title="Система распределения и масштабирования доменов">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        СРМД</a>
       <a class="nav-item" href="#/events" data-view="events">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         Журнал</a>
@@ -649,6 +662,54 @@
         </section>
       </section>
 
+      <!-- ═══ СРМД ═══ -->
+      <section class="view" id="view-srmd" hidden>
+        <section class="block">
+          <div class="block-head">
+            <h2>Домены · активные клиенты</h2>
+            <span class="hint" id="srmd-hint"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>Домен</th><th>Активные клиенты</th><th>DNS-запись</th><th>Мастер</th><th>Управление</th></tr>
+              </thead>
+              <tbody id="srmd-body"><tr><td colspan="5" class="empty">загрузка…</td></tr></tbody>
+            </table>
+          </div>
+          <div style="padding:10px 18px 14px; color:var(--muted); font-size:11.5px; line-height:1.5">Клиенты считаются по общему секрету (только пользователи из <span class="mono">shared_proxy.users</span>).
+            Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.
+            Ручной домен можно насильно отдать под контроль СРМД (кнопка «под СРМД») — тогда он сможет сворачиваться
+            в CNAME при сжатии пула; домен СРМД кнопкой «в ручной» возвращается в ручной режим (и разворачивается,
+            если был свёрнут).</div>
+        </section>
+        <section class="block">
+          <div class="block-head">
+            <h2>Настройки СРМД</h2>
+            <span class="hint">применяются на лету и персистятся в registry.toml</span>
+            <button class="ghost" id="srmd-reload" style="margin-left:auto">Обновить</button>
+          </div>
+          <div class="settings-grid">
+            <fieldset class="cfg">
+              <legend>Масштабирование доменов</legend>
+              <label>Основной домен (база для инкрементов)</label>
+              <input type="text" id="s-srmd-base" placeholder="shared.ddproxy.xyz">
+              <label>Максимальное число нод на домен</label>
+              <input type="number" id="s-srmd-max" min="1" max="1000" style="width:130px">
+              <div class="row">
+                <label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="s-srmd-enabled"> Разрешить СРМД создавать новые домены</label>
+              </div>
+              <div class="row"><button class="act" id="s-srmd-save">Сохранить СРМД</button></div>
+              <div class="note">Когда нод больше, чем доменов × лимит, СРМД создаёт сиротские домены с инкрементом
+                (<span class="mono">shared1.…, shared2.…</span> от основного) и сама дописывает их в managed-список;
+                когда нод стало меньше — сворачивает лишние домены в CNAME на оставшиеся, балансируя клиентов по
+                последним известным значениям (созданные домены: <span id="srmd-created-list" class="mono">нет</span>).
+                По умолчанию создание выключено.</div>
+            </fieldset>
+          </div>
+        </section>
+      </section>
+
       <!-- ═══ Журнал ═══ -->
       <section class="view" id="view-events" hidden>
         <section class="block">
@@ -662,6 +723,9 @@
             <button data-f="blocks">Блокировки</button>
             <button data-f="nodes">Ноды</button>
             <button data-f="system">Система</button>
+            <select id="ev-type-filter" title="Фильтр по типу события (тегу)"></select>
+            <input type="search" id="ev-search" placeholder="поиск: ключевые слова, нода, ip, домен…" spellcheck="false">
+            <span class="found" id="ev-found"></span>
           </div>
           <ul class="events" id="events-list" style="max-height:none"><li class="empty">загрузка…</li></ul>
         </section>
@@ -782,8 +846,10 @@
 <script>
 "use strict";
 const LS_KEY = "sharedd.panelToken";
-let evFilter = "all";
-const state = { ov: null, events: [], nodeId: null, node: null, settingsLoaded: false };
+let evFilter = "all";      // группа (чипы): all/master/blocks/nodes/system
+let evTypeFilter = "";     // тег: конкретный тип события
+let evSearch = "";         // ключевые слова (все слова обязаны найтись)
+const state = { ov: null, events: [], nodeId: null, node: null, settingsLoaded: false, srmdLoaded: false };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -869,6 +935,11 @@ const EV_META = {
   node_terminated:       {label: "Нода завершена (бан)", cls: "ev-bad",     grp: "nodes"},
   ban_lifted:            {label: "Бан снят (смена IP)",  cls: "ev-info",    grp: "nodes"},
   ip_blocked:            {label: "IP заблокирован (смена в карантине)", cls: "ev-bad", grp: "blocks"},
+  srmd_domain_created:   {label: "СРМД: домен создан",   cls: "ev-info",    grp: "master"},
+  srmd_domain_folded:    {label: "СРМД: домен свёрнут",  cls: "ev-warn",    grp: "master"},
+  srmd_domain_unfolded:  {label: "СРМД: домен развёрнут", cls: "ev-good",   grp: "master"},
+  srmd_domain_taken:     {label: "СРМД: домен взят под контроль", cls: "ev-info", grp: "master"},
+  srmd_domain_released:  {label: "СРМД: домен в ручной режим", cls: "ev-warn", grp: "master"},
 };
 
 const ICON = (p) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
@@ -883,7 +954,7 @@ const ICO = {
   clock:   ICON(`<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`),
 };
 
-/* ---------------- статистика пула по журналу (V7.8) ---------------- */
+/* ---------------- статистика пула по журналу ----------------------- */
 
 // средний промежуток: null/undefined (мало данных) — прочерк
 function fmtInterval(sec) {
@@ -942,13 +1013,17 @@ function renderGPStats(o) {
 function renderKpis(o) {
   const c = o.counters || {};
   const masters = o.masters || [];
-  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  // свёрнутые СРМД в CNAME домены мастера не требуют — в «живых назначениях»
+  // считаются только активные домены
+  const active = masters.filter((m) => !m.cname_target);
+  const folded = masters.length - active.length;
+  const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
   const dnsErr = c.dns_errors_total ?? 0;
   $("cards").innerHTML = `
     <div class="card">
       <div class="card-top"><span class="kpi-ico i-gold">${ICO.masters}</span><div class="label">Мастера</div></div>
-      <div class="value ${masters.length > 0 && aliveMs === masters.length ? "good" : "bad"}">${aliveMs}<span class="muted">/</span>${masters.length}</div>
-      <div class="extra">живых назначений</div></div>
+      <div class="value ${active.length > 0 && aliveMs === active.length ? "good" : "bad"}">${aliveMs}<span class="muted">/</span>${active.length}</div>
+      <div class="extra">живых назначений${folded ? " · свёрнуто СРМД: " + folded : ""}</div></div>
     <div class="card">
       <div class="card-top"><span class="kpi-ico i-blue">${ICO.nodes}</span><div class="label">Нод в пуле</div></div>
       <div class="value">${o.nodes_total}</div>
@@ -982,6 +1057,16 @@ function fmtTtlMin(m) {
 }
 
 function masterRowHTML(m) {
+  // домен, свёрнутый СРМД в CNAME — мастера нет по определению
+  if (m.cname_target) {
+    return `<div class="mrow">
+      <span class="mdot warn"></span>
+      <div class="mmain">
+        <div class="mdomain mono">${esc(m.domain)}</div>
+        <div class="mtarget mono">CNAME → ${esc(m.cname_target)} · свёрнут СРМД${m.clients != null ? " · клиентов: " + m.clients : ""}</div>
+      </div>
+      <span class="badge unk">CNAME</span></div>`;
+  }
   if (!m.node_id) {
     return `<div class="mrow">
       <span class="mdot dead"></span>
@@ -992,7 +1077,7 @@ function masterRowHTML(m) {
       <span class="badge no">нет DNS</span></div>`;
   }
   const dead = !!m.dead;
-  // V7.9.3: чип принудительной ротации по лимиту времени мастерства
+  // чип принудительной ротации по лимиту времени мастерства
   let ttlChip = "";
   if (m.ttl_sec > 0) {
     if (m.ttl_remaining_sec < 0) {
@@ -1006,7 +1091,7 @@ function masterRowHTML(m) {
     <span class="mdot ${dead ? "warn" : "alive"}"></span>
     <div class="mmain">
       <div class="mdomain mono">${esc(m.domain)}</div>
-      <div class="mtarget mono">${esc(m.ip || "?")} · ${esc(m.node_id)}</div>
+      <div class="mtarget mono">${esc(m.ip || "?")} · ${esc(m.node_id)}${m.clients != null ? " · клиентов: " + m.clients : ""}</div>
     </div>
     ${nodeTypeBadge(m.node_type)}
     ${ttlChip}
@@ -1015,13 +1100,17 @@ function masterRowHTML(m) {
 
 function renderMastersInto(bodyEl, hintEl, o) {
   const masters = o.masters || [];
-  const aliveMs = masters.filter((m) => m.node_id && !m.dead).length;
+  // свёрнутые СРМД в CNAME домены не требуют мастера — счёт «живых» только
+  // по активным доменам; число свёрнутых показываем отдельно
+  const active = masters.filter((m) => !m.cname_target);
+  const folded = masters.length - active.length;
+  const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
   if (hintEl) {
     const ttlNote = (o.master_ttl_sec || 0) > 0
       ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60)
       : " · лимит мастера: выкл";
     hintEl.textContent = masters.length
-      ? `${aliveMs}/${masters.length} живых${ttlNote}`
+      ? `${aliveMs}/${active.length} живых${folded ? " · свёрнуто СРМД: " + folded : ""}${ttlNote}`
       : "cloudflare.domains пуст";
   }
   if (masters.length === 0) {
@@ -1031,9 +1120,94 @@ function renderMastersInto(bodyEl, hintEl, o) {
   bodyEl.innerHTML = masters.map(masterRowHTML).join("");
 }
 
+/* ---------------- СРМД: таблица доменов + настройки ---------------- */
+
+function renderSRMD(o) {
+  const s = o.srmd;
+  if (!s) return;
+  $("srmd-hint").textContent =
+    `очередь: ${s.queue_size} нод · нужно доменов: ${s.required_domains} · лимит: ${s.max_nodes_per_domain} нод/домен · ` +
+    `доменов: ${s.total_domains}${s.folded_domains ? " (свёрнуто: " + s.folded_domains + ")" : ""} · ` +
+    (s.enabled ? "создание доменов разрешено" : "создание доменов выключено");
+  const created = (s.domains || []).filter((d) => d.created).map((d) => d.domain);
+  $("srmd-created-list").textContent = created.length ? created.join(", ") : "нет";
+  const body = $("srmd-body");
+  if (!s.domains || s.domains.length === 0) {
+    body.innerHTML = `<tr><td colspan="5" class="empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
+    return;
+  }
+  body.innerHTML = s.domains.map((d) => {
+    const origin = d.base
+      ? `<span class="badge master" title="основной домен СРМД">основной</span>`
+      : (d.created ? `<span class="badge t-cyan" title="создан СРМД с инкрементом">СРМД</span>`
+                   : `<span class="badge unk" title="добавлен оператором вручную">ручной</span>`);
+    const rec = d.cname
+      ? `<span class="badge unk" title="домен свёрнут СРМД">CNAME → ${esc(d.cname)}</span>`
+      : (d.ip ? `<span class="mono">A → ${esc(d.ip)}</span>` : `<span class="badge no">нет записи</span>`);
+    const master = d.cname
+      ? `<span class="muted">— свёрнут</span>`
+      : (d.node_id ? `<span class="idcell" title="${esc(d.node_id)}">${esc(d.node_id)}</span>`
+                   : `<span class="muted">нет мастера</span>`);
+    const clients = d.clients == null ? `<span class="muted">—</span>`
+      : `${d.clients}${d.fresh ? "" : ` <span class="muted" title="последнее известное значение — живой мастер сейчас не присылает метрику">*</span>`}`;
+    // ручной ⇄ СРМД: ручной домен можно насильно отдать СРМД (тогда он сможет
+    // сворачиваться в CNAME), домен СРМД — вернуть в ручной режим
+    const control = d.created
+      ? `<button class="act danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>`
+      : `<button class="act secondary" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
+    return `<tr>
+      <td class="mono">${esc(d.domain)} ${origin}</td>
+      <td class="mono">${clients}</td>
+      <td>${rec}</td>
+      <td>${master}</td>
+      <td>${control}</td>
+    </tr>`;
+  }).join("");
+}
+
+// перевод домена ручной ⇄ под контролем СРМД
+async function srmdDomainAction(domain, action) {
+  const resp = await fetch("/panel/api/srmd-domain", {
+    method: "POST",
+    headers: {"Authorization": "Bearer " + getToken(), "Content-Type": "application/json"},
+    body: JSON.stringify({domain, action}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401) { showLogin(true); throw new Error("unauthorized"); }
+  if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+  return data;
+}
+$("srmd-body").addEventListener("click", (e) => {
+  const take = e.target.closest("button[data-srmd-take]");
+  const rel = e.target.closest("button[data-srmd-release]");
+  if (!take && !rel) return;
+  const domain = take ? take.dataset.srmdTake : rel.dataset.srmdRelease;
+  const action = take ? "take" : "release";
+  srmdDomainAction(domain, action)
+    .then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`))
+    .then(() => refresh())
+    .catch((e) => showToast(e.message, true));
+});
+
+async function loadSRMDSettings() {
+  const data = await api("/panel/api/config");
+  const s = (data.config && data.config.srmd) || {};
+  $("s-srmd-base").value = s.base_domain || "";
+  $("s-srmd-base").placeholder = ((state.ov && state.ov.domains && state.ov.domains[0]) || "shared.ddproxy.xyz");
+  $("s-srmd-max").value = s.max_nodes_per_domain ?? 5;
+  $("s-srmd-enabled").checked = !!s.enabled;
+}
+$("srmd-reload").onclick = () => loadSRMDSettings().then(() => showToast("Настройки СРМД перечитаны")).catch(() => {});
+$("s-srmd-save").onclick = () =>
+  saveSection({srmd: {
+    enabled: $("s-srmd-enabled").checked,
+    base_domain: $("s-srmd-base").value.trim(),
+    max_nodes_per_domain: Math.max(1, parseInt($("s-srmd-max").value, 10) || 5),
+  }}, "Настройки СРМД сохранены").catch((e) => showToast(e.message, true));
+
 /* ---------------- таблица нод ---------------- */
 
-// V7.9: тип ноды (менеджер прокси), присылается агентом в /register.
+// тип ноды (менеджер прокси), присылается агентом в /register
 const NODE_TYPE_META = {
   classic:  {label: "Classic",  cls: "unk",      title: "классический telemt"},
   mtproxyl: {label: "MTProxyL", cls: "t-purple", title: "форк MTProxyL (/opt/mtproxyl/)"},
@@ -1049,7 +1223,7 @@ function renderNodes(o) {
   const body = $("nodes-body");
   const domMap = (o.masters || []).map((m) => `${m.domain}→${m.ip || "—"}`).join(", ");
   const all = o.nodes || [];
-  // V7.9.11: карантин — отдельная таблица сверху (в пул не входит, бан близко)
+  // карантин — отдельная таблица сверху (в пул не входит, бан близко)
   const quar = all.filter((n) => n.quarantine);
   const main = all.filter((n) => !n.quarantine);
   $("nodes-hint").textContent = `${o.nodes_total} нод${quar.length ? " · карантин: " + quar.length : ""} · DNS: ${domMap || o.domains.join(", ")}`;
@@ -1141,23 +1315,55 @@ function renderEventsInto(el, list) {
   }).join("");
 }
 
+// поиск по ключевым словам: каждое слово (через пробел) должно встретиться
+// в типе/теге события, ноде, ip, домене или детали (регистр не важен)
+function eventMatchesSearch(ev, q) {
+  if (!q) return true;
+  const meta = EV_META[ev.type] || {};
+  const hay = [ev.type, meta.label || "", ev.node_id || "", ev.ip || "", ev.domain || "", ev.detail || ""]
+    .join(" ").toLowerCase();
+  return q.split(/\s+/).every((w) => hay.includes(w));
+}
+
 function filteredEvents() {
   return state.events.filter((ev) => {
-    if (evFilter === "all") return true;
-    const meta = EV_META[ev.type];
-    return meta ? meta.grp === evFilter : true;
+    if (evFilter !== "all") {
+      const meta = EV_META[ev.type];
+      if (!meta || meta.grp !== evFilter) return false;
+    }
+    if (evTypeFilter && ev.type !== evTypeFilter) return false;
+    return eventMatchesSearch(ev, evSearch);
   });
 }
+
+function renderEventsView() {
+  const list = filteredEvents();
+  renderEventsInto($("events-list"), list);
+  const filtered = evFilter !== "all" || evTypeFilter !== "" || evSearch !== "";
+  $("ev-found").textContent = filtered
+    ? `найдено: ${list.length} из ${state.events.length}`
+    : `всего: ${state.events.length}`;
+}
+
+// select тегов (типов событий) — из EV_META, по алфавиту
+function initEvTypeFilter() {
+  const opts = Object.entries(EV_META).sort((a, b) => a[1].label.localeCompare(b[1].label, "ru"));
+  $("ev-type-filter").innerHTML = `<option value="">Все события (тег)</option>` +
+    opts.map(([code, m]) => `<option value="${esc(code)}" title="${esc(code)}">${esc(m.label)}</option>`).join("");
+}
+initEvTypeFilter();
 
 $("ev-filters").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-f]");
   if (!b) return;
   evFilter = b.dataset.f;
   document.querySelectorAll("#ev-filters button").forEach((x) => x.classList.toggle("active", x === b));
-  renderEventsInto($("events-list"), filteredEvents());
+  renderEventsView();
 });
+$("ev-type-filter").addEventListener("change", (e) => { evTypeFilter = e.target.value; renderEventsView(); });
+$("ev-search").addEventListener("input", (e) => { evSearch = e.target.value.trim().toLowerCase(); renderEventsView(); });
 
-/* ---------------- нода: детальная статистика (V7.7) ---------------- */
+/* ---------------- нода: детальная статистика ----------------------- */
 
 async function loadNode(id) {
   const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
@@ -1169,7 +1375,7 @@ async function loadNode(id) {
 }
 
 
-// V7.9: спарклайн клиентов с ховером: наводишь курсор — подсказка со временем
+// спарклайн клиентов с ховером: наводишь курсор — подсказка со временем
 // и числом подключений в этой точке + вертикальная направляющая и точка.
 // pts: [{at, v}]. Разметка — абсолютно-позиционные оверлеи над SVG (CSS
 // .sparkwrap), значения маппятся на индекс ближайшего сэмпла.
@@ -1230,7 +1436,7 @@ function renderNodeDetail(d) {
     : (n.queue_position > 0
         ? `<span class="badge queue">очередь #${n.queue_position}</span>`
         : `<span class="badge unk">вне очереди</span>`);
-  // metrics-чип — по ЗАЩЁЛКЕ (V7.9.4): именно она решает судьбу мастерства.
+  // metrics-чип — по ЗАЩЁЛКЕ: именно она решает судьбу мастерства.
   // При идущей серии падений показываем «серия N/F» рядом с чипом.
   const hcFail = (d.hc && d.hc.fail_threshold) || "?";
   const mStreak = n.metrics_fail_streak || 0;
@@ -1265,7 +1471,7 @@ function renderNodeDetail(d) {
       <div class="value ${s.cls || ""}" style="font-size:20px">${s.v}</div>
       <div class="extra">${esc(s.e)}</div></div>`).join("");
 
-  // последняя верификация Globalping по площадкам (с V7.7 регистратор хранит деталь)
+  // последняя верификация Globalping по площадкам (регистратор хранит деталь)
   const gp = d.gp_last || null;
   const gpHist = d.gp_hist || [];
   let gpSide;
@@ -1364,11 +1570,20 @@ function renderHeader(o) {
 
 function renderBanner(o) {
   const masters = o.masters || [];
-  const unassigned = masters.filter((m) => !m.node_id).map((m) => m.domain);
+  // домены, свёрнутые СРМД в CNAME, не «без мастера» — у них просто нет
+  // своей A-записи по определению, предупреждение им не положено
+  const unassigned = masters.filter((m) => !m.node_id && !m.cname_target).map((m) => m.domain);
   const dead = masters.filter((m) => m.node_id && m.dead).map((m) => m.domain);
+  // свёрнутые в CNAME домены не требуют мастера — в сравнениях «ноды против
+  // доменов» участвуют только активные (несвёрнутые)
+  const activeCount = masters.filter((m) => !m.cname_target).length;
   const banner = $("alert-banner");
   if (o.nodes_fully_healthy === 0) {
     banner.textContent = "⚠ В пуле нет здоровых нод — DNS остался на последних мастерах.";
+    banner.classList.add("show");
+  } else if (o.srmd && o.srmd.alert) {
+    // СРМД: нод слишком много в очереди, а создание доменов выключено
+    banner.textContent = "⚠ " + o.srmd.alert;
     banner.classList.add("show");
   } else if (unassigned.length > 0) {
     banner.textContent = "⚠ Домены без мастера: " + unassigned.join(", ") + " — A-записи для них не выставлены.";
@@ -1376,10 +1591,10 @@ function renderBanner(o) {
   } else if (dead.length > 0) {
     banner.textContent = "⚠ Мастер нездоров у доменов: " + dead.join(", ") + " — скоро переключатся.";
     banner.classList.add("show");
-  } else if (o.nodes_fully_healthy < masters.length) {
-    banner.textContent = `⚠ Нод меньше, чем доменов (${o.nodes_fully_healthy}/${masters.length}): резерва нет.`;
+  } else if (o.nodes_fully_healthy < activeCount) {
+    banner.textContent = `⚠ Нод меньше, чем доменов (${o.nodes_fully_healthy}/${activeCount}): резерва нет.`;
     banner.classList.add("show");
-  } else if (o.nodes_fully_healthy === masters.length) {
+  } else if (o.nodes_fully_healthy === activeCount) {
     banner.textContent = "⚠ Резерва нет: нод ровно столько, сколько доменов. При блокировке любой переключать будет некуда.";
     banner.classList.add("show");
   } else {
@@ -1387,12 +1602,13 @@ function renderBanner(o) {
   }
 }
 
-/* ---------------- роутер (V7.7: категории вместо одной страницы) ---------------- */
+/* ---------------- роутер (категории вместо одной страницы) ----------------------- */
 
 const VIEW_META = {
   overview: {title: "Обзор"},
   nodes:    {title: "Ноды пула"},
   dns:      {title: "Мастера и DNS"},
+  srmd:     {title: "СРМД — распределение и масштабирование доменов"},
   events:   {title: "Журнал событий"},
   settings: {title: "Настройки"},
 };
@@ -1422,6 +1638,9 @@ function route() {
   if (r.view === "settings" && !state.settingsLoaded) {
     loadSettings().then(() => { state.settingsLoaded = true; }).catch(() => {});
   }
+  if (r.view === "srmd" && !state.srmdLoaded) {
+    loadSRMDSettings().then(() => { state.srmdLoaded = true; }).catch(() => {});
+  }
   renderAll();
 }
 
@@ -1439,8 +1658,10 @@ function renderAll() {
       renderNodes(o);
     } else if (r.view === "dns") {
       renderMastersInto($("masters-full"), $("dns-hint"), o);
+    } else if (r.view === "srmd") {
+      renderSRMD(o);
     } else if (r.view === "events") {
-      renderEventsInto($("events-list"), filteredEvents());
+      renderEventsView();
     }
   }
   const r = currentRoute();
@@ -1454,7 +1675,7 @@ window.addEventListener("hashchange", route);
 async function refresh() {
   const [ov, ev] = await Promise.all([
     api("/panel/api/overview"),
-    api("/panel/api/events?limit=300"),
+    api("/panel/api/events?limit=1000"),
   ]);
   hideLogin();
   state.ov = ov;

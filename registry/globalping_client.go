@@ -13,7 +13,7 @@ type globalpingProbeResult struct {
 	StatusCode int    `json:"statusCode"`
 }
 
-// globalpingProbeInfo — площадка, откуда выполнялась проба (V7.7: показываем
+// GlobalpingProbeInfo — площадка, откуда выполнялась проба (показываем
 // на странице ноды, откуда именно светит/не светит прокси).
 type globalpingProbeInfo struct {
 	Continent string `json:"continent"`
@@ -77,7 +77,7 @@ func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement,
 	return &m, nil
 }
 
-// FetchFinished (V7.9.1) — скачать measurement, дождавшись его завершения.
+// FetchFinished — скачать measurement, дождавшись его завершения.
 // Нода присылает отчёт сразу после своего ожидания, но если оно у неё
 // вышло по таймауту, measurement ещё может быть in-progress: оценивать такой
 // по частичным результатам нельзя — недосчитанные пробы и давали «globalping

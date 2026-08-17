@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
-// V7.9.11: storage и агрегации вечной истории.
+// Storage и агрегации вечной истории.
 
 func TestHistoryDBGapChainAndRotation(t *testing.T) {
 	db := openHistoryDB(filepath.Join(t.TempDir(), "hist.db"))
@@ -52,6 +53,45 @@ func TestHistoryDBGapChainAndRotation(t *testing.T) {
 	}
 }
 
+// Один ip = один бан: повторная блокировка того же адреса строку не
+// добавляет; восстановление адреса (liftBanIP) строку убирает, и только
+// после этого новый бан адреса снова пишется как первый.
+func TestHistoryDBOneBanPerIP(t *testing.T) {
+	db := openHistoryDB(filepath.Join(t.TempDir(), "hist.db"))
+	if db == nil {
+		t.Fatal("db must open")
+	}
+	defer db.Close()
+
+	now := time.Now()
+	db.recordBan(banRow{TS: now.Add(-3 * time.Hour), NodeID: "n1", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 100})
+	// перепроверка: тот же ip забанили снова (даже под новым node_id и с
+	// новым мастер-временем) — вторая строка НЕ появляется
+	db.recordBan(banRow{TS: now.Add(-2 * time.Hour), NodeID: "n1-retry", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 300})
+	db.recordBan(banRow{TS: now.Add(-2*time.Hour + time.Minute), NodeID: "n2", IP: "8.8.8.8", Reason: BanReasonIPBan, LifetimeSec: 50})
+
+	rows, _ := db.bansSince(now.Add(-4*time.Hour), "")
+	if len(rows) != 2 {
+		t.Fatalf("one ip = one ban row: want 2 rows, got %+v", rows)
+	}
+
+	// адрес восстановился — его бан из статистики убирается
+	if n := db.liftBanIP("7.7.7.7"); n != 1 {
+		t.Fatalf("lift must remove exactly one row, got %d", n)
+	}
+	rows, _ = db.bansSince(now.Add(-4*time.Hour), "")
+	if len(rows) != 1 || rows[0].IP != "8.8.8.8" {
+		t.Fatalf("after lift only 8.8.8.8 must remain, got %+v", rows)
+	}
+
+	// …и следующий бан восстановленного адреса снова считается первым
+	db.recordBan(banRow{TS: now, NodeID: "n1-again", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 10})
+	rows, _ = db.bansSince(now.Add(-4*time.Hour), "")
+	if len(rows) != 2 {
+		t.Fatalf("re-ban after recovery must be recorded again, got %+v", rows)
+	}
+}
+
 // Три метрики дашборда (все — только по банам GP): число, периодичность,
 // среднее время жизни; окна и бакеты.
 func TestDashboardAggregates(t *testing.T) {
@@ -61,18 +101,20 @@ func TestDashboardAggregates(t *testing.T) {
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	// три GP-бана сегодня: 01:10 (life 2h), 05:10 (life 1h), 06:40 (life 0.5h)
+	// три GP-бана сегодня: 01:10 (life 2h), 05:10 (life 1h), 06:40 (life 0.5h);
+	// ip у всех разные — один адрес пишется баном максимум один раз
 	seed := []struct {
 		at   time.Time
 		life int64
 		node string
+		ip   string
 	}{
-		{today.Add(70 * time.Minute), 7200, "n1"},
-		{today.Add(5*time.Hour + 10*time.Minute), 3600, "n2"},
-		{today.Add(6*time.Hour + 40*time.Minute), 1800, "n3"},
+		{today.Add(70 * time.Minute), 7200, "n1", "10.0.0.7"},
+		{today.Add(5*time.Hour + 10*time.Minute), 3600, "n2", "10.0.0.8"},
+		{today.Add(6*time.Hour + 40*time.Minute), 1800, "n3", "10.0.0.17"},
 	}
 	for _, s := range seed {
-		r.db.recordBan(banRow{TS: s.at, NodeID: s.node, IP: "10.0.0.7", Reason: BanReasonIPBan, LifetimeSec: s.life})
+		r.db.recordBan(banRow{TS: s.at, NodeID: s.node, IP: s.ip, Reason: BanReasonIPBan, LifetimeSec: s.life})
 	}
 	// dead-бан не участвует в метриках GP
 	r.db.recordBan(banRow{TS: today.Add(8 * time.Hour), NodeID: "nd", IP: "10.0.0.9", Reason: BanReasonDead, LifetimeSec: 600})
@@ -128,7 +170,7 @@ func TestDashboardAggregates(t *testing.T) {
 	}
 }
 
-// V7.9.12 #4: интервалы <2 мин между банами — всплеск одного инцидента
+// #4: интервалы <2 мин между банами — всплеск одного инцидента
 // (флап), в «Периодичность банов» (средний интервал) не учитываются.
 func TestDashboardGapClusterFilter(t *testing.T) {
 	r := newTestRegistry(t)
@@ -143,7 +185,7 @@ func TestDashboardGapClusterFilter(t *testing.T) {
 		today.Add(31 * time.Minute), today.Add(2*time.Hour + 40*time.Minute),
 	}
 	for i, ts := range seed {
-		r.db.recordBan(banRow{TS: ts, NodeID: "n", IP: "10.0.0.1", Reason: BanReasonIPBan, LifetimeSec: 60 + int64(i)})
+		r.db.recordBan(banRow{TS: ts, NodeID: "n", IP: fmt.Sprintf("10.1.0.%d", i+1), Reason: BanReasonIPBan, LifetimeSec: 60 + int64(i)})
 	}
 	d := r.buildDashboard("day", now)
 	if d.KPI.Bans != 4 {

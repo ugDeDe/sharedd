@@ -26,7 +26,7 @@ type HealthReportPayload struct {
 
 // streakStep — один шаг анти-флап защёлки «failK подряд плохих гасит,
 // recoverK подряд хороших возвращает» (TCP-пробы и metrics-отчёты — одна и
-// та же машина; до V7.9.10 существовала в двух рукописных копиях). Счётчики
+// та же машина; до существовала в двух рукописных копиях). Счётчики
 // серий не обрезаются после смены состояния: панель показывает «серия N/F»
 // во время набега и полную длину серии вне окна. Возвращает новые
 // (on, fails, oks) и changed=true при смене состояния — события up/down и
@@ -70,7 +70,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 
 	r.mu.Lock()
 	candidate, ok := r.state.Candidates[payload.NodeID]
-	// V7.9.11: отчёт от терминально убитой ноды — kill-сигнал вместо 404.
+	// Отчёт от терминально убитой ноды — kill-сигнал вместо 404.
 	var rec *TerminatedRecord
 	if !ok {
 		host, _, _ := net.SplitHostPort(req.RemoteAddr)
@@ -93,12 +93,12 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	verifyGP := payload.GlobalpingMeasurementID != ""
 	verifiedRatio := 0.0
 	verifiedOK := false
-	// V7.9.1: верификация «не состоялась» (API недоступно / measurement ещё
+	// Верификация «не состоялась» (API недоступно / measurement ещё
 	// выполняется) НЕ переводит ноду в заблокированные — иначе сетевой чих до
 	// globalping рисовал ratio 0. GP-статус просто сохраняется до следующего цикла.
 	verifiedKnown := false
 	verifyErr := ""
-	var measurement *globalpingMeasurement // V7.7: сохраняем для детали площадок
+	var measurement *globalpingMeasurement // сохраняем для детали площадок
 	if verifyGP {
 		// api_base Globalping — под cfgMu (панель может менять на лету)
 		r.cfgMu.RLock()
@@ -163,7 +163,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				Detail: fmt.Sprintf("verified ratio %.2f", verifiedRatio),
 			})
 		}
-		// V7.7: история + деталь по площадкам для страницы статистики ноды.
+		// История + деталь по площадкам для страницы статистики ноды.
 		// Деталь — только когда measurement реально скачан (verifyErr пуст).
 		probesOK, probesTotal := 0, 0
 		if measurement != nil {
@@ -195,7 +195,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			ProbesOK: probesOK, ProbesTotal: probesTotal,
 		}, gpHistCap)
 
-		// GP-карантин. V7.9.12: вход — по ЛЮБОМУ верифицированному GP-фейлу
+		// GP-карантин. вход — по ЛЮБОМУ верифицированному GP-фейлу
 		// (без предусловия «всё зелёное»: не прошла globalping — в карантин).
 		// Дальше каждая неудачная ВЕРИФИЦИРОВАННАЯ проверка увеличивает
 		// счётчик попыток; достиг quarantine_attempts (правится из панели) —
@@ -215,9 +215,14 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			if q.Reverify {
 				r.addEventLocked(Event{
 					Type: EventBanLifted, NodeID: candidate.NodeID, IP: candidate.IP,
-					Detail: "старый ip прошёл gp re-verify — бан снят (в истории банов остаётся)",
+					Detail: "старый ip прошёл gp re-verify — бан снят и убран из статистики",
 				})
 				log.Printf("candidate %s: gp re-verify ok — old ip unbanned", candidate.NodeID)
+				// адрес восстановился — запись о его бане убирается из
+				// статистики (один ip = один бан, до восстановления)
+				if r.db != nil {
+					r.db.liftBanIP(candidate.IP)
+				}
 			}
 		case !verifiedOK && candidate.Quarantine != nil:
 			candidate.Quarantine.Attempts++
@@ -257,7 +262,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		}
 	}
 	candidate.MetricsOK = payload.MetricsOK
-	// V7.9.4: metrics-защёлка по fail/recover-порогам (аналог TCP-защёлки
+	// Metrics-защёлка по fail/recover-порогам (аналог TCP-защёлки
 	// Healthy в probeLoop). Одиночный сбойный отчёт fully-healthy НЕ роняет:
 	// отказ фиксируется только после fail_threshold ПОДРЯД плохих отчётов,
 	// возврат в строй — после recover_threshold подряд хороших. Серия ведётся
@@ -290,7 +295,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if payload.MetricsSnapshot != nil {
 		candidate.MetricsSnapshot = payload.MetricsSnapshot
 	}
-	// V7.7: история metrics-отчётов (клиенты/райтеры) для страницы ноды
+	// История metrics-отчётов (клиенты/райтеры) для страницы ноды
 	{
 		clients := -1
 		if v, ok := payload.MetricsSnapshot[uniqueIPsMetric]; ok {
@@ -323,7 +328,7 @@ func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 	if !c.Healthy {
 		return false
 	}
-	// V7.9.4: вместо сырого MetricsOK последнего отчёта — защёлка
+	// Вместо сырого MetricsOK последнего отчёта — защёлка
 	// MetricsHealthy (fail/recover-пороги). GlobalpingOK остаётся
 	// мгновенным: это НЕЗАВИСИМАЯ верификация регистратора, нода её
 	// подделать не может, а подтверждённо заблокированный мастер —
@@ -341,7 +346,7 @@ func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 // healthy. Используется в журнале событий (queue_left) и панели.
 func (c *Candidate) unhealthyReason(freshnessTTL time.Duration) string {
 	switch {
-	case c.Quarantine != nil: // V7.9.11
+	case c.Quarantine != nil: //
 		return fmt.Sprintf("gp quarantine: failed verified attempt %d (last ratio %.2f) — awaiting ban verdict or recovery",
 			c.Quarantine.Attempts, c.Quarantine.LastRatio)
 	case !c.Healthy:
@@ -353,7 +358,7 @@ func (c *Candidate) unhealthyReason(freshnessTTL time.Duration) string {
 		}
 		return reason
 	case !c.MetricsHealthy:
-		// V7.9.4: сюда попадаем только после серии плохих отчётов (защёлка)
+		// Сюда попадаем только после серии плохих отчётов (защёлка)
 		reason := fmt.Sprintf("telemt metrics failing (%d consecutive bad reports hit fail_threshold)", c.MetricsFailStreak)
 		if c.ReportError != "" {
 			reason += ": " + c.ReportError

@@ -56,7 +56,7 @@ func TestBuildMetricsSnapshotUniqueIPs(t *testing.T) {
 		{name: "telemt_user_connections_current", labels: `user="alice"`, value: 2},
 		{name: "telemt_user_connections_current", labels: `user="bob"`, value: 5},
 	}
-	snapshot, values := buildMetricsSnapshot(samples)
+	snapshot, values := buildMetricsSnapshot(samples, nil)
 	if snapshot[uniqueIPsMetricName] != 5 {
 		t.Fatalf("unique IPs aggregate must be 2+3=5, got %v", snapshot[uniqueIPsMetricName])
 	}
@@ -74,11 +74,41 @@ func TestBuildMetricsSnapshotUniqueIPs(t *testing.T) {
 	}
 }
 
+func TestBuildMetricsSnapshotSharedSecretOnly(t *testing.T) {
+	// Активные клиенты считаются ТОЛЬКО по общему секрету — серии
+	// локальных (не розданных регистратором) пользователей в агрегат не входят.
+	samples := []promSample{
+		{name: healthMetricName, value: 2},
+		{name: uniqueIPsMetricName, labels: `user="u0cb271"`, value: 399},
+		{name: uniqueIPsMetricName, labels: `user="shared2"`, value: 41},
+		{name: uniqueIPsMetricName, labels: `user="localguy"`, value: 1000},
+		{name: userConnsMetricName, labels: `user="u0cb271"`, value: 500},
+		{name: userConnsMetricName, labels: `user="localguy"`, value: 7},
+	}
+	shared := map[string]string{
+		"u0cb271": "0123456789abcdef0123456789abcdef",
+		"shared2": "fedcba9876543210fedcba9876543210",
+	}
+	snapshot, _ := buildMetricsSnapshot(samples, shared)
+	if snapshot[uniqueIPsMetricName] != 440 {
+		t.Fatalf("aggregate must count shared users only (399+41), got %v", snapshot[uniqueIPsMetricName])
+	}
+	if snapshot[userConnsMetricName] != 500 {
+		t.Fatalf("conns aggregate must count shared users only (500), got %v", snapshot[userConnsMetricName])
+	}
+	if _, ok := snapshot[`telemt_user_unique_ips_current{user="localguy"}`]; ok {
+		t.Fatal("local user series must not leak into the snapshot")
+	}
+	if snapshot[`telemt_user_unique_ips_current{user="u0cb271"}`] != 399 {
+		t.Fatal("shared user series must be preserved")
+	}
+}
+
 func TestBuildMetricsSnapshotNoUserTelemetry(t *testing.T) {
 	// user_enabled=false в telemt: per-user серий нет вообще.
 	// Агрегаты НЕ должны появляться — панель отличит "нет данных" от нуля.
 	samples := []promSample{{name: healthMetricName, value: 1}}
-	snapshot, _ := buildMetricsSnapshot(samples)
+	snapshot, _ := buildMetricsSnapshot(samples, nil)
 	if _, ok := snapshot[uniqueIPsMetricName]; ok {
 		t.Fatal("aggregate without any per-user series would fake zero clients")
 	}
@@ -96,7 +126,7 @@ func TestBuildMetricsSnapshotSeriesCap(t *testing.T) {
 			value:  1,
 		})
 	}
-	snapshot, _ := buildMetricsSnapshot(samples)
+	snapshot, _ := buildMetricsSnapshot(samples, nil)
 	labeled := 0
 	for k := range snapshot {
 		if strings.HasPrefix(k, uniqueIPsMetricName+"{") {

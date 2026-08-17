@@ -16,7 +16,7 @@ import (
 type registerPayload struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType (V7.9): classic / mtproxyl / meko — информационный бейдж в
+	// NodeType: classic / mtproxyl / meko — информационный бейдж в
 	// панели (см. nodetype.go).
 	NodeType string `json:"node_type,omitempty"`
 }
@@ -34,7 +34,7 @@ func main() {
 		log.Fatalf("config error: %v", err)
 	}
 
-	// V7.9.2: one-shot конвейер для установщика — применить конфиг и выйти
+	// One-shot конвейер для установщика — применить конфиг и выйти
 	// (стоп → патч → старт → ожидание /metrics → откат; коды выхода см.
 	// apply_once.go). Демон в этом режиме не запускается.
 	if applyOnceFlag() {
@@ -48,12 +48,12 @@ func main() {
 	log.Printf("node id: %s (persistent random)", nodeID)
 
 	ipr := newIPResolver()
-	if cfg.Node.PublicIP != "" { // V7.9.11: ручной адрес (DNAT/hairpin)
+	if cfg.Node.PublicIP != "" { // ручной адрес (DNAT/hairpin)
 		ipr.fixed = cfg.Node.PublicIP
 	}
 
-	// V7.9.11: нода когда-то была терминально завершена — проверяем право на
-	// воскрешение ДО любых регистраций (V7.9.12: ip сменился ИЛИ регистратор
+	// Нода когда-то была терминально завершена — проверяем право на
+	// Воскрешение ДО любых регистраций (ip сменился ИЛИ регистратор
 	// дал gp re-verify — иначе служба останавливается, новых регистраций
 	// не будет).
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -80,7 +80,7 @@ func main() {
 }
 
 // register — POST /register. ok=true только при 200. Если регистратор держит
-// ноду в карантине после prune (V7.9.7), регистрация отклоняется
+// ноду в карантине после prune, регистрация отклоняется
 // 429 + Retry-After — тогда ok=false и retryAfter>0: вызывающая сторона
 // ОБЯЗАНА глушить повторные попытки до дедлайна (см. heartbeatLoop), иначе
 // вернёмся к долбёжке, которую карантин как раз призван прекратить.
@@ -98,7 +98,7 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	// V7.9.11: терминальный бан — регистрация запрещена навсегда; завершаемся
+	// Терминальный бан — регистрация запрещена навсегда; завершаемся
 	// (сообщение регистратора уходит в лог дословно). Функция не возвращается.
 	if resp.StatusCode == http.StatusForbidden {
 		if te, ok := parseTerminateBody(body); ok {
@@ -106,7 +106,7 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 		}
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// V7.9.7: prune-карантин на регистраторе. Регистрироваться раньше
+		// Prune-карантин на регистраторе. Регистрироваться раньше
 		// дедлайна нет смысла — TTL карантина растёт с каждым strike.
 		retryAfter := parseRetryAfterSeconds(resp.Header.Get("Retry-After"))
 		log.Printf("register deferred by registry: node was pruned as inactive, retry after %s",
@@ -135,7 +135,7 @@ func parseRetryAfterSeconds(h string) time.Duration {
 
 func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 	lastRegisteredIP := ""
-	// V7.9.8: право молчания сведено в netGate (localhealth.go): режим тихого
+	// Право молчания сведено в netGate (localhealth.go): режим тихого
 	// лечения (локальные проверки красные) и prune-карантин (429 Retry-After)
 	// оба означают ПОЛНОЕ молчание для регистратора — ни heartbeat, ни
 	// отчётов. Молчание снимает ноду из пула за heartbeat_ttl; возврат —
@@ -187,7 +187,7 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 		} else {
 			hbBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			// V7.9.11: kill-сигнал — нода терминально убита, завершаемся.
+			// Kill-сигнал — нода терминально убита, завершаемся.
 			if resp.StatusCode == http.StatusForbidden {
 				if te, ok := parseTerminateBody(hbBody); ok {
 					selfTerminate(cfg, te.Reason, te.Message, ip)
@@ -204,9 +204,9 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 
 func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 	for {
-		// Тихое лечение V7.9.8: при мёртвых локальных метриках или активном
+		// Тихое лечение при мёртвых локальных метриках или активном
 		// prune-карантине measurement'ы не создаём вовсе (жечь квоту по
-		// мёртвому прокси незачем). V7.9.11: GP-нога НЕМОТЫ убрана — нода с
+		// Мёртвому прокси незачем). GP-нога НЕМОТЫ убрана — нода с
 		// «всё зелёное, кроме GP» обязана продолжать отчёты: её судьбу
 		// (карантин → N попыток → бан) и доставку kill-сигнала ведёт
 		// регистратор (registry/terminate.go).
@@ -234,7 +234,7 @@ func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 		}
 		if err := SendReport(cfg.Registry.URL, report); err != nil {
 			var te *TerminatedError
-			if errors.As(err, &te) { // V7.9.11: kill-сигнал при ответе на отчёт
+			if errors.As(err, &te) { // kill-сигнал при ответе на отчёт
 				selfTerminate(cfg, te.Reason, te.Message, ip)
 			}
 			log.Printf("failed to send globalping report: %v", err)
@@ -253,11 +253,11 @@ func metricsLoop(cfg *NodeConfig, ipr *ipResolver) {
 			log.Printf("metrics check ok=%v (%s=%v)", report.MetricsOK, healthMetricName,
 				report.MetricsSnapshot[healthMetricName])
 		}
-		// V7.9.8: локальная проверка питает защёлку молчания. В режиме тихого
+		// Локальная проверка питает защёлку молчания. В режиме тихого
 		// лечения (и в prune-карантине) отчёт НЕ отправляем: регистратору о
 		// больной ноде знать незачем — пусть снимает её по heartbeat-TTL.
 		gate.noteLocal(report.Error == "" && report.MetricsOK)
-		// V7.9.11: метрик-немота непрерывно дольше dead_kill (ум. 10 мин) —
+		// Метрик-немота непрерывно дольше dead_kill (ум. 10 мин) —
 		// это терминальный класс dead. Агент умирает сам, успевая сообщить
 		// регистратору /retire (бан — в вечную историю). В лог уходит msgDead.
 		if win := cfg.deadKill(); win > 0 && gate.deadKillDue(time.Now(), win) {
@@ -269,7 +269,7 @@ func metricsLoop(cfg *NodeConfig, ipr *ipResolver) {
 		}
 		if err := SendReport(cfg.Registry.URL, report); err != nil {
 			var te *TerminatedError
-			if errors.As(err, &te) { // V7.9.11: kill-сигнал при ответе на отчёт
+			if errors.As(err, &te) { // kill-сигнал при ответе на отчёт
 				selfTerminate(cfg, te.Reason, te.Message, ip)
 			}
 			log.Printf("failed to send metrics report: %v", err)

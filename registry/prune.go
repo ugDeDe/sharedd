@@ -6,22 +6,22 @@ import (
 	"time"
 )
 
-// Рипер неактивных нод (V7.9.6) + карантин после prune (V7.9.7).
+// Рипер неактивных нод + карантин после prune.
 //
 // Раньше нода удалялась из пула ТОЛЬКО по протуханию heartbeat (expiryLoop).
 // Дыра в модели: живой агент с мёртвым прокси шлёт heartbeat'ы и падающие
 // отчёты вечно — нода висела в пуле «вся красная» бесконечно (heartbeat
-// свежий, TCP/GP/metrics fail). V7.9.6 добавила рипера: нода, непрерывно
+// свежий, TCP/GP/metrics fail). Рипер: нода, непрерывно
 // ВНЕ очереди здоровых дольше [healthcheck] prune_unhealthy_min (дефолт 60;
 // явный 0 = выкл.), удаляется из пула событием node_pruned. Отсчёт — по
 // Candidate.UnhealthySince (момент выхода из fully-healthy), персистится.
 //
-// V7.9.6 боль: дверь получилась вертящейся — heartbeat по неизвестному id
+// Проблема: дверь получилась вертящейся — heartbeat по неизвестному id
 // даёт 410, агент МГНОВЕННО пере-регистрируется, окно рипера стартует
 // с нуля, и мёртвая нода фактически никуда не девается: она в пуле красная
 // ~всё окно, а лента событий копит пары register/prune каждые N минут.
 //
-// V7.9.7: prune стал липким. После каждого prune пара (node_id, IP) ложится
+// Prune стал липким. После каждого prune пара (node_id, IP) ложится
 // в карантин State.PruneStrikes: повторная регистрация отклоняется
 // (429 + Retry-After), пока карантин не истечёт. Серия prune подряд (без
 // единого fully-healthy эпизода между ними) удваивает карантин:
@@ -72,7 +72,7 @@ func pruneBanFor(strikes int) time.Duration {
 }
 
 // resolvePruneUnhealthyMinutes — эффективное окно (мин): nil → дефолт,
-// 0 → рипер выключен. Семантика указателя как у master_ttl_minutes (V7.9.3).
+// 0 → рипер выключен. Семантика указателя как у master_ttl_minutes.
 func resolvePruneUnhealthyMinutes(p *int) int {
 	if p == nil {
 		return defaultPruneUnhealthyMinutes
@@ -154,7 +154,7 @@ func (r *Registry) clearTombstonesOnJoinLocked(c *Candidate) {
 // sweepExpired — удаление нод из пула. Два независимых основания:
 //  1. heartbeat протух (агент умер/отрезан) — классический expiry;
 //  2. нода непрерывно вне очереди здоровых дольше PruneUnhealthyTTL —
-//     рипер (V7.9.6), с карантином на возврат (V7.9.7).
+//     рипер, с карантином на возврат.
 //
 // Заодно собирает мусор в PruneStrikes (idle-записи старше tombstoneIdleTTL).
 func (r *Registry) sweepExpired(now time.Time) {
@@ -163,7 +163,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 	changed := false
 	for id, c := range r.state.Candidates {
 		if now.Sub(c.LastHeartbeat) > r.cfg.HeartbeatTTL {
-			// V7.9.12: нода отвалилась ИЗ КАРАНТИНА — это не «просто
+			// Нода отвалилась ИЗ КАРАНТИНА — это не «просто
 			// expiry», а бан: она в карантине потому, что не прошла
 			// globalping. Пишем ip_ban (в статистику дашборда входит).
 			if c.Quarantine != nil {
@@ -181,7 +181,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 			changed = true
 			continue
 		}
-		// V7.9.11, класс dead: TCP-порт не отвечает И метрик нет (отчёты
+		//, класс dead: TCP-порт не отвечает И метрик нет (отчёты
 		// протухли ИЛИ серия отчётов красная) непрерывно TerminateDeadTTL →
 		// терминальное завершение. Отсчёт непрерывности — DeadBothSince:
 		// зеленение любой ноги окно обнуляет. Молчащие ноды до этого окна
@@ -198,7 +198,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 				c.DeadBothSince = time.Time{}
 			}
 			if bothDead && now.Sub(c.DeadBothSince) >= r.cfg.TerminateDeadTTL {
-				// V7.9.12: dead ВО ВРЕМЯ карантина — записываем как ip_ban
+				// Dead ВО ВРЕМЯ карантина — записываем как ip_ban
 				// (нода уже в карантине за GP-фейл); «чистый» dead — только
 				// для нод, GP не фейливших.
 				reason, cause := BanReasonDead, ""
@@ -212,7 +212,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 		}
 		if r.cfg.PruneUnhealthyTTL > 0 && !c.FullyHealthy && c.Quarantine == nil &&
 			!c.UnhealthySince.IsZero() && now.Sub(c.UnhealthySince) >= r.cfg.PruneUnhealthyTTL {
-			// V7.9.11: карантинных (c.Quarantine != nil) рипер не трогает —
+			// Карантинных (c.Quarantine != nil) рипер не трогает —
 			// их судьбу решает счётчик GP-попыток (terminate по ip_ban).
 			tb := r.upsertTombstoneLocked(id, c.IP, now)
 			log.Printf("candidate %s pruned (out of healthy queue for %s) — re-register banned for %s (strike %d)",

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// V7.8: статистика пула по журналу событий — баны GP (recovered ⇒ не бан),
+// Статистика пула по журналу событий — баны GP (recovered ⇒ не бан),
 // периодичность банов и DNS-смен, среднее время мастерства.
 func TestBuildPanelStats(t *testing.T) {
 	r := newTestRegistry(t)
@@ -85,7 +85,63 @@ func TestBuildPanelStats(t *testing.T) {
 	}
 }
 
-// V7.8: master_lost БЕЗ домена (stint-reconcile «no healthy replacement»)
+// Один ip = один бан: повторные баны того же адреса (перепроверки, ре-баны
+// под новым node_id) запись не дублируют; восстановление адреса
+// (globalping_recovered / ban_lifted) убирает бан из статистики, даже если
+// запись уже была закрыта уходом ноды.
+func TestPanelStatsOneBanPerIPLiftOnRecovery(t *testing.T) {
+	r := newTestRegistry(t)
+	base := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	add := func(atSec int, ev Event) {
+		r.mu.Lock()
+		ev.At = base.Add(time.Duration(atSec) * time.Second)
+		r.addEventLocked(ev)
+		r.mu.Unlock()
+	}
+
+	// адрес 9.9.9.9: бан, уход ноды, повторный бан перепроверкой (новый id)
+	add(0, Event{Type: EventGlobalpingBlocked, NodeID: "nA", IP: "9.9.9.9"})
+	add(10, Event{Type: EventNodeTerminated, NodeID: "nA", IP: "9.9.9.9"})
+	add(20, Event{Type: EventGlobalpingBlocked, NodeID: "nA2", IP: "9.9.9.9"}) // ре-бан — НЕ новая запись
+	// адрес 8.8.8.8: бан и уход ноды — позже восстановится через reverify
+	add(30, Event{Type: EventGlobalpingBlocked, NodeID: "nB", IP: "8.8.8.8"})
+	add(40, Event{Type: EventNodeTerminated, NodeID: "nB", IP: "8.8.8.8"})
+	// адрес 7.7.7.7: активный бан без восстановления
+	add(50, Event{Type: EventGlobalpingBlocked, NodeID: "nC", IP: "7.7.7.7"})
+
+	stats := func() panelStats {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		return r.buildPanelStatsLocked(base.Add(600 * time.Second))
+	}
+
+	st := stats()
+	if st.GPBansTotal != 3 {
+		t.Fatalf("want 3 bans (one per ip, re-ban ignored), got %+v", st.GPBanHistory)
+	}
+
+	// 8.8.8.8 восстановился (reverify прошёл) — его бан из статистики долой,
+	// даже если раньше запись была закрыта уходом ноды
+	add(100, Event{Type: EventBanLifted, NodeID: "nB2", IP: "8.8.8.8"})
+	st = stats()
+	if st.GPBansTotal != 2 {
+		t.Fatalf("recovered ip ban must disappear: %+v", st.GPBanHistory)
+	}
+	for _, b := range st.GPBanHistory {
+		if b.IP == "8.8.8.8" {
+			t.Fatalf("8.8.8.8 must be gone from stats: %+v", b)
+		}
+	}
+
+	// восстановление зелёным globalping'ом работает так же
+	add(120, Event{Type: EventGlobalpingRecovered, NodeID: "nA3", IP: "9.9.9.9"})
+	st = stats()
+	if st.GPBansTotal != 1 || st.GPBanHistory[0].IP != "7.7.7.7" || !st.GPBanHistory[0].Active {
+		t.Fatalf("only the unrecovered 7.7.7.7 must remain: %+v", st.GPBanHistory)
+	}
+}
+
+// Master_lost БЕЗ домена (stint-reconcile «no healthy replacement»)
 // закрывает открытый stint ноды — иначе мастерство завышалось бы.
 func TestPanelStatsDomainlessMasterLost(t *testing.T) {
 	r := newTestRegistry(t)
@@ -107,7 +163,7 @@ func TestPanelStatsDomainlessMasterLost(t *testing.T) {
 	}
 }
 
-// V7.8: пустой журнал — метрики отсутствуют (nil), банов нет, всё нули.
+// Пустой журнал — метрики отсутствуют (nil), банов нет, всё нули.
 func TestPanelStatsEmptyJournal(t *testing.T) {
 	r := newTestRegistry(t)
 	r.mu.RLock()
@@ -131,7 +187,7 @@ func TestPanelStatsEmptyJournal(t *testing.T) {
 	}
 }
 
-// V7.8: overview отдаёт stats блоком; панельный эндпоинт несёт его в JSON.
+// Overview отдаёт stats блоком; панельный эндпоинт несёт его в JSON.
 func TestOverviewCarriesStats(t *testing.T) {
 	r := newTestRegistry(t)
 	r.cfg.PanelEnabled = true

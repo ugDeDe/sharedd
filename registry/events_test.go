@@ -55,7 +55,7 @@ func TestEventRingTrim(t *testing.T) {
 }
 
 // История смен мастера: избрание, потеря, перевыборы; учёт времени мастерства.
-// V7: события master_elected/master_lost помечены доменом.
+// События master_elected/master_lost помечены доменом.
 func TestMasterEventsAndStintAccounting(t *testing.T) {
 	r := newTestRegistry(t)
 	makeHealthy := func(id string) {
@@ -94,7 +94,7 @@ func TestMasterEventsAndStintAccounting(t *testing.T) {
 		t.Fatal("B must not steal A's only domain")
 	}
 	r.state.Candidates["A"].MetricsOK = false
-	r.state.Candidates["A"].MetricsHealthy = false // V7.9.4: роняем защёлку
+	r.state.Candidates["A"].MetricsHealthy = false // роняем защёлку
 	changes := r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "A", "B")
 

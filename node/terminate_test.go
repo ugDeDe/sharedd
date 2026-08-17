@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// V7.9.11: терминальное завершение ноды — tombstone, boot-перевалидация,
+// Терминальное завершение ноды — tombstone, boot-перевалидация,
 // разбор kill-ответа регистратора, retire-уведомление при локальном dead.
 
 // stubExit подменяет «останов службы» на запись сообщения; возвращает
@@ -70,7 +70,7 @@ func TestTombstoneRoundTrip(t *testing.T) {
 	}
 }
 
-// boot-кейсы ip_ban с НЕИЗМЕННЫМ ip (V7.9.12): нода просит у регистратора
+// boot-кейсы ip_ban с НЕИЗМЕННЫМ ip: нода просит у регистратора
 // GP-перепроверку. Регистратор решил — принял в reverify (200) или убил
 // (403); недоступный регистратор = перепроверка не состоялась → умираем.
 func bootReverifyEnv(t *testing.T, regHandler http.HandlerFunc) (*NodeConfig, *http.Client) {
@@ -142,7 +142,7 @@ func TestBootCheckIPBanSameIPReverifyDenied(t *testing.T) {
 	}
 }
 
-// регистратор недоступен — перепроверка не состоялась → смерть (как V7.9.11).
+// регистратор недоступен — перепроверка не состоялась → смерть (как).
 func TestBootCheckIPBanSameIPRegistryDown(t *testing.T) {
 	useTempTombstone(t)
 	died := stubExit(t)

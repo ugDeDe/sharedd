@@ -11,11 +11,11 @@ const (
 	EventNodeRegistered      = "node_registered"
 	EventNodeReplaced        = "node_replaced" // вытеснена регистрацией с тем же IP
 	EventNodeExpired         = "node_expired"  // heartbeat TTL истёк, нода удалена
-	EventNodePruned          = "node_pruned"   // V7.9.6: непрерывно нездорова дольше prune_unhealthy_min — удалена
+	EventNodePruned          = "node_pruned"   // непрерывно нездорова дольше prune_unhealthy_min — удалена
 	EventTCPDown             = "tcp_down"
 	EventTCPUp               = "tcp_up"
-	EventMetricsDown         = "metrics_down"         // V7.9.4: защёлка метрик закрылась (fail_threshold подряд плохих отчётов)
-	EventMetricsUp           = "metrics_up"           // V7.9.4: защёлка метрик открылась (recover_threshold подряд хороших)
+	EventMetricsDown         = "metrics_down"         // защёлка метрик закрылась (fail_threshold подряд плохих отчётов)
+	EventMetricsUp           = "metrics_up"           // защёлка метрик открылась (recover_threshold подряд хороших)
 	EventGlobalpingBlocked   = "globalping_blocked"   // независимая проверка Globalping: фейл
 	EventGlobalpingRecovered = "globalping_recovered" // проверка снова проходит
 	EventQueueJoined         = "queue_joined"         // вошла в очередь мастерства (fully healthy)
@@ -24,14 +24,20 @@ const (
 	EventMasterLost          = "master_lost"
 	EventDNSUpdated          = "dns_updated"
 	EventDNSError            = "dns_error"
-	EventDNSDeleted          = "dns_deleted"    // V7.8: записи домена, выведенного из managed-списка, удалены из Cloudflare
+	EventDNSDeleted          = "dns_deleted"    // записи домена, выведенного из managed-списка, удалены из Cloudflare
 	EventConfigChanged       = "config_changed" // секции конфига изменены через панель
-	// V7.9.11: GP-карантин и терминальное завершение нод (terminate.go).
+	// GP-карантин и терминальное завершение нод (terminate.go).
 	EventNodeQuarantined     = "node_quarantined"     // всё зелёное кроме GP — отдельная таблица, ждёт вердикта
 	EventQuarantineRecovered = "quarantine_recovered" // GP в карантине позеленел — нода возвращается нормально
 	EventNodeTerminated      = "node_terminated"      // финал: бан (ip_ban/dead), нода мертва, регистраций нет
 	EventBanLifted           = "ban_lifted"           // ip_ban снят: служба перезапущена с нового IP (история бана сохраняется)
-	EventIPBlocked           = "ip_blocked"           // V7.9.13: нода сменила ip в карантине — старый ip записан как бан
+	EventIPBlocked           = "ip_blocked"           // нода сменила ip в карантине — старый ip записан как бан
+	// СРМД — масштабирование пула доменов (srmd.go).
+	EventSRMDDomainCreated  = "srmd_domain_created"  // создан сиротский домен с инкрементом
+	EventSRMDDomainFolded   = "srmd_domain_folded"   // лишний домен свёрнут в CNAME на оставшийся
+	EventSRMDDomainUnfolded = "srmd_domain_unfolded" // свёрнутый домен возвращён в ротацию мастеров
+	EventSRMDDomainTaken    = "srmd_domain_taken"    // ручной домен взят под контроль СРМД
+	EventSRMDDomainReleased = "srmd_domain_released" // домен СРМД переведён обратно в ручной режим
 )
 
 type Event struct {
@@ -39,7 +45,7 @@ type Event struct {
 	Type   string    `json:"type"`
 	NodeID string    `json:"node_id,omitempty"`
 	IP     string    `json:"ip,omitempty"`
-	// Domain — V7: к какому managed-домену относится событие (мастера per-domain).
+	// Domain — к какому managed-домену относится событие (мастера per-domain).
 	Domain string `json:"domain,omitempty"`
 	Detail string `json:"detail,omitempty"`
 }
@@ -53,11 +59,15 @@ type Counters struct {
 	DNSErrors      int `json:"dns_errors_total"`
 	HealthReports  int `json:"health_reports_total"`
 	Heartbeats     int `json:"heartbeats_total"`
-	// MasterTTLRotations (V7.9.3) — сколько раз мастерство сменилось
+	// MasterTTLRotations — сколько раз мастерство сменилось
 	// принудительно по истечении master_ttl_minutes (не по болезни).
 	MasterTTLRotations int `json:"master_ttl_rotations_total"`
-	// NodesTerminated (V7.9.11) — терминально завершённых нод (все причины).
+	// NodesTerminated — терминально завершённых нод (все причины).
 	NodesTerminated int `json:"nodes_terminated_total"`
+	// Действия СРМД (создание/сворачивание/разворачивание доменов).
+	SRMDCreated  int `json:"srmd_created_total"`
+	SRMDFolded   int `json:"srmd_folded_total"`
+	SRMDUnfolded int `json:"srmd_unfolded_total"`
 }
 
 // addEventLocked добавляет событие в журнал и помечает состояние грязным
@@ -77,7 +87,7 @@ func (r *Registry) addEventLocked(ev Event) {
 		r.state.Events = trimmed
 	}
 	r.eventsDirty = true
-	// V7.9.11: вечная история — зеркалим событие в SQLite (см. db.go).
+	// Вечная история — зеркалим событие в SQLite (см. db.go).
 	// Запись sub-мс и под r.mu укладывается рядом с persistStateLocked.
 	if r.db != nil {
 		r.db.recordEvent(ev)

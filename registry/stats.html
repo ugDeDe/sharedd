@@ -43,7 +43,7 @@
   ::selection { background: rgba(99,102,241,.42); color: #fff; }
   a { color: var(--blue); text-decoration: none; }
 
-  /* ── каркас: сайдбар + контент (V7.7) ──────────────────────── */
+  /* ── каркас: сайдбар + контент ───────────────────────────────── */
   #app { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; }
   .view[hidden] { display: none; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 6px; }
@@ -179,7 +179,7 @@
     text-shadow: 0 0 14px rgba(251,191,36,.4);
   }
   .badge.queue { color: var(--blue); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); font-family: var(--mono); }
-  /* V7.9: бейджи типа ноды (classic — обычный muted, без класса) */
+  /* бейджи типа ноды (classic — обычный muted, без класса) */
   .badge.t-purple {
     color: var(--purple); background: rgba(192,132,252,.12); border-color: rgba(192,132,252,.38);
     text-shadow: 0 0 14px rgba(192,132,252,.35);
@@ -255,7 +255,7 @@
 
   .empty { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
 
-  /* ── нода детально (V7.7) ─────────────────────────────────── */
+  /* ── нода детально ──────────────────────────────────────────── */
   .card.nd-head {
     flex-direction: row; align-items: center; gap: 16px; flex-wrap: wrap;
     padding: 18px 20px; margin-bottom: 18px; min-height: 0;
@@ -296,7 +296,7 @@
   .gbar.fail { background: linear-gradient(180deg, rgba(251,113,133,.95), rgba(251,113,133,.4)); }
   .spark { width: 100%; height: 56px; display: block; cursor: crosshair; }
 
-  /* ── V7.9: hover-подсказка спарклайна клиентов на странице ноды ── */
+  /* ── hover-подсказка спарклайна клиентов на странице ноды ──────── */
   .sparkwrap { position: relative; }
   .spark-guide {
     position: absolute; top: 0; bottom: 0; width: 1px;
@@ -426,7 +426,7 @@ fieldsetfieldset.cfg legend {
     .brand { display: none; }
   }
 
-  /* ── публичный одноколоночный каркас (V7.9.4) ───────────────── */
+  /* ── публичный одноколоночный каркас ──────────────────────────── */
   #app { display: block; }
   header.top { max-width: 1180px; margin: 0 auto 22px; padding-left: 28px; padding-right: 28px; }
   main.pub { max-width: 1180px; margin: 0 auto; padding: 0 28px 42px; display: block; }
@@ -541,7 +541,7 @@ function listRowHTML(n) {
   const role = n.is_master
     ? `<span class="badge master" title="${esc((n.master_domains || []).join(", "))}">★ МАСТЕР</span>`
     : (n.queue_position > 0 ? `<span class="badge queue">#${n.queue_position}</span>` : `<span class="badge unk">вне очереди</span>`);
-  // V7.9.13: когда мастера переключит таймер (принудительная ротация)
+  // когда мастера переключит таймер (принудительная ротация)
   const ttlRem = n.is_master && n.master_ttl_remaining_sec != null
     ? `<div class="muted" style="font-size:11px;margin-top:3px" title="принудительная ротация мастерства по master_ttl_minutes">⏱ ${
         n.master_ttl_remaining_sec <= 0 ? "переключение сейчас" : "переключение через " + fmtDur(n.master_ttl_remaining_sec)}</div>`

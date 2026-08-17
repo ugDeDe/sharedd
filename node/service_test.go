@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// V7.9.1: globalping-цикл ждёт listen-порт прокси, прежде чем создавать
+// Globalping-цикл ждёт listen-порт прокси, прежде чем создавать
 // measurement — иначе пробы летят в закрытый порт и верификация рисует 0.
 func TestWaitProxyTCP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
