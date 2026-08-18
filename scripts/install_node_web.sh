@@ -28,7 +28,48 @@ MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
 MTPROXYL_MODE=0
 
-[ $# -eq 0 ] || die "установщик без параметров — всё настраивается переменными в начале скрипта"
+# ── параметры командной строки ──────────────────────────────────────────
+#   --registry=URL   URL регистратора; заодно включает неинтерактивный режим
+#                    (для автоматизации: ни одного вопроса с клавиатуры,
+#                    спорные развилки решаются дефолтами)
+#   --name=ИМЯ       имя ноды; итоговый id = ИМЯ-<5 символов a-z0-9>,
+#                    например ddproxy-6an4o. Без --name id генерирует агент,
+#                    как раньше (node-<16 hex>)
+# То же можно задать переменными окружения REGISTRY_URL / NODE_NAME.
+# Пример автоматизации:
+#   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --name=ddproxy
+NODE_NAME="${NODE_NAME:-}"
+NONINTERACTIVE=0
+usage() {
+    cat <<USAGE
+Использование: sudo bash $0 [--registry=URL] [--name=ИМЯ]
+
+  --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
+  --name=ИМЯ       имя ноды; итоговый id: ИМЯ-xxxxx (5 символов a-z0-9), напр. ddproxy-6an4o
+  -h, --help       эта справка
+
+Переменные окружения: REGISTRY_URL, NODE_NAME (флаги имеют приоритет).
+Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --name=ИМЯ
+USAGE
+}
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --registry=*) REGISTRY_URL="${1#*=}"; NONINTERACTIVE=1 ;;
+        --registry)   shift; [ $# -gt 0 ] || die "--registry требует URL"
+                      REGISTRY_URL="$1"; NONINTERACTIVE=1 ;;
+        --name=*)     NODE_NAME="${1#*=}" ;;
+        --name)       shift; [ $# -gt 0 ] || die "--name требует значение"
+                      NODE_NAME="$1" ;;
+        -h|--help)    usage; exit 0 ;;
+        *)            die "неизвестный параметр: $1 (справка: --help)" ;;
+    esac
+    shift
+done
+if [ -n "$NODE_NAME" ]; then
+    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,40}[A-Za-z0-9])?$' \
+        || die "недопустимое имя '$NODE_NAME' — латиница/цифры/._- (до 42 символов, без ._- по краям)"
+fi
+
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash $0"
 command -v systemctl &>/dev/null && [ -d /run/systemd/system ] || die "нужен systemd"
 : > "$INSTALL_LOG"
@@ -44,7 +85,7 @@ TTY=0; { [ -t 0 ] || [ -t 1 ] || [ -t 2 ]; } && TTY=1
 # ── регистратор ──────────────────────────────────────────────────────────
 REGISTRY_URL="${REGISTRY_URL:-}"
 if [ -z "$REGISTRY_URL" ]; then
-    if [ "$TTY" -eq 1 ]; then
+    if [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
         read -r -p "  → URL регистратора [${REGISTRY_URL_DEFAULT}]: " ans </dev/tty || true
         REGISTRY_URL="${ans:-$REGISTRY_URL_DEFAULT}"
     else
@@ -52,6 +93,32 @@ if [ -z "$REGISTRY_URL" ]; then
     fi
 fi
 REGISTRY_URL="${REGISTRY_URL%/}"
+
+# ── имя ноды ─────────────────────────────────────────────────────────────
+# Итоговый id: ИМЯ-<5 символов a-z0-9> (напр. ddproxy-6an4o). Установщик
+# кладёт его в state-файл агента ($STATE_DIR/node_id) — агент видит готовый
+# id и новый не генерирует. Без имени — пусто: агент сгенерирует случайный
+# персистентный id сам, как раньше.
+if [ -z "$NODE_NAME" ] && [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
+    read -r -p "  → Имя ноды (итог: ИМЯ-xxxxx; пусто = случайный id): " ans </dev/tty || true
+    NODE_NAME="${ans:-}"
+    if [ -n "$NODE_NAME" ]; then
+        printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,40}[A-Za-z0-9])?$' \
+            || die "недопустимое имя '$NODE_NAME' — латиница/цифры/._- (до 42 символов, без ._- по краям)"
+    fi
+fi
+
+# 5-символьный суффикс a-z0-9 (криптослучайный, /dev/urandom)
+gen_suffix() {
+    LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 5 || true
+}
+NODE_ID=""
+if [ -n "$NODE_NAME" ]; then
+    sfx="$(gen_suffix)"
+    [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
+    [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
+    NODE_ID="${NODE_NAME}-${sfx}"
+fi
 
 # ── голый бинарник по ссылке ─────────────────────────────────────────────
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -108,8 +175,8 @@ if [ -z "$TELEMT_CONFIG" ]; then
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
     [ -f "$TELEMT_MTPROXYL" ] && have_superx=1
     if [ "$have_classic" -eq 1 ] && [ "$have_superx" -eq 1 ]; then
-        if [ "$TTY" -eq 1 ]; then
-            def=1; superexpert_active && def=2
+        def=1; superexpert_active && def=2
+        if [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
             echo -e "  ${BOLD}Найдены два конфига telemt — какой патчить?${NC}"
             echo -e "    ${BOLD}1${NC}) Классика: $TELEMT_CLASSIC"
             echo -e "    ${BOLD}2${NC}) MTProxyL superexpert: $TELEMT_MTPROXYL"
@@ -119,6 +186,13 @@ if [ -z "$TELEMT_CONFIG" ]; then
                 2) TELEMT_CONFIG="$TELEMT_MTPROXYL" ;;
                 *) die "ожидалось 1 или 2" ;;
             esac; echo ""
+        elif [ "$NONINTERACTIVE" -eq 1 ]; then
+            # автоматизация (--registry=...): спорную развилку решаем дефолтом
+            case "$def" in
+                1) TELEMT_CONFIG="$TELEMT_CLASSIC" ;;
+                2) TELEMT_CONFIG="$TELEMT_MTPROXYL" ;;
+            esac
+            warn "найдены оба конфига telemt — неинтерактивно выбран: $TELEMT_CONFIG"
         else
             die "оба конфига на месте, а спросить не у кого (не-TTY) — оставьте один из них"
         fi
@@ -138,6 +212,22 @@ say "конфиг telemt: ${BOLD}${TELEMT_CONFIG}${NC}"
 # ── конфиг ноды + systemd ────────────────────────────────────────────────
 install -d -m 0750 -o root -g root "$ETC_DIR"
 install -d -m 0750 -o root -g root "$STATE_DIR"
+
+# Имя ноды: кладём готовый id в state-файл агента ДО его первого запуска —
+# resolveNodeID() читает существующий файл и ничего не перегенерирует.
+if [ -n "$NODE_ID" ]; then
+    ID_STATE_FILE="$STATE_DIR/node_id"
+    if [ -s "$ID_STATE_FILE" ]; then
+        OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
+        if [ "$OLD_ID" != "$NODE_ID" ]; then
+            warn "нода уже имеет id '${OLD_ID}' — меняю на '${NODE_ID}'."
+            warn "для регистратора это НОВАЯ нода (место в очереди обнулится)."
+        fi
+    fi
+    printf '%s' "$NODE_ID" > "$ID_STATE_FILE"
+    chmod 0600 "$ID_STATE_FILE"
+    ok "имя ноды: ${BOLD}${NODE_ID}${NC}"
+fi
 if [ -f "$ETC_DIR/node.toml" ]; then
     say "$ETC_DIR/node.toml существует — оставляю как есть"
 else
@@ -331,6 +421,7 @@ echo ""; hline
 echo -e "  ${GREEN}${BOLD}Готово${NC}"
 hline
 echo -e "  Регистратор:    ${BOLD}${REGISTRY_URL}${NC}"
+[ -n "$NODE_ID" ] && echo -e "  Имя ноды:       ${BOLD}${NODE_ID}${NC}"
 echo -e "  telemt:         ${BOLD}${TELEMT_CONFIG}${NC}"
 echo -e "  Журнал:         journalctl -u sharedd-node-agent -f"
 echo -e "  ${DIM}Пользователи/SNI приедут сами из регистратора и допишутся в telemt-конфиг.${NC}"
