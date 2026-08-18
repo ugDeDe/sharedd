@@ -98,6 +98,15 @@ type ipResolver struct {
 
 func newIPResolver() *ipResolver { return &ipResolver{} }
 
+// invalidate — сброс кэша (сетевой вотчдог заметил смену исходящего IP):
+// следующий Current(false) пойдёт в echo-сервисы, а не отдаст протухший
+// адрес. Ручной public_ip (fixed) не трогаем — он задан оператором.
+func (r *ipResolver) invalidate() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cached, r.fetchedAt, r.services = "", time.Time{}, false
+}
+
 // Current возвращает публичный IPv4 ноды; кэширует на ipCacheTTL.
 // force=true игнорирует кэш (старт агента).
 func (r *ipResolver) Current(force bool) (string, error) {

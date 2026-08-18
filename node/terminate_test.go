@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -32,6 +33,31 @@ func useTempTombstone(t *testing.T) string {
 	tombstonePath = p
 	t.Cleanup(func() { tombstonePath = old })
 	return p
+}
+
+// stubIPBanWait — подмена ожидания смены IP после ip_ban: «смена» происходит
+// мгновенно (возвращается newIP), exitProcess пишется в канал. Возвращает
+// каналы: waited — с каким забаненным IP вошли в ожидание, exited — код exit.
+func stubIPBanWait(t *testing.T, newIP string) (chan string, chan int) {
+	t.Helper()
+	waited := make(chan string, 4)
+	exited := make(chan int, 4)
+
+	oldWait := awaitIPChangeFn
+	awaitIPChangeFn = func(banned string, _ *ipResolver) string {
+		waited <- banned
+		return newIP
+	}
+	oldExit := exitProcess
+	exitProcess = func(code int) { exited <- code }
+	oldOnce := ipBanOnce
+	ipBanOnce = new(sync.Once)
+	t.Cleanup(func() {
+		awaitIPChangeFn = oldWait
+		exitProcess = oldExit
+		ipBanOnce = oldOnce
+	})
+	return waited, exited
 }
 
 func TestParseTerminateBody(t *testing.T) {
@@ -118,10 +144,12 @@ func TestBootCheckIPBanSameIPReverifyAccepted(t *testing.T) {
 }
 
 // регистратор ответил 403 terminate (перепроверка запрещена/провалена) →
-// смерть с дословным сообщением, tombstone остаётся.
+// служба НЕ умирает: уходит в ожидание смены IP, после «смены» — рестарт
+// (exit(1) под Restart=always), tombstone к этому моменту стёрт.
 func TestBootCheckIPBanSameIPReverifyDenied(t *testing.T) {
-	useTempTombstone(t)
+	p := useTempTombstone(t)
 	died := stubExit(t)
+	waited, exited := stubIPBanWait(t, "9.9.9.9")
 	cfg, client := bootReverifyEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
@@ -131,31 +159,48 @@ func TestBootCheckIPBanSameIPReverifyDenied(t *testing.T) {
 	checkTerminationTombstone(cfg, newIPResolver(), client)
 	select {
 	case msg := <-died:
-		if msg != msgIPBan {
-			t.Fatalf("wrong die message: %q (want exact TZ line)", msg)
+		t.Fatalf("ip_ban must NOT stop the service anymore, died with %q", msg)
+	default:
+	}
+	select {
+	case banned := <-waited:
+		if banned != "5.6.7.8" {
+			t.Fatalf("must wait for a change of the banned IP, got %q", banned)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("403 on re-verify must terminate the node")
+		t.Fatal("denied re-verify must enter the await-IP-change mode")
 	}
-	if tm := readTombstone(); tm == nil {
-		t.Fatal("tombstone must stay in place when re-verify is denied")
+	select {
+	case code := <-exited:
+		if code != 1 {
+			t.Fatalf("restart wants exit(1) for Restart=always, got %d", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("after the IP change the agent must restart itself")
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("tombstone must be cleared before the self-restart")
 	}
 }
 
-// регистратор недоступен — перепроверка не состоялась → смерть (как).
+// регистратор недоступен — перепроверка не состоялась → НЕ умираем, ждём
+// смену IP (как при отказе в reverify).
 func TestBootCheckIPBanSameIPRegistryDown(t *testing.T) {
 	useTempTombstone(t)
 	died := stubExit(t)
+	waited, _ := stubIPBanWait(t, "9.9.9.9")
 	cfg, client := bootReverifyEnv(t, nil)
 	writeTombstone(termination{Reason: reasonIPBan, IP: "5.6.7.8"})
 	checkTerminationTombstone(cfg, newIPResolver(), client)
 	select {
 	case msg := <-died:
-		if msg != msgIPBan {
-			t.Fatalf("wrong die message: %q", msg)
-		}
+		t.Fatalf("unreachable registry must lead to await-IP-change, not death; died with %q", msg)
+	default:
+	}
+	select {
+	case <-waited:
 	case <-time.After(3 * time.Second):
-		t.Fatal("unreachable registry must NOT resurrect the node")
+		t.Fatal("unreachable registry must enter the await-IP-change mode")
 	}
 }
 
@@ -255,5 +300,130 @@ func TestSelfTerminateNotifiesRetire(t *testing.T) {
 	tm := readTombstone()
 	if tm == nil || tm.Reason != reasonDead || tm.IP != "5.6.7.8" {
 		t.Fatalf("tombstone missing after selfTerminate: %+v", tm)
+	}
+}
+
+// Рантайм ip_ban (kill-сигнал 403 посреди работы — ровно кейс из жалобы:
+// «heartbeat rejected 410 → register → 403 ip_ban»): служба НЕ
+// останавливается, tombstone пишется, агент ждёт смену IP и после неё
+// рестартует себя с уже СТЁРТЫМ tombstone'ом.
+func TestSelfTerminateIPBanWaitsForIPChange(t *testing.T) {
+	p := useTempTombstone(t)
+	died := stubExit(t)
+	waited, exited := stubIPBanWait(t, "9.9.9.9")
+
+	selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
+
+	select {
+	case msg := <-died:
+		t.Fatalf("ip_ban must NOT stop the service (was the old behaviour), died with %q", msg)
+	default:
+	}
+	select {
+	case banned := <-waited:
+		if banned != "5.6.7.8" {
+			t.Fatalf("waiting for the wrong IP: %q", banned)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtime ip_ban must enter the await-IP-change mode")
+	}
+	select {
+	case code := <-exited:
+		if code != 1 {
+			t.Fatalf("want exit(1) for systemd Restart=always, got %d", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("agent must restart itself after the IP change")
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("tombstone must be cleared before the self-restart")
+	}
+}
+
+// dead остаётся терминальным: селф-рестартов и ожиданий нет, служба
+// останавливается как раньше.
+func TestSelfTerminateDeadStillStops(t *testing.T) {
+	useTempTombstone(t)
+	died := stubExit(t)
+	waited, _ := stubIPBanWait(t, "9.9.9.9")
+
+	selfTerminate(nil, reasonDead, msgDead, "5.6.7.8")
+
+	select {
+	case msg := <-died:
+		if msg != msgDead {
+			t.Fatalf("wrong die message: %q", msg)
+		}
+	default:
+		t.Fatal("dead must stop the service as before")
+	}
+	select {
+	case <-waited:
+		t.Fatal("dead must not wait for an IP change")
+	default:
+	}
+}
+
+// awaitIPChange (настоящий, без стаба): пока echo-сервис отдаёт забаненный
+// адрес — ждём; отдал новый — вернулись с ним.
+func TestAwaitIPChangeReturnsOnNewIP(t *testing.T) {
+	var mu sync.Mutex
+	current := "5.6.7.8"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Write([]byte(current))
+	}))
+	t.Cleanup(srv.Close)
+	oldSvc := ipEchoServices
+	ipEchoServices = []string{srv.URL}
+	t.Cleanup(func() { ipEchoServices = oldSvc })
+
+	oldPoll := ipBanPollInterval
+	ipBanPollInterval = 30 * time.Millisecond
+	t.Cleanup(func() { ipBanPollInterval = oldPoll })
+
+	got := make(chan string, 1)
+	go func() { got <- awaitIPChange("5.6.7.8", newIPResolver()) }()
+
+	select {
+	case ip := <-got:
+		t.Fatalf("returned while the IP is still banned: %q", ip)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	mu.Lock()
+	current = "9.10.11.12"
+	mu.Unlock()
+
+	select {
+	case ip := <-got:
+		if ip != "9.10.11.12" {
+			t.Fatalf("wrong new IP: %q", ip)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("awaitIPChange must return once the public IP differs from the banned one")
+	}
+}
+
+// Параллельные 403 из нескольких циклов (heartbeat + globalping + metrics
+// могут словить kill одновременно) → ожидание входит ровно один раз.
+func TestIPBanRecoverSingleFlight(t *testing.T) {
+	useTempTombstone(t)
+	stubExit(t)
+	waited, exited := stubIPBanWait(t, "9.9.9.9")
+
+	for i := 0; i < 3; i++ {
+		go selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
+	}
+	select {
+	case <-waited:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no await entered")
+	}
+	<-exited
+	time.Sleep(100 * time.Millisecond)
+	if len(waited) != 0 {
+		t.Fatalf("await-IP-change entered %d extra times — must be single-flight", len(waited))
 	}
 }

@@ -23,6 +23,21 @@ type registerPayload struct {
 
 var nodeID string
 
+// gpKick — толчок ВНЕОЧЕРЕДНОЙ globalping-проверки: каждая успешная
+// регистрация (200) будит globalpingLoop немедленно, не дожидаясь таймера
+// (ум. 5 мин). Иначе после восстановления сети/смены IP нода уже
+// перерегистрировалась, но регистратор до следующего тика не видит живого
+// globalping-отчёта — прокси зря простаивает вне пула. Буфер 1: слившиеся
+// подряд регистрации дают один внеочередной прогон (квота GP не горит).
+var gpKick = make(chan struct{}, 1)
+
+func kickGlobalping() {
+	select {
+	case gpKick <- struct{}{}:
+	default: // толчок уже в очереди — второй не нужен
+	}
+}
+
 // lastNodeType — тип менеджера, с которым последний раз УСПЕШНО (HTTP 200)
 // регистрировались; heartbeat сверяет текущий с ним — переустановку ноды на
 // другой менеджер (classic ↔ mtproxyl ↔ meko) панель увидит без смены IP.
@@ -57,6 +72,12 @@ func main() {
 	// дал gp re-verify — иначе служба останавливается, новых регистраций
 	// не будет).
 	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Сетевой вотчдог: после ручной смены IP/шлюза на хостинге агент сам
+	// сбрасывает протухшие соединения, детектит новый адрес и в крайнем
+	// случае перезапускается (netwatch.go).
+	netw.bind(client, ipr)
+
 	checkTerminationTombstone(cfg, ipr, client)
 
 	ip, err := ipr.Current(true)
@@ -94,8 +115,10 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	resp, err := client.Post(cfg.Registry.URL+"/register", "application/json", bytes.NewReader(data))
 	if err != nil {
 		log.Printf("register error: %v", err)
+		netw.noteFail() // сброс keep-alive; при смене исходящего IP — кэша IP/рестарт
 		return false, 0
 	}
+	netw.noteOK()
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	// Терминальный бан — регистрация запрещена навсегда; завершаемся
@@ -119,6 +142,10 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	log.Printf("registered as %s (%s) type=%s, status=%d", nodeID, ip, nodeTypeLabel(nt), resp.StatusCode)
 	if resp.StatusCode == http.StatusOK {
 		lastNodeType = nt
+		// Внеочередной globalping сразу после успешной регистрации —
+		// регистратор получает свежий отчёт немедленно, нода возвращается
+		// в пул без ожидания таймера (после восстановления сети/смены IP).
+		kickGlobalping()
 	}
 	return resp.StatusCode == http.StatusOK, 0
 }
@@ -183,8 +210,16 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 		resp, err := client.Post(cfg.Registry.URL+"/heartbeat", "application/json", bytes.NewReader(data))
 		if err != nil {
 			log.Printf("heartbeat error: %v, re-registering", err)
+			// Сетевой сбой: сбросить протухшие keep-alive и перечитать
+			// исходящий IP ДО повторной регистрации — после ручной смены
+			// IP/шлюза register уйдёт свежим сокетом с новым адресом.
+			netw.noteFail()
+			if fresh, ferr := ipr.Current(false); ferr == nil && fresh != "" {
+				ip = fresh
+			}
 			tryRegister(ip)
 		} else {
+			netw.noteOK()
 			hbBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			// Kill-сигнал — нода терминально убита, завершаемся.
@@ -204,6 +239,12 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 
 func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 	for {
+		// Коалесценция: прогон начинается прямо сейчас — висящий толчок
+		// съедаем, чтобы не сделать ВТОРОЙ прогон сразу после этого.
+		select {
+		case <-gpKick:
+		default:
+		}
 		// Тихое лечение при мёртвых локальных метриках или активном
 		// prune-карантине measurement'ы не создаём вовсе (жечь квоту по
 		// Мёртвому прокси незачем). GP-нога НЕМОТЫ убрана — нода с
@@ -211,7 +252,7 @@ func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 		// (карантин → N попыток → бан) и доставку kill-сигнала ведёт
 		// регистратор (registry/terminate.go).
 		if gate.metricsMuted() || gate.banActive() {
-			time.Sleep(intervals.Globalping())
+			waitGlobalpingTick()
 			continue
 		}
 		ip, err := ipr.Current(false)
@@ -229,7 +270,7 @@ func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 		if gate.silent() {
 			// Между проверкой и отправкой ушли в немоту (метрики/бан) —
 			// отчёт не шлём.
-			time.Sleep(intervals.Globalping())
+			waitGlobalpingTick()
 			continue
 		}
 		if err := SendReport(cfg.Registry.URL, report); err != nil {
@@ -239,7 +280,21 @@ func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 			}
 			log.Printf("failed to send globalping report: %v", err)
 		}
-		time.Sleep(intervals.Globalping())
+		waitGlobalpingTick()
+	}
+}
+
+// waitGlobalpingTick — пауза между globalping-прогонами: обычный таймер ИЛИ
+// толчок от успешной регистрации (kickGlobalping) — что случится раньше.
+// Толчок будит цикл немедленно: свежезарегистрированная нода отчитывается
+// сразу, а не простаивает до конца интервала (ум. 5 мин).
+func waitGlobalpingTick() {
+	t := time.NewTimer(intervals.Globalping())
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-gpKick:
+		log.Printf("globalping check triggered by registration (off-timer)")
 	}
 }
 
