@@ -6,13 +6,16 @@ package main
 //
 //	ip_ban — не прошла globalping (карантин исчерпал попытки или нода
 //	 вышла из карантина по expiry/dead), значит IP заблокирован
-//	 снаружи. Путей назад ДВА: перезапуск службы ПОСЛЕ
-//	 СМЕНЫ ip (tombstone стирается на старте), либо перезапуск С
-//	 ТЕМ ЖЕ ip — тогда запрашиваем у регистратора GP-перепроверку:
-//	 регистратор + возвращает такую ноду в карантин с одной
-//	 решающей попыткой (старики-регистраторы ответят 403-киллом —
-//	 умрём как раньше). Защита от ложных глобалпингов и отладки
-//	 «прокси был выключен».
+//	 снаружи. Агент при этом НЕ останавливает службу: он уходит в
+//	 режим ожидания смены IP (awaitIPChange) — полное молчание для
+//	 регистратора + перепроверка публичного адреса раз в минуту.
+//	 Оператор меняет IP на хостинге → агент замечает это сам,
+//	 стирает tombstone и перезапускается (exit(1) под Restart=always),
+//	 свежий процесс регистрируется с нового адреса — регистратор
+//	 снимает бан регистрацией с НОВОГО ip. Ручной restart службы
+//	 тоже работает, как раньше: boot-проверка со сменившимся ip
+//	 стирает tombstone; с тем же ip — запрашивает GP-перепроверку,
+//	 а при отказе снова ждёт смену IP (не умирает).
 //	dead — регистратор не достучался до порта и/или не получил метрики
 //	 дольше terminate_dead_min. Агент сам детектирует тот же факт по
 //	 непрерывно красным локальным scrape'ам (netGate.mMutedSince) и
@@ -38,6 +41,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -60,6 +64,68 @@ var (
 	bootIPWait       = 30 * time.Second // сколько ждём определения публичного IP на старте (ip_ban)
 	bootPollInterval = 5 * time.Second
 )
+
+// ipBanPollInterval — период перепроверки публичного IP в режиме ожидания
+// смены адреса после ip_ban (var ради тестов).
+var ipBanPollInterval = time.Minute
+
+// awaitIPChangeFn — var ради тестов (боевое ожидание бесконечно).
+var awaitIPChangeFn = awaitIPChange
+
+// awaitIPChange — режим ожидания смены IP после ip_ban: блокируется, пока
+// публичный адрес не станет отличным от забаненного (перепроверка раз в
+// ipBanPollInterval, форс мимо кэша). Служба ПРОДОЛЖАЕТ работать — оператору
+// не нужно ничего перезапускать руками; для регистратора нода в это время
+// полностью молчит. Возвращает новый адрес.
+func awaitIPChange(bannedIP string, ipr *ipResolver) string {
+	log.Print(msgIPBan)
+	log.Printf("ip_ban: жду смену публичного IP (забанен %s, перепроверка каждые %s); после смены адреса вернусь в пул сам",
+		bannedIP, ipBanPollInterval)
+	for {
+		time.Sleep(ipBanPollInterval)
+		cur, err := ipr.Current(true)
+		if err != nil || !isPublicIP(cur) {
+			continue
+		}
+		if cur != bannedIP {
+			log.Printf("public IP changed %s -> %s — ban lifted, resuming service", bannedIP, cur)
+			return cur
+		}
+	}
+}
+
+// ipBanOnce — рантайм-восстановление после ip_ban ведёт ровно ОДНА горутина;
+// остальные вызвавшие selfTerminate (heartbeat/globalping/metrics могут
+// словить 403 параллельно) блокируются в Do и больше регистратор не трогают.
+// Pointer — тесты подменяют на свежий.
+var ipBanOnce = new(sync.Once)
+
+// ipBanRecover — рантайм-обработка ip_ban (kill-сигнал 403 посреди работы).
+// Раньше здесь была остановка службы с надписью «запустите службу заново
+// после его смены» — после смены IP нода сама НЕ возвращалась, прокси
+// простаивал, пока оператор не вспомнит про systemctl restart. Теперь:
+// ждём смену публичного адреса (перепроверка раз в минуту), затем стираем
+// tombstone и перезапускаемся через systemd (exit(1) при Restart=always) —
+// свежий процесс регистрируется с нового IP, регистратор снимает бан
+// регистрацией с нового адреса. В проде Do не возвращается (exit), вторые
+// и последующие горутины блокируются в Do — молчание для регистратора
+// обеспечивается самой блокировкой.
+func ipBanRecover(bannedIP string) {
+	ipBanOnce.Do(func() {
+		ipr := netw.resolver()
+		if ipr == nil { // ранний вызов до bind (теоретический)
+			ipr = newIPResolver()
+		}
+		newIP := awaitIPChangeFn(bannedIP, ipr)
+		clearTombstone()
+		if systemdAvailable() && unitLoaded(agentUnitName) {
+			log.Printf("restarting agent to re-register from the new IP %s (systemd will bring it back up)", newIP)
+		} else {
+			log.Printf("no systemd unit — exiting so the supervisor/operator restarts the agent (new IP %s, tombstone cleared)", newIP)
+		}
+		exitProcess(1) // Restart=always поднимет процесс с чистого листа
+	})
+}
 
 // exitProcess — подменяется в тестах, dieSelf должен «завершать» процесс.
 var exitProcess = os.Exit
@@ -135,6 +201,15 @@ func selfTerminate(cfg *NodeConfig, reason, message, ip string) {
 			resp.Body.Close()
 		}
 	}
+	// ip_ban НЕ терминален для службы: агент остаётся жить и сам ждёт
+	// смену IP (перепроверка раз в минуту), после смены — рестарт и
+	// регистрация с нового адреса. Горутина-вызвавший блокируется здесь
+	// навсегда (как раньше блокировалась в dieSelf) — молчание для
+	// регистратора обеспечено.
+	if reason == reasonIPBan && ip != "" {
+		ipBanRecover(ip)
+		return // только тесты: боевой ipBanRecover не возвращается
+	}
 	dieSelfFn(message)
 }
 
@@ -174,7 +249,8 @@ func checkTerminationTombstone(cfg *NodeConfig, ipr *ipResolver, client *http.Cl
 		// Путь 2: ip тот же — просим у регистратора GP-перепроверку
 		// вместо мгновенной смерти. Регистратор + вернёт 200/429
 		// (карантин с одной решающей попыткой); kill (403) внутри register
-		// завершит нас с tombstone'ом, как раньше.
+		// завершит нас с tombstone'ом (для ip_ban selfTerminate уйдёт в
+		// ожидание смены IP, не в стоп службы).
 		if ip != "" && cfg != nil {
 			log.Printf("public IP unchanged (%s) — requesting gp re-verify from registry", ip)
 			ok, retryAfter := register(client, cfg, ip)
@@ -184,9 +260,12 @@ func checkTerminationTombstone(cfg *NodeConfig, ipr *ipResolver, client *http.Cl
 				clearTombstone() // повторный kill, если придёт, положит новый
 				return
 			}
-			log.Printf("re-verify request failed (registry unreachable?) — refusing to resurrect")
+			log.Printf("re-verify request failed (registry unreachable?) — waiting for an IP change instead")
 		}
-		dieSelfFn(msgIPBan)
+		// Служба НЕ останавливается: ждём смену IP и возвращаемся сами
+		// (раньше здесь был dieSelf — нода лежала до ручного systemctl
+		// restart даже после того, как оператор сменил адрес).
+		ipBanRecover(t.IP)
 	default:
 		// dead: нода мертва навсегда, повторной регистрации не делать ни в
 		// каком случае — даже починившийся прокси её не воскрешает (регистратор

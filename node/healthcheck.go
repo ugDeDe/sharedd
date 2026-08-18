@@ -553,8 +553,10 @@ func SendReport(registryURL string, report HealthReport) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Post(registryURL+"/report", "application/json", bytes.NewReader(data))
 	if err != nil {
+		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
 		return err
 	}
+	netw.noteOK()
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

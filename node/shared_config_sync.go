@@ -415,8 +415,10 @@ func fetchSharedConfig(registryURL string) (SharedConfig, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(registryURL + "/config")
 	if err != nil {
+		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
 		return SharedConfig{}, fmt.Errorf("fetch /config error: %w", err)
 	}
+	netw.noteOK()
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {

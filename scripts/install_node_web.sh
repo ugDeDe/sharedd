@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/V1.0.0/sharedd-node-agent"
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/V1.0.1/sharedd-node-agent"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -93,6 +93,14 @@ if [ -z "$REGISTRY_URL" ]; then
     fi
 fi
 REGISTRY_URL="${REGISTRY_URL%/}"
+# Нормализация: URL без схемы ("registrar.example.com") ломает Go-клиент
+# агента — Post "registrar.../heartbeat": unsupported protocol scheme "".
+case "$REGISTRY_URL" in
+    https://*|http://*) ;;
+    *://*) die "неподдерживаемая схема в URL регистратора: $REGISTRY_URL (нужен http:// или https://)" ;;
+    *)  REGISTRY_URL="https://${REGISTRY_URL}"
+        warn "URL регистратора без схемы — использую ${REGISTRY_URL}" ;;
+esac
 
 # ── имя ноды ─────────────────────────────────────────────────────────────
 # Итоговый id: ИМЯ-<5 символов a-z0-9> (напр. ddproxy-6an4o). Установщик
@@ -229,7 +237,20 @@ if [ -n "$NODE_ID" ]; then
     ok "имя ноды: ${BOLD}${NODE_ID}${NC}"
 fi
 if [ -f "$ETC_DIR/node.toml" ]; then
-    say "$ETC_DIR/node.toml существует — оставляю как есть"
+    # Конфиг уже есть — оставляем, но registry.url приводим к выбранному
+    # (и заодно чиним старый битый url без схемы: unsupported protocol scheme).
+    CUR_URL="$(grep -E '^[[:space:]]*url[[:space:]]*=' "$ETC_DIR/node.toml" | head -n1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)"
+    if [ "$CUR_URL" = "$REGISTRY_URL" ]; then
+        say "$ETC_DIR/node.toml существует — оставляю как есть"
+    else
+        warn "registry.url в конфиге: '${CUR_URL:-<не найден>}' — обновляю на '${REGISTRY_URL}'"
+        if grep -qE '^[[:space:]]*url[[:space:]]*=' "$ETC_DIR/node.toml"; then
+            sed -i -E "0,/^[[:space:]]*url[[:space:]]*=.*/s||url = \"${REGISTRY_URL}\"|" "$ETC_DIR/node.toml"
+        else
+            printf '\n[registry]\nurl = "%s"\n' "$REGISTRY_URL" >> "$ETC_DIR/node.toml"
+        fi
+        ok "registry.url обновлён в $ETC_DIR/node.toml (остальное не тронуто)"
+    fi
 else
     cat > "$ETC_DIR/node.toml" <<TOML
 # sharedd node agent (установлено $(date -Iseconds))
