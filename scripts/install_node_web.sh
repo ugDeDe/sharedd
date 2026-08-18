@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/V1.0.1/sharedd-node-agent"
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/v1.0.1/sharedd-node-agent"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
