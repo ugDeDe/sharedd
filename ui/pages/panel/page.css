@@ -1,0 +1,100 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/table.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/feed.css";
+@import "../../components/topology.css";
+@import "../../components/misc.css";
+
+/* ═══ Панель ══════════════════════════════════════════════════════════ */
+.view-title { margin: 4px 2px 14px; }
+.view[hidden] { display: none; }
+.card { margin-bottom: var(--gap); }
+.nav-count {
+  display: inline-grid; place-items: center; min-width: 18px; height: 17px; padding: 0 5px;
+  margin-left: 5px; border-radius: var(--r-pill); background: var(--surf-3); color: var(--fg-3);
+  font-size: 10.5px; font-weight: 650;
+}
+.nav a.active .nav-count { background: var(--acc); color: var(--acc-fg); }
+.nav-count:empty { display: none; }
+
+.back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; color: var(--fg-2); font-size: 13px; }
+.back-link:hover { color: var(--fg); text-decoration: none; }
+
+/* баннер тревог управляется классом .show из renderBanner() */
+#alert-banner { display: none; }
+#alert-banner.show { display: flex; }
+
+/* ═══ Журнал: панель фильтров ═════════════════════════════════════════ */
+.ev-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.ev-toolbar select { width: auto; min-width: 150px; max-width: 220px; height: 30px; font-size: 12.5px; }
+.ev-toolbar input[type="search"] { flex: 1 1 200px; max-width: 340px; height: 30px; font-size: 12.5px; }
+.ev-toolbar .found { margin-left: auto; color: var(--fg-3); font-size: 12px; }
+
+/* ═══ Настройки ═══════════════════════════════════════════════════════
+   Колоночная раскладка, а не grid: секции разной высоты пакуются встык.
+   В grid высота строки равна самой высокой карточке — под короткими
+   секциями зияли дыры в сотню пикселей. */
+.settings-grid { columns: 340px auto; column-gap: var(--gap); }
+.cfg {
+  display: block; break-inside: avoid; -webkit-column-break-inside: avoid;
+  margin: 0 0 var(--gap); min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surf); overflow: hidden; box-shadow: var(--sh-1);
+}
+.cfg-head {
+  padding: 12px 15px; border-bottom: 1px solid var(--line-2);
+  color: var(--fg); font-size: 12.5px; font-weight: 620;
+  display: flex; align-items: center; gap: 8px;
+}
+.cfg-head svg { width: 15px; height: 15px; color: var(--fg-3); flex: none; }
+.cfg-body { display: flex; flex-direction: column; gap: 12px; padding: 15px; }
+.cfg-body .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cfg-body .row > label { flex: 1 1 auto; color: var(--fg-2); font-size: 12.5px; }
+.cfg-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 15px; border-top: 1px solid var(--line-2); background: var(--surf-2);
+}
+.note { color: var(--fg-3); font-size: 11.5px; line-height: 1.5; }
+.note .mono { color: var(--fg-2); }
+#users-tbl { width: 100%; }
+#users-tbl td { padding: 5px 0; border: 0; }
+#users-tbl td:first-child { padding-right: 10px; width: 1%; white-space: nowrap; }
+#users-tbl td:last-child { width: 1%; padding-left: 8px; }
+.static-info {
+  padding: 14px var(--pad); margin-bottom: var(--gap);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surf-2);
+  color: var(--fg-3); font-size: 11.5px; font-family: var(--mono);
+  white-space: pre-wrap; line-height: 1.65; overflow-x: auto;
+}
+
+/* ═══ Вход ════════════════════════════════════════════════════════════ */
+#login-overlay {
+  position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 20px;
+  background: var(--bg);
+}
+#login-overlay.show { display: grid; }
+.login-box {
+  width: 100%; max-width: 360px; padding: 28px; border-radius: var(--r-xl);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.login-box .brand-mark { width: 40px; height: 40px; font-size: 14px; }
+.login-box h2 { font-size: 17px; }
+.login-box p { margin: 0; color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+.login-err {
+  display: none; padding: 9px 12px; border-radius: var(--r-sm);
+  background: var(--bad-soft); color: var(--bad); font-size: 12.5px;
+}
+.login-err.show { display: block; }
+
+@media (max-width: 640px) {
+  .settings-grid { columns: 1; }
+  .card-head, .ev-toolbar { padding-left: 12px; padding-right: 12px; }
+}

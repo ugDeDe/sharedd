@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · панель регистратора</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+<!--{css}-->
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub" id="hdr-sub">загрузка…</div>
+        </div>
+      </div>
+      <div class="navwrap"><nav class="nav">
+        <a href="#/overview" data-view="overview">Обзор</a>
+        <a href="#/nodes" data-view="nodes">Ноды <span class="nav-count" id="nav-nodes-count"></span></a>
+        <a href="#/dns" data-view="dns">Мастера и DNS</a>
+        <a href="#/srmd" data-view="srmd" title="Система распределения и масштабирования доменов">СРМД</a>
+        <a href="#/events" data-view="events">Журнал</a>
+        <a href="#/settings" data-view="settings">Настройки</a>
+      </nav></div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+        <button class="icon-btn" id="logout-btn" type="button" title="Забыть токен" aria-label="Сменить токен">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <h1 id="view-title" class="view-title">Обзор</h1>
+  <div class="banner warn" id="alert-banner"></div>
+
+  <main>
+    <!-- ═══ Обзор ═══════════════════════════════════════════════════ -->
+    <section class="view" id="view-overview">
+      <div class="metrics" id="cards"></div>
+      <div id="topology"></div>
+
+      <section class="card" id="stats-block">
+        <div class="card-head">
+          <h2>Статистика пула</h2>
+          <span class="hint" id="stats-hint"></span>
+        </div>
+        <div class="metrics" id="pool-stats" style="padding:16px var(--pad) 4px;margin-bottom:0"></div>
+        <div class="card-head" style="border-top:1px solid var(--line-2)">
+          <h2>История банов Globalping</h2>
+          <span class="hint">бан = блокировка без восстановления</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Начало</th><th>Нода</th><th>IP</th><th>Длительность</th><th>Статус</th><th>Причина</th></tr></thead>
+            <tbody id="bans-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Последние события</h2>
+          <a class="btn ghost sm" style="margin-left:auto" href="#/events">весь журнал →</a>
+        </div>
+        <ul class="feed" id="events-mini" style="max-height:420px"></ul>
+      </section>
+    </section>
+
+    <!-- ═══ Ноды ════════════════════════════════════════════════════ -->
+    <section class="view" id="view-nodes" hidden>
+      <section class="card" id="quar-block" hidden>
+        <div class="card-head">
+          <h2>Карантин · Globalping</h2>
+          <span class="hint">всё зелёное, кроме globalping — бан по IP после исчерпания попыток</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Нода</th><th>Адрес</th><th>В карантине с</th><th>Попытка</th><th>Решение</th></tr></thead>
+            <tbody id="quar-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ноды пула</h2>
+          <span class="hint" id="nodes-hint"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr>
+              <th>Нода</th><th>Адрес</th><th>Роль</th><th>TCP</th><th>Globalping</th><th>Metrics</th>
+              <th>Доступность</th><th class="num">Клиенты</th><th>Heartbeat</th><th>Отчёт</th>
+              <th>Мастерство</th><th>Статус / ошибка</th>
+            </tr></thead>
+            <tbody id="nodes-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ═══ Нода ════════════════════════════════════════════════════ -->
+    <section class="view" id="view-node" hidden>
+      <a href="#/nodes" class="back-link">← все ноды</a>
+      <div id="node-detail"></div>
+    </section>
+
+    <!-- ═══ Мастера и DNS ═══════════════════════════════════════════ -->
+    <section class="view" id="view-dns" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Назначения доменов</h2>
+          <span class="hint" id="dns-hint"></span>
+          <button class="btn sm" style="margin-left:auto" id="s-dns-push2">Перезаписать DNS сейчас</button>
+        </div>
+        <div id="masters-full"></div>
+      </section>
+    </section>
+
+    <!-- ═══ СРМД ════════════════════════════════════════════════════ -->
+    <section class="view" id="view-srmd" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Домены · активные клиенты</h2>
+          <span class="hint" id="srmd-hint"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Домен</th><th class="num">Активные клиенты</th><th>DNS-запись</th><th>Мастер</th><th>Управление</th></tr></thead>
+            <tbody id="srmd-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note">Клиенты считаются по общему секрету (только пользователи из <span class="mono">shared_proxy.users</span>).
+          Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.
+          Ручной домен можно насильно отдать под контроль СРМД (кнопка «под СРМД») — тогда он сможет сворачиваться
+          в CNAME при сжатии пула; домен СРМД кнопкой «в ручной» возвращается в ручной режим.</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Настройки СРМД</h2>
+          <span class="hint">применяются на лету и персистятся в registry.toml</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="srmd-reload">Обновить</button>
+        </div>
+        <div class="card-body cfg-body">
+          <div class="field">
+            <label for="s-srmd-base">Основной домен (база для инкрементов)</label>
+            <input type="text" class="mono" id="s-srmd-base" placeholder="shared.ddproxy.xyz">
+          </div>
+          <div class="field">
+            <label for="s-srmd-max">Максимальное число нод на домен</label>
+            <input type="number" id="s-srmd-max" min="1" max="1000">
+          </div>
+          <label class="check"><input type="checkbox" id="s-srmd-enabled"><span class="box"></span> Разрешить СРМД создавать новые домены</label>
+          <div class="note">Когда нод больше, чем доменов × лимит, СРМД создаёт сиротские домены с инкрементом
+            (<span class="mono">shared1.…, shared2.…</span> от основного) и сама дописывает их в managed-список;
+            когда нод стало меньше — сворачивает лишние домены в CNAME на оставшиеся
+            (созданные домены: <span id="srmd-created-list" class="mono">нет</span>). По умолчанию создание выключено.</div>
+        </div>
+        <div class="card-foot"><button class="btn primary" id="s-srmd-save">Сохранить СРМД</button></div>
+      </section>
+    </section>
+
+    <!-- ═══ Журнал ══════════════════════════════════════════════════ -->
+    <section class="view" id="view-events" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Журнал событий</h2>
+          <span class="hint">новые сверху</span>
+        </div>
+        <div class="ev-toolbar">
+          <div class="chips" id="ev-filters">
+            <button class="chip active" data-f="all">Все</button>
+            <button class="chip" data-f="master">Мастер / DNS</button>
+            <button class="chip" data-f="blocks">Блокировки</button>
+            <button class="chip" data-f="nodes">Ноды</button>
+            <button class="chip" data-f="system">Система</button>
+          </div>
+          <select id="ev-type-filter" title="Фильтр по типу события (тегу)"></select>
+          <input type="search" id="ev-search" placeholder="поиск: нода, ip, домен…" spellcheck="false">
+          <span class="found" id="ev-found"></span>
+        </div>
+        <ul class="feed" id="events-list"></ul>
+      </section>
+    </section>
+
+    <!-- ═══ Настройки ═══════════════════════════════════════════════ -->
+    <section class="view" id="view-settings" hidden>
+      <div class="card-head" style="border:0;padding-left:0;padding-right:0">
+        <h2>Настройки</h2>
+        <span class="hint">применяются на лету и персистятся в registry.toml · секции сохраняются независимо</span>
+        <button class="btn ghost sm" style="margin-left:auto" id="cfg-reload">Обновить</button>
+      </div>
+      <div class="settings-grid" id="settings-grid"></div>
+      <div class="static-info" id="s-static">…</div>
+    </section>
+  </main>
+
+  <footer class="page-foot">sharedd Registry · обновление каждые 5 с · <span id="last-upd">ещё не обновлялось</span></footer>
+</div>
+
+<div id="toast"></div>
+
+<div id="login-overlay">
+  <div class="login-box glass">
+    <div class="brand-mark">DD</div>
+    <h2>Доступ к панели</h2>
+    <p>Введите токен панели (<span class="mono">[panel] token</span>).</p>
+    <input type="password" class="mono" id="token-input" placeholder="panel token" autocomplete="off">
+    <button class="btn primary" id="login-btn">Войти</button>
+    <div class="login-err" id="login-err">Неверный токен или регистратор недоступен.</div>
+  </div>
+</div>
+
+<script>
+<!--{js}-->
+</script>
+</body>
+</html>
