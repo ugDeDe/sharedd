@@ -1,0 +1,43 @@
+/* ═══ Таблица ═════════════════════════════════════════════════════════ */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+thead th {
+  text-align: left; padding: 9px var(--pad); white-space: nowrap;
+  font-size: 10px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-3); border-bottom: 1px solid var(--line-2);
+}
+tbody td { padding: 11px var(--pad); border-bottom: 1px solid var(--line-2); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background .12s; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr:hover td { background: var(--surf-2); }
+tbody tr.master td:first-child { box-shadow: inset 2px 0 0 var(--gold); }
+td.num, th.num { text-align: right; }
+/* Машинные значения не переносим: перенос делает строку двухэтажной. */
+tbody td.mono, tbody td .mono { white-space: nowrap; }
+tbody td.wrap, tbody td.wrap .mono { white-space: normal; }
+.table-empty { padding: 34px var(--pad); text-align: center; color: var(--fg-3); font-size: 13px; }
+
+/* ═══ Полоса доступности ══════════════════════════════════════════════ */
+.meter { display: flex; align-items: center; gap: 9px; min-width: 118px; }
+.meter-track { flex: 1; height: 5px; min-width: 46px; border-radius: var(--r-pill); background: var(--surf-3); overflow: hidden; }
+.meter-fill { display: block; height: 100%; border-radius: inherit; background: var(--fg-3); transition: width .3s ease; }
+.meter-fill.ok { background: var(--ok); }
+.meter-fill.warn { background: var(--warn); }
+.meter-fill.bad { background: var(--bad); }
+.meter-value { font-size: 12.5px; color: var(--fg-2); }
+
+/* На телефоне широкая таблица превращается в карточки: горизонтальный
+   скролл в мониторинге нечитаем — половина колонок просто не видна. */
+@media (max-width: 720px) {
+  .table-cards thead { display: none; }
+  .table-cards tbody tr { display: block; padding: 10px 12px; border-bottom: 1px solid var(--line-2); }
+  .table-cards tbody tr:last-child { border-bottom: 0; }
+  .table-cards tbody td { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; border: 0; }
+  .table-cards tbody td::before {
+    content: attr(data-label); flex: 0 0 92px; color: var(--fg-3);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .table-cards tbody td.num { text-align: left; }
+  .table-cards tbody tr:hover td { background: none; }
+}

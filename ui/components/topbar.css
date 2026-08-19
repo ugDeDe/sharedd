@@ -1,0 +1,66 @@
+/* ═══ Шапка ═══════════════════════════════════════════════════════════ */
+.topbar { position: sticky; top: 0; z-index: 40; padding: 14px 0 12px; margin-bottom: 16px; }
+.topbar-inner {
+  display: flex; align-items: center; gap: var(--gap);
+  padding: 9px 11px; border-radius: var(--r-xl);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; padding-left: 3px; flex: none; }
+.brand-mark {
+  width: 36px; height: 36px; border-radius: var(--r-md); flex: none;
+  display: grid; place-items: center; color: #fff;
+  font-size: 13px; font-weight: 750; letter-spacing: .01em;
+  background: linear-gradient(150deg, var(--acc), var(--acc-2));
+  box-shadow: 0 4px 12px var(--acc-soft),
+              inset 0 1px 0 rgba(255, 255, 255, .5),
+              inset 0 -1px 0 rgba(0, 0, 0, .14);
+}
+.brand-name { font-size: 14.5px; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; }
+.brand-sub { font-size: 11px; color: var(--fg-3); line-height: 1.2; white-space: nowrap; }
+
+/* Сегментированный переключатель: дорожка утоплена, бегунок приподнят.
+   Если сделать наоборот, активный пункт читается как дырка. */
+.navwrap { min-width: 0; flex: 1 1 auto; display: flex; overflow-x: auto; scrollbar-width: none; }
+.navwrap::-webkit-scrollbar { display: none; }
+.nav {
+  display: flex; gap: 2px; padding: 3px; border-radius: var(--r-md); flex: none;
+  background: var(--track); box-shadow: inset 0 1px 2px var(--track-in);
+}
+.nav a {
+  padding: 6px 13px; border-radius: var(--r-sm); white-space: nowrap;
+  font-size: 12.5px; font-weight: 520; color: var(--fg-2); text-decoration: none;
+  transition: color .15s, background .15s;
+}
+.nav a:hover { color: var(--fg); text-decoration: none; }
+.nav a.active {
+  color: var(--fg); font-weight: 600; background: var(--thumb);
+  box-shadow: 0 1px 2px rgba(16, 23, 37, .10), 0 2px 6px rgba(16, 23, 37, .07),
+              inset 0 1px 0 var(--thumb-hi);
+}
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  border-radius: var(--r-pill); background: var(--surf-2); color: var(--fg-2);
+  font-size: 12px; font-weight: 560; white-space: nowrap;
+}
+.status-pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.live { background: var(--ok-soft); color: var(--ok); }
+.status-pill.live i { animation: pulse 2.4s infinite; }
+.status-pill.off { background: var(--bad-soft); color: var(--bad); }
+@keyframes pulse { 50% { opacity: .32; } }
+@media (prefers-reduced-motion: reduce) { .status-pill.live i { animation: none; } }
+
+.icon-btn {
+  width: 30px; height: 30px; border-radius: var(--r-sm); flex: none;
+  border: 1px solid var(--gl-brd); background: var(--thumb); color: var(--fg-2);
+  cursor: pointer; display: grid; place-items: center; transition: .15s;
+  box-shadow: inset 0 1px 0 var(--thumb-hi);
+}
+.icon-btn:hover { color: var(--fg); box-shadow: inset 0 1px 0 var(--thumb-hi), 0 2px 6px rgba(16, 23, 37, .10); }
+.icon-btn .i-sun { display: none; }
+:root[data-theme="light"] .icon-btn .i-sun { display: block; }
+:root[data-theme="light"] .icon-btn .i-moon { display: none; }
+
+@media (max-width: 640px) { .nav { display: none; } .brand-sub { display: none; } }

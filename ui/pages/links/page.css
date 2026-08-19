@@ -1,0 +1,53 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/misc.css";
+
+/* ═══ Страница прокси-ссылок ══════════════════════════════════════════ */
+.links-wrap { max-width: 1020px; }
+
+.user-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.user-name { font-family: var(--mono); font-size: 13.5px; font-weight: 650; letter-spacing: -.02em; }
+.user-count { font-size: 11.5px; color: var(--fg-3); }
+
+.link-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.link-row:last-child { border-bottom: 0; }
+.link-row:hover { background: var(--surf-2); }
+.link-main { min-width: 0; flex: 1 1 260px; }
+.link-domain { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.link-url { color: var(--fg-3); font-family: var(--mono); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+.link-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* ═══ QR ══════════════════════════════════════════════════════════════ */
+.modal {
+  position: fixed; inset: 0; z-index: 80; display: none; place-items: center; padding: 20px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+@supports not (background: color-mix(in srgb, red 50%, blue)) { .modal { background: var(--bg); } }
+.modal.show { display: grid; }
+.modal-box {
+  width: 100%; max-width: 340px; padding: 22px; border-radius: var(--r-xl);
+  display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
+}
+.modal-box .d { font-family: var(--mono); font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
+/* QR всегда чёрным по белому — под сканер, а не под тему страницы. */
+.qr-canvas {
+  width: 100%; max-width: 260px; aspect-ratio: 1; image-rendering: pixelated;
+  background: #fff; border-radius: var(--r-sm); padding: 10px; border: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .user-head, .link-row { padding-left: 12px; padding-right: 12px; }
+  .link-acts { margin-left: 0; width: 100%; }
+}

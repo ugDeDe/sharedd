@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · прокси-ссылки</title>
+<script>/* тема до первой отрисовки, иначе мигает светлый кадр */
+try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+<!--{css}-->
+</style>
+</head>
+<body>
+
+<div class="wrap links-wrap">
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub">прокси-ссылки</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">загрузка…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner info">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <span>Нажмите <b>Открыть</b> на телефоне с Telegram — прокси добавится сам. <b>QR</b> — если Telegram на другом устройстве. Ссылка ведёт на живой домен: если нода попадёт под блокировку, домен переедет на другую, а ссылка останется прежней.</span>
+  </div>
+
+  <div id="list"></div>
+
+  <footer class="page-foot">sharedd · публичные прокси-ссылки · обновление каждые 30 с</footer>
+</div>
+
+<div class="modal" id="qr-modal">
+  <div class="modal-box glass">
+    <div class="d" id="qr-domain"></div>
+    <canvas class="qr-canvas" id="qr-canvas"></canvas>
+    <div class="dim" style="font-size:12px">Наведите камеру Telegram или системного сканера</div>
+    <button class="btn" id="qr-close">Закрыть</button>
+  </div>
+</div>
+
+<script>
+<!--{js}-->
+</script>
+</body>
+</html>

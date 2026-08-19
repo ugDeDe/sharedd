@@ -477,6 +477,8 @@ func (r *Registry) buildMux() *http.ServeMux {
 	r.mountPanel(mux)
 	r.mountStats(mux)     // публичная статистика нод (/statistics/...)
 	r.mountDashboard(mux) // публичный дашборд блокировок (/dashboard/...)
+	r.mountLinks(mux)     // публичная страница прокси-ссылок (/links)
+	mountAssets(mux)      // шрифт интерфейса (/assets/*.woff2)
 
 	return mux
 }

@@ -1,0 +1,25 @@
+/* ═══ Бейджи и чипы ═══════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 21px; padding: 0 7px;
+  border-radius: var(--r-xs); background: var(--surf-2); color: var(--fg-2);
+  font-size: 10.5px; font-weight: 640; white-space: nowrap;
+}
+.badge.ok      { background: var(--ok-soft);      color: var(--ok); }
+.badge.warn    { background: var(--warn-soft);    color: var(--warn); }
+.badge.bad     { background: var(--bad-soft);     color: var(--bad); }
+.badge.info    { background: var(--info-soft);    color: var(--info); }
+.badge.special { background: var(--special-soft); color: var(--special); }
+.badge.gold    { background: var(--gold-soft);    color: var(--gold); }
+.badge.mono    { font-family: var(--mono); font-size: 10px; }
+.badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+
+/* Чипы-фильтры */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  height: 30px; padding: 0 12px; border-radius: var(--r-pill); cursor: pointer;
+  border: 1px solid var(--line); background: var(--surf); color: var(--fg-2);
+  font: inherit; font-size: 12.5px; font-weight: 520;
+  display: inline-flex; align-items: center; gap: 6px; transition: .14s;
+}
+.chip:hover { color: var(--fg); border-color: var(--fg-3); }
+.chip.active { background: var(--acc); border-color: var(--acc); color: var(--acc-fg); font-weight: 600; }

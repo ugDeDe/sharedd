@@ -1,0 +1,69 @@
+/* ═══ Кнопки ══════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: var(--ctl-h); padding: 0 14px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surf); color: var(--fg);
+  font: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer; white-space: nowrap;
+  transition: background .13s, border-color .13s, color .13s;
+}
+.btn:hover { background: var(--surf-2); border-color: var(--fg-3); text-decoration: none; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn svg { width: 15px; height: 15px; flex: none; }
+/* Один primary на секцию — иначе главного действия не видно. */
+.btn.primary { background: var(--acc); border-color: var(--acc); color: var(--acc-fg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); border-color: var(--acc); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--fg-2); }
+.btn.ghost:hover { background: var(--surf-2); color: var(--fg); }
+.btn.danger { color: var(--bad); border-color: transparent; background: var(--bad-soft); }
+.btn.danger:hover { background: var(--bad-soft); filter: brightness(1.1); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.icon { width: var(--ctl-h); padding: 0; }
+.btn.icon.sm { width: 28px; }
+
+/* ═══ Поля ════════════════════════════════════════════════════════════ */
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > label { color: var(--fg-2); font-size: 12.5px; font-weight: 520; }
+.field .help { color: var(--fg-3); font-size: 11.5px; line-height: 1.45; }
+input[type="text"], input[type="password"], input[type="number"],
+input[type="search"], textarea, select {
+  width: 100%; min-width: 0; height: var(--ctl-h); padding: 0 11px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surf-2); color: var(--fg); font: inherit; font-size: 12.5px;
+  transition: border-color .13s, box-shadow .13s;
+}
+textarea { height: auto; min-height: 84px; padding: 9px 11px; resize: vertical; line-height: 1.5; }
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft);
+}
+input::placeholder, textarea::placeholder { color: var(--fg-3); }
+input.mono, textarea.mono { font-family: var(--mono); font-size: 12px; }
+input[type="number"] { max-width: 150px; -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Свой чекбокс: нативный не поддаётся теме и различается по ОС. */
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; }
+.check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.check .box {
+  width: 17px; height: 17px; flex: none; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surf-2);
+  display: grid; place-items: center; transition: all .13s;
+}
+.check .box::after {
+  content: ""; width: 9px; height: 9px; transform: scale(0); background: var(--acc-fg);
+  transition: transform .13s;
+  clip-path: polygon(14% 47%, 0 61%, 39% 100%, 100% 22%, 85% 8%, 39% 71%);
+}
+.check input:checked + .box { background: var(--acc); border-color: var(--acc); }
+.check input:checked + .box::after { transform: scale(1); }
+.check input:focus-visible + .box { box-shadow: 0 0 0 3px var(--acc-soft); }
+
+/* Поле с кнопкой внутри — показать секрет, скопировать */
+.input-group { position: relative; display: flex; align-items: center; }
+.input-group input { padding-right: 42px; }
+.input-group .in-btn {
+  position: absolute; right: 4px; width: 26px; height: 26px; border: 0;
+  border-radius: var(--r-xs); background: transparent; color: var(--fg-3);
+  cursor: pointer; display: grid; place-items: center;
+}
+.input-group .in-btn:hover { background: var(--surf-3); color: var(--fg); }

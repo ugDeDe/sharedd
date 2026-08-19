@@ -1,0 +1,127 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Токены дизайн-системы sharedd.
+   Тёмная тема — базовая: панель чаще открывают ночью, и подсветка под
+   стеклом на ней выразительнее. Светлая включается атрибутом data-theme.
+   Палитра — «Азур».
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  /* ── поверхности ── */
+  --bg:        #080a0f;
+  --surf:      #12151d;
+  --surf-2:    #171b25;
+  --surf-3:    #1d2331;
+  --line:      rgba(255, 255, 255, .09);
+  --line-2:    rgba(255, 255, 255, .05);
+
+  /* ── текст ── */
+  --fg:        #eef1f6;
+  --fg-2:      #a0abbe;
+  --fg-3:      #6d7788;
+
+  /* ── акцент ── */
+  --acc:       #4da3ff;
+  --acc-2:     #8b8bf5;
+  --acc-fg:    #06121f;
+  --acc-soft:  rgba(77, 163, 255, .16);
+  --link:      #5ac8fa;
+
+  /* ── семантика: единственное место, где цвет несёт смысл ── */
+  --ok:        #3ddc97;  --ok-soft:      rgba(61, 220, 151, .13);
+  --warn:      #fbbf24;  --warn-soft:    rgba(251, 191, 36, .13);
+  --bad:       #ff7089;  --bad-soft:     rgba(255, 112, 137, .13);
+  --info:      #5ac8fa;  --info-soft:    rgba(90, 200, 250, .13);
+  --special:   #c084fc;  --special-soft: rgba(192, 132, 252, .13);
+  --gold:      #f0b34a;  --gold-soft:    rgba(240, 179, 74, .14);
+
+  /* ── подсветка фона: её подхватывает стекло ── */
+  --amb-1: rgba(77, 163, 255, .40);
+  --amb-2: rgba(90, 200, 250, .26);
+  --amb-3: rgba(139, 139, 245, .30);
+  --dot:   rgba(255, 255, 255, .075);
+
+  /* ── стекло ── */
+  --gl-a:     rgba(38, 44, 60, .62);
+  --gl-b:     rgba(22, 27, 38, .52);
+  --gl-brd:   rgba(255, 255, 255, .13);
+  --gl-hi:    rgba(255, 255, 255, .18);
+  --gl-lo:    rgba(0, 0, 0, .45);
+  --gl-sheen: rgba(255, 255, 255, .10);
+  --gl-rim-a: rgba(255, 255, 255, .42);
+  --gl-rim-b: rgba(255, 255, 255, .04);
+  --gl-blur:  30px;
+
+  /* ── утопленная дорожка и приподнятый бегунок ── */
+  --track:    rgba(0, 0, 0, .26);
+  --track-in: rgba(0, 0, 0, .40);
+  --thumb:    rgba(255, 255, 255, .14);
+  --thumb-hi: rgba(255, 255, 255, .22);
+
+  /* ── тени ── */
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .45);
+  --sh-2: 0 2px 8px rgba(0, 0, 0, .40), 0 18px 46px rgba(0, 0, 0, .45);
+  --sh-pop: 0 16px 44px rgba(0, 0, 0, .60);
+
+  /* ── шрифты ── */
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── геометрия ── */
+  --r-xs: 7px; --r-sm: 10px; --r-md: 12px; --r-lg: 18px; --r-xl: 22px; --r-pill: 999px;
+  --ctl-h: 34px;
+  --gap: 14px;
+  --pad: 18px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:        #eef0f6;
+  --surf:      #ffffff;
+  --surf-2:    #f5f6fa;
+  --surf-3:    #eceef4;
+  --line:      rgba(17, 24, 39, .09);
+  --line-2:    rgba(17, 24, 39, .05);
+
+  --fg:        #101725;
+  --fg-2:      #57627a;
+  --fg-3:      #8d97a8;
+
+  --acc:       #0a6fff;
+  --acc-2:     #5b5bd6;
+  --acc-fg:    #ffffff;
+  --acc-soft:  rgba(10, 111, 255, .11);
+  --link:      #0e8fd6;
+
+  --ok:        #0a8a5f;  --ok-soft:      rgba(10, 138, 95, .11);
+  --warn:      #b6740b;  --warn-soft:    rgba(182, 116, 11, .12);
+  --bad:       #d1344b;  --bad-soft:     rgba(209, 52, 75, .10);
+  --info:      #0e6fb8;  --info-soft:    rgba(14, 111, 184, .10);
+  --special:   #7c3aed;  --special-soft: rgba(124, 58, 237, .10);
+  --gold:      #a35f06;  --gold-soft:    rgba(163, 95, 6, .12);
+
+  --amb-1: rgba(10, 111, 255, .34);
+  --amb-2: rgba(56, 189, 248, .30);
+  --amb-3: rgba(91, 91, 214, .24);
+  --dot:   rgba(16, 23, 37, .10);
+
+  --gl-a:     rgba(255, 255, 255, .74);
+  --gl-b:     rgba(255, 255, 255, .52);
+  --gl-brd:   rgba(255, 255, 255, .75);
+  --gl-hi:    rgba(255, 255, 255, .92);
+  --gl-lo:    rgba(16, 23, 37, .07);
+  --gl-sheen: rgba(255, 255, 255, .42);
+  --gl-rim-a: rgba(255, 255, 255, 1);
+  --gl-rim-b: rgba(16, 23, 37, .14);
+
+  --track:    rgba(16, 23, 37, .055);
+  --track-in: rgba(16, 23, 37, .07);
+  --thumb:    #ffffff;
+  --thumb-hi: rgba(255, 255, 255, .9);
+
+  --sh-1: 0 1px 2px rgba(16, 23, 37, .05);
+  --sh-2: 0 2px 6px rgba(16, 23, 37, .05), 0 14px 40px rgba(16, 23, 37, .09);
+  --sh-pop: 0 12px 34px rgba(16, 23, 37, .16);
+}

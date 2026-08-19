@@ -1,0 +1,1723 @@
+<!-- ВНИМАНИЕ: файл собран автоматически из ui/pages/links/.
+     Правки здесь будут потеряны при следующей сборке.
+     Исходники: ui/  ·  пересборка: bash scripts/build_ui.sh -->
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · прокси-ссылки</title>
+<script>/* тема до первой отрисовки, иначе мигает светлый кадр */
+try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+  /* ui/tokens.css */
+  :root {
+    color-scheme: dark;
+    --bg: #080a0f;
+    --surf: #12151d;
+    --surf-2: #171b25;
+    --surf-3: #1d2331;
+    --line: rgba(255, 255, 255, .09);
+    --line-2: rgba(255, 255, 255, .05);
+    --fg: #eef1f6;
+    --fg-2: #a0abbe;
+    --fg-3: #6d7788;
+    --acc: #4da3ff;
+    --acc-2: #8b8bf5;
+    --acc-fg: #06121f;
+    --acc-soft: rgba(77, 163, 255, .16);
+    --link: #5ac8fa;
+    --ok: #3ddc97;
+    --ok-soft: rgba(61, 220, 151, .13);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, .13);
+    --bad: #ff7089;
+    --bad-soft: rgba(255, 112, 137, .13);
+    --info: #5ac8fa;
+    --info-soft: rgba(90, 200, 250, .13);
+    --special: #c084fc;
+    --special-soft: rgba(192, 132, 252, .13);
+    --gold: #f0b34a;
+    --gold-soft: rgba(240, 179, 74, .14);
+    --amb-1: rgba(77, 163, 255, .40);
+    --amb-2: rgba(90, 200, 250, .26);
+    --amb-3: rgba(139, 139, 245, .30);
+    --dot: rgba(255, 255, 255, .075);
+    --gl-a: rgba(38, 44, 60, .62);
+    --gl-b: rgba(22, 27, 38, .52);
+    --gl-brd: rgba(255, 255, 255, .13);
+    --gl-hi: rgba(255, 255, 255, .18);
+    --gl-lo: rgba(0, 0, 0, .45);
+    --gl-sheen: rgba(255, 255, 255, .10);
+    --gl-rim-a: rgba(255, 255, 255, .42);
+    --gl-rim-b: rgba(255, 255, 255, .04);
+    --gl-blur: 30px;
+    --track: rgba(0, 0, 0, .26);
+    --track-in: rgba(0, 0, 0, .40);
+    --thumb: rgba(255, 255, 255, .14);
+    --thumb-hi: rgba(255, 255, 255, .22);
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .45);
+    --sh-2: 0 2px 8px rgba(0, 0, 0, .40), 0 18px 46px rgba(0, 0, 0, .45);
+    --sh-pop: 0 16px 44px rgba(0, 0, 0, .60);
+    --sans:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    --mono:
+      ui-monospace,
+      SFMono-Regular,
+      "SF Mono",
+      Menlo,
+      Consolas,
+      monospace;
+    --r-xs: 7px;
+    --r-sm: 10px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 22px;
+    --r-pill: 999px;
+    --ctl-h: 34px;
+    --gap: 14px;
+    --pad: 18px;
+  }
+  :root[data-theme=light] {
+    color-scheme: light;
+    --bg: #eef0f6;
+    --surf: #ffffff;
+    --surf-2: #f5f6fa;
+    --surf-3: #eceef4;
+    --line: rgba(17, 24, 39, .09);
+    --line-2: rgba(17, 24, 39, .05);
+    --fg: #101725;
+    --fg-2: #57627a;
+    --fg-3: #8d97a8;
+    --acc: #0a6fff;
+    --acc-2: #5b5bd6;
+    --acc-fg: #ffffff;
+    --acc-soft: rgba(10, 111, 255, .11);
+    --link: #0e8fd6;
+    --ok: #0a8a5f;
+    --ok-soft: rgba(10, 138, 95, .11);
+    --warn: #b6740b;
+    --warn-soft: rgba(182, 116, 11, .12);
+    --bad: #d1344b;
+    --bad-soft: rgba(209, 52, 75, .10);
+    --info: #0e6fb8;
+    --info-soft: rgba(14, 111, 184, .10);
+    --special: #7c3aed;
+    --special-soft: rgba(124, 58, 237, .10);
+    --gold: #a35f06;
+    --gold-soft: rgba(163, 95, 6, .12);
+    --amb-1: rgba(10, 111, 255, .34);
+    --amb-2: rgba(56, 189, 248, .30);
+    --amb-3: rgba(91, 91, 214, .24);
+    --dot: rgba(16, 23, 37, .10);
+    --gl-a: rgba(255, 255, 255, .74);
+    --gl-b: rgba(255, 255, 255, .52);
+    --gl-brd: rgba(255, 255, 255, .75);
+    --gl-hi: rgba(255, 255, 255, .92);
+    --gl-lo: rgba(16, 23, 37, .07);
+    --gl-sheen: rgba(255, 255, 255, .42);
+    --gl-rim-a: rgba(255, 255, 255, 1);
+    --gl-rim-b: rgba(16, 23, 37, .14);
+    --track: rgba(16, 23, 37, .055);
+    --track-in: rgba(16, 23, 37, .07);
+    --thumb: #ffffff;
+    --thumb-hi: rgba(255, 255, 255, .9);
+    --sh-1: 0 1px 2px rgba(16, 23, 37, .05);
+    --sh-2: 0 2px 6px rgba(16, 23, 37, .05), 0 14px 40px rgba(16, 23, 37, .09);
+    --sh-pop: 0 12px 34px rgba(16, 23, 37, .16);
+  }
+
+  /* ui/base.css */
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-cyrillic.woff2) format("woff2");
+    unicode-range:
+      U+0301,
+      U+0400-045F,
+      U+0490-0491,
+      U+04B0-04B1,
+      U+2116;
+  }
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-latin.woff2) format("woff2");
+    unicode-range:
+      U+0000-00FF,
+      U+0131,
+      U+0152-0153,
+      U+02BB-02BC,
+      U+02C6,
+      U+02DA,
+      U+02DC,
+      U+0304,
+      U+0308,
+      U+0329,
+      U+2000-206F,
+      U+20AC,
+      U+2122,
+      U+2191,
+      U+2193,
+      U+2212,
+      U+2215,
+      U+FEFF,
+      U+FFFD;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: transparent;
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums;
+    min-height: 100vh;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -20% -10%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        46rem 30rem at 12% -8%,
+        var(--amb-1),
+        transparent 60%),
+      radial-gradient(
+        40rem 26rem at 88% 2%,
+        var(--amb-2),
+        transparent 58%),
+      radial-gradient(
+        44rem 30rem at 62% 108%,
+        var(--amb-3),
+        transparent 60%);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(
+        circle at 1px 1px,
+        var(--dot) 1px,
+        transparent 0);
+    background-size: 26px 26px;
+    -webkit-mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+    mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+  }
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  h1 {
+    font-size: 17px;
+  }
+  h2 {
+    font-size: 13.5px;
+  }
+  a {
+    color: var(--acc);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+  }
+  ::selection {
+    background: var(--acc-soft);
+  }
+  .mono {
+    font-family: var(--mono);
+    font-size: .92em;
+    letter-spacing: -.015em;
+  }
+  .muted {
+    color: var(--fg-2);
+  }
+  .dim {
+    color: var(--fg-3);
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .spacer {
+    flex: 1 1 auto;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 44px;
+  }
+  .page-foot {
+    padding: 22px 4px 30px;
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 12px;
+  }
+  @media (max-width: 640px) {
+    .wrap {
+      padding: 0 12px 30px;
+    }
+  }
+
+  /* ui/components/glass.css */
+  .glass {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        180deg,
+        var(--gl-a),
+        var(--gl-b));
+    border: 1px solid var(--gl-brd);
+    box-shadow:
+      inset 0 1px 0 var(--gl-hi),
+      inset 0 -1px 0 var(--gl-lo),
+      var(--sh-2);
+    -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+    backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+  }
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      linear-gradient(
+        142deg,
+        var(--gl-rim-a) 0%,
+        transparent 34%,
+        transparent 66%,
+        var(--gl-rim-b) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  .glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        125deg,
+        var(--gl-sheen) 0%,
+        transparent 34%);
+  }
+  .glass > *:not(.glass-raw) {
+    position: relative;
+    z-index: 1;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      background: var(--surf);
+    }
+  }
+
+  /* ui/components/topbar.css */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding: 14px 0 12px;
+    margin-bottom: 16px;
+  }
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    padding: 9px 11px;
+    border-radius: var(--r-xl);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 3px;
+    flex: none;
+  }
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-md);
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: .01em;
+    background:
+      linear-gradient(
+        150deg,
+        var(--acc),
+        var(--acc-2));
+    box-shadow:
+      0 4px 12px var(--acc-soft),
+      inset 0 1px 0 rgba(255, 255, 255, .5),
+      inset 0 -1px 0 rgba(0, 0, 0, .14);
+  }
+  .brand-name {
+    font-size: 14.5px;
+    font-weight: 650;
+    letter-spacing: -.025em;
+    line-height: 1.15;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--fg-3);
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .navwrap {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .navwrap::-webkit-scrollbar {
+    display: none;
+  }
+  .nav {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    flex: none;
+    background: var(--track);
+    box-shadow: inset 0 1px 2px var(--track-in);
+  }
+  .nav a {
+    padding: 6px 13px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    font-size: 12.5px;
+    font-weight: 520;
+    color: var(--fg-2);
+    text-decoration: none;
+    transition: color .15s, background .15s;
+  }
+  .nav a:hover {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .nav a.active {
+    color: var(--fg);
+    font-weight: 600;
+    background: var(--thumb);
+    box-shadow:
+      0 1px 2px rgba(16, 23, 37, .10),
+      0 2px 6px rgba(16, 23, 37, .07),
+      inset 0 1px 0 var(--thumb-hi);
+  }
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 560;
+    white-space: nowrap;
+  }
+  .status-pill i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.live {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .status-pill.live i {
+    animation: pulse 2.4s infinite;
+  }
+  .status-pill.off {
+    background: var(--bad-soft);
+    color: var(--bad);
+  }
+  @keyframes pulse {
+    50% {
+      opacity: .32;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status-pill.live i {
+      animation: none;
+    }
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    flex: none;
+    border: 1px solid var(--gl-brd);
+    background: var(--thumb);
+    color: var(--fg-2);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: .15s;
+    box-shadow: inset 0 1px 0 var(--thumb-hi);
+  }
+  .icon-btn:hover {
+    color: var(--fg);
+    box-shadow: inset 0 1px 0 var(--thumb-hi), 0 2px 6px rgba(16, 23, 37, .10);
+  }
+  .icon-btn .i-sun {
+    display: none;
+  }
+  :root[data-theme=light] .icon-btn .i-sun {
+    display: block;
+  }
+  :root[data-theme=light] .icon-btn .i-moon {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .nav {
+      display: none;
+    }
+    .brand-sub {
+      display: none;
+    }
+  }
+
+  /* ui/components/card.css */
+  .card {
+    background: var(--surf);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    min-width: 0;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .card-head h2 {
+    margin: 0;
+  }
+  .card-head .hint {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--fg-3);
+    font-weight: 400;
+  }
+  .card-body {
+    padding: var(--pad);
+  }
+  .card-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px var(--pad);
+    border-top: 1px solid var(--line-2);
+    background: var(--surf-2);
+  }
+  .card-note {
+    padding: 12px var(--pad) 16px;
+    color: var(--fg-3);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .metric {
+    padding: 15px 17px;
+    display: flex;
+    flex-direction: column;
+    min-height: 118px;
+  }
+  .metric-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 540;
+    color: var(--fg-2);
+  }
+  .metric-label svg {
+    color: var(--fg-3);
+    flex: none;
+  }
+  .metric-value {
+    font-size: 32px;
+    font-weight: 640;
+    letter-spacing: -.035em;
+    line-height: 1;
+    margin: 12px 0 5px;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+  .metric-value.ok {
+    color: var(--ok);
+  }
+  .metric-value.warn {
+    color: var(--warn);
+  }
+  .metric-value.bad {
+    color: var(--bad);
+  }
+  .metric-value .sep {
+    color: var(--fg-3);
+    font-weight: 300;
+    margin: 0 1px;
+  }
+  .metric-value .unit {
+    font-size: 13px;
+    font-weight: 540;
+    color: var(--fg-2);
+    letter-spacing: -.01em;
+    margin-left: 4px;
+  }
+  .metric-foot {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    margin-top: auto;
+  }
+  .metric-spark {
+    display: block;
+    width: 100%;
+    height: 26px;
+    margin: 2px 0 6px;
+  }
+  @media (max-width: 1080px) {
+    .metrics {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 640px) {
+    .metrics {
+      grid-template-columns: 1fr;
+    }
+    .metric-value {
+      font-size: 28px;
+    }
+  }
+
+  /* ui/components/badge.css */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 21px;
+    padding: 0 7px;
+    border-radius: var(--r-xs);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    white-space: nowrap;
+  }
+  .badge.ok {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .badge.warn {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .badge.bad {
+    background: var(--bad-soft);
+    color: var(--bad);
+  }
+  .badge.info {
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .badge.special {
+    background: var(--special-soft);
+    color: var(--special);
+  }
+  .badge.gold {
+    background: var(--gold-soft);
+    color: var(--gold);
+  }
+  .badge.mono {
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .badge i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 520;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: .14s;
+  }
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-3);
+  }
+  .chip.active {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+
+  /* ui/components/form.css */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: var(--ctl-h);
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 550;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background .13s,
+      border-color .13s,
+      color .13s;
+  }
+  .btn:hover {
+    background: var(--surf-2);
+    border-color: var(--fg-3);
+    text-decoration: none;
+  }
+  .btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .btn svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .btn.primary {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
+    border-color: var(--acc);
+  }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--fg-2);
+  }
+  .btn.ghost:hover {
+    background: var(--surf-2);
+    color: var(--fg);
+  }
+  .btn.danger {
+    color: var(--bad);
+    border-color: transparent;
+    background: var(--bad-soft);
+  }
+  .btn.danger:hover {
+    background: var(--bad-soft);
+    filter: brightness(1.1);
+  }
+  .btn.sm {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .btn.icon {
+    width: var(--ctl-h);
+    padding: 0;
+  }
+  .btn.icon.sm {
+    width: 28px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .field > label {
+    color: var(--fg-2);
+    font-size: 12.5px;
+    font-weight: 520;
+  }
+  .field .help {
+    color: var(--fg-3);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  input[type=text],
+  input[type=password],
+  input[type=number],
+  input[type=search],
+  textarea,
+  select {
+    width: 100%;
+    min-width: 0;
+    height: var(--ctl-h);
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surf-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    transition: border-color .13s, box-shadow .13s;
+  }
+  textarea {
+    height: auto;
+    min-height: 84px;
+    padding: 9px 11px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--fg-3);
+  }
+  input.mono,
+  textarea.mono {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  input[type=number] {
+    max-width: 150px;
+    -moz-appearance: textfield;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .check input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .check .box {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surf-2);
+    display: grid;
+    place-items: center;
+    transition: all .13s;
+  }
+  .check .box::after {
+    content: "";
+    width: 9px;
+    height: 9px;
+    transform: scale(0);
+    background: var(--acc-fg);
+    transition: transform .13s;
+    clip-path: polygon(14% 47%, 0 61%, 39% 100%, 100% 22%, 85% 8%, 39% 71%);
+  }
+  .check input:checked + .box {
+    background: var(--acc);
+    border-color: var(--acc);
+  }
+  .check input:checked + .box::after {
+    transform: scale(1);
+  }
+  .check input:focus-visible + .box {
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-group input {
+    padding-right: 42px;
+  }
+  .input-group .in-btn {
+    position: absolute;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--fg-3);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .input-group .in-btn:hover {
+    background: var(--surf-3);
+    color: var(--fg);
+  }
+
+  /* ui/components/misc.css */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 15px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-3);
+    border-radius: var(--r-md);
+    background: var(--surf);
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .banner svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    margin-top: 2px;
+  }
+  .banner b {
+    color: var(--fg);
+    font-weight: 620;
+  }
+  .banner.info {
+    border-left-color: var(--acc);
+    background: var(--acc-soft);
+  }
+  .banner.warn {
+    border-left-color: var(--warn);
+    background: var(--warn-soft);
+  }
+  .banner.warn svg {
+    color: var(--warn);
+  }
+  .banner.bad {
+    border-left-color: var(--bad);
+    background: var(--bad-soft);
+  }
+  .banner.bad svg {
+    color: var(--bad);
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--fg-3);
+  }
+  .empty-state svg {
+    width: 26px;
+    height: 26px;
+    opacity: .55;
+  }
+  .empty-state .t {
+    color: var(--fg-2);
+    font-size: 13.5px;
+    font-weight: 560;
+  }
+  .empty-state .s {
+    font-size: 12.5px;
+    max-width: 44ch;
+    line-height: 1.5;
+  }
+  .skeleton {
+    border-radius: var(--r-xs);
+    background:
+      linear-gradient(
+        90deg,
+        var(--surf-2) 25%,
+        var(--surf-3) 37%,
+        var(--surf-2) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+  #toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 90;
+    display: none;
+    max-width: min(380px, calc(100vw - 36px));
+    padding: 11px 15px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ok);
+    background: var(--surf);
+    box-shadow: var(--sh-pop);
+    color: var(--ok);
+    font-size: 13px;
+  }
+  #toast.show {
+    display: block;
+    animation: toast-in .18s ease;
+  }
+  #toast.err {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .kv {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 12px;
+  }
+  .kv-k {
+    color: var(--fg-3);
+    font-size: 10.5px;
+  }
+  .kv-v {
+    color: var(--fg);
+    font-weight: 560;
+  }
+
+  /* ui/pages/links/page.css */
+  .links-wrap {
+    max-width: 1020px;
+  }
+  .user-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .user-name {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+  .user-count {
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .link-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .link-row:last-child {
+    border-bottom: 0;
+  }
+  .link-row:hover {
+    background: var(--surf-2);
+  }
+  .link-main {
+    min-width: 0;
+    flex: 1 1 260px;
+  }
+  .link-domain {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .link-url {
+    color: var(--fg-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+  }
+  .link-acts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .modal {
+      background: var(--bg);
+    }
+  }
+  .modal.show {
+    display: grid;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 340px;
+    padding: 22px;
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+  .modal-box .d {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+  .qr-canvas {
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 1;
+    image-rendering: pixelated;
+    background: #fff;
+    border-radius: var(--r-sm);
+    padding: 10px;
+    border: 1px solid var(--line);
+  }
+  @media (max-width: 640px) {
+    .user-head,
+    .link-row {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .link-acts {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap links-wrap">
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub">прокси-ссылки</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">загрузка…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner info">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <span>Нажмите <b>Открыть</b> на телефоне с Telegram — прокси добавится сам. <b>QR</b> — если Telegram на другом устройстве. Ссылка ведёт на живой домен: если нода попадёт под блокировку, домен переедет на другую, а ссылка останется прежней.</span>
+  </div>
+
+  <div id="list"></div>
+
+  <footer class="page-foot">sharedd · публичные прокси-ссылки · обновление каждые 30 с</footer>
+</div>
+
+<div class="modal" id="qr-modal">
+  <div class="modal-box glass">
+    <div class="d" id="qr-domain"></div>
+    <canvas class="qr-canvas" id="qr-canvas"></canvas>
+    <div class="dim" style="font-size:12px">Наведите камеру Telegram или системного сканера</div>
+    <button class="btn" id="qr-close">Закрыть</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ui/lib/dom.ts
+  var $ = (id) => document.getElementById(id);
+  var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // ui/lib/format.ts
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  // ui/lib/theme.ts
+  var KEY = "sharedd.theme";
+  function initTheme() {
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === "light" ? "dark" : "light";
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem(KEY, next);
+      } catch {
+      }
+      document.dispatchEvent(new CustomEvent("themechange"));
+    });
+  }
+
+  // ui/pages/links/qr.ts
+  var EXP = new Uint8Array(512);
+  var LOG = new Uint8Array(256);
+  for (i = 0, x = 1; i < 255; i++) {
+    EXP[i] = x;
+    LOG[x] = i;
+    x <<= 1;
+    if (x & 256) x ^= 285;
+  }
+  var i;
+  var x;
+  for (i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  var i;
+  function mul(a, b) {
+    return a && b ? EXP[LOG[a] + LOG[b]] : 0;
+  }
+  function rsGen(deg) {
+    var p = [1];
+    for (var i2 = 0; i2 < deg; i2++) {
+      var np = new Array(p.length + 1).fill(0);
+      for (var j = 0; j < p.length; j++) {
+        np[j] ^= mul(p[j], 1);
+        np[j + 1] ^= mul(p[j], EXP[i2]);
+      }
+      p = np;
+    }
+    return p;
+  }
+  function rsEnc(data, deg) {
+    var gen = rsGen(deg), res = new Array(deg).fill(0);
+    for (var i2 = 0; i2 < data.length; i2++) {
+      var f = data[i2] ^ res[0];
+      res.shift();
+      res.push(0);
+      for (var j = 0; j < deg; j++) res[j] ^= mul(gen[j + 1], f);
+    }
+    return res;
+  }
+  var ECL = [
+    null,
+    [7, 1, 19, 0, 0],
+    [10, 1, 34, 0, 0],
+    [15, 1, 55, 0, 0],
+    [20, 1, 80, 0, 0],
+    [26, 1, 108, 0, 0],
+    [18, 2, 68, 0, 0],
+    [20, 2, 78, 0, 0],
+    [24, 2, 97, 0, 0],
+    [30, 2, 116, 0, 0],
+    [18, 2, 68, 2, 69],
+    [20, 4, 81, 0, 0],
+    [24, 2, 92, 2, 93],
+    [26, 4, 107, 0, 0],
+    [30, 3, 115, 1, 116],
+    [22, 5, 87, 1, 88],
+    [24, 5, 98, 1, 99],
+    [28, 1, 107, 5, 108],
+    [30, 5, 120, 1, 121],
+    [28, 3, 113, 4, 114],
+    [28, 3, 107, 5, 108]
+  ];
+  var ALIGN = [
+    null,
+    [],
+    [6, 18],
+    [6, 22],
+    [6, 26],
+    [6, 30],
+    [6, 34],
+    [6, 22, 38],
+    [6, 24, 42],
+    [6, 26, 46],
+    [6, 28, 50],
+    [6, 30, 54],
+    [6, 32, 58],
+    [6, 34, 62],
+    [6, 26, 46, 66],
+    [6, 26, 48, 70],
+    [6, 26, 50, 74],
+    [6, 30, 54, 78],
+    [6, 30, 56, 82],
+    [6, 30, 58, 86],
+    [6, 34, 62, 90]
+  ];
+  function dataCapacity(v) {
+    var t = ECL[v];
+    return t[1] * t[2] + t[3] * t[4];
+  }
+  function bch15(v) {
+    var d = v << 10;
+    for (var i2 = 4; i2 >= 0; i2--) if (d >>> 10 + i2 & 1) d ^= 1335 << i2;
+    return (v << 10 | d) ^ 21522;
+  }
+  function bch18(v) {
+    var d = v << 12;
+    for (var i2 = 5; i2 >= 0; i2--) if (d >>> 12 + i2 & 1) d ^= 7973 << i2;
+    return v << 12 | d;
+  }
+  function utf8(s) {
+    var out = [], b = new TextEncoder().encode(s);
+    for (var i2 = 0; i2 < b.length; i2++) out.push(b[i2]);
+    return out;
+  }
+  function encode(text) {
+    var bytes = utf8(text), ver = 0;
+    for (var v = 1; v <= 20; v++) {
+      var cci = v < 10 ? 8 : 16;
+      if (dataCapacity(v) * 8 >= 4 + cci + bytes.length * 8) {
+        ver = v;
+        break;
+      }
+    }
+    if (!ver) throw new Error("строка слишком длинная для QR");
+    var bits = [];
+    function put(val, len) {
+      for (var i3 = len - 1; i3 >= 0; i3--) bits.push(val >>> i3 & 1);
+    }
+    put(4, 4);
+    put(bytes.length, ver < 10 ? 8 : 16);
+    for (var i2 = 0; i2 < bytes.length; i2++) put(bytes[i2], 8);
+    var cap = dataCapacity(ver) * 8;
+    for (var i2 = 0; i2 < 4 && bits.length < cap; i2++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var dat = [];
+    for (var i2 = 0; i2 < bits.length; i2 += 8) {
+      var b = 0;
+      for (var j = 0; j < 8; j++) b = b << 1 | bits[i2 + j];
+      dat.push(b);
+    }
+    for (var pad = 0; dat.length < dataCapacity(ver); pad++) dat.push(pad % 2 ? 17 : 236);
+    var t = ECL[ver], blocks = [], ecs = [], p = 0;
+    for (var i2 = 0; i2 < t[1]; i2++) {
+      var b = dat.slice(p, p + t[2]);
+      p += t[2];
+      blocks.push(b);
+      ecs.push(rsEnc(b, t[0]));
+    }
+    for (var i2 = 0; i2 < t[3]; i2++) {
+      var b = dat.slice(p, p + t[4]);
+      p += t[4];
+      blocks.push(b);
+      ecs.push(rsEnc(b, t[0]));
+    }
+    var maxD = Math.max(t[2], t[4]), out = [];
+    for (var i2 = 0; i2 < maxD; i2++) for (var j = 0; j < blocks.length; j++) if (i2 < blocks[j].length) out.push(blocks[j][i2]);
+    for (var i2 = 0; i2 < t[0]; i2++) for (var j = 0; j < ecs.length; j++) out.push(ecs[j][i2]);
+    var n = ver * 4 + 17;
+    var m = [], res = [];
+    for (var i2 = 0; i2 < n; i2++) {
+      m.push(new Int8Array(n).fill(-1));
+      res.push(new Int8Array(n));
+    }
+    function setF(r2, c3, v2) {
+      if (r2 >= 0 && r2 < n && c3 >= 0 && c3 < n) m[r2][c3] = v2;
+    }
+    function finder(r2, c3) {
+      for (var dr2 = -1; dr2 <= 7; dr2++) for (var dc2 = -1; dc2 <= 7; dc2++) {
+        var inb = dr2 >= 0 && dr2 <= 6 && dc2 >= 0 && dc2 <= 6;
+        var v2 = inb && (dr2 === 0 || dr2 === 6 || dc2 === 0 || dc2 === 6 || dr2 >= 2 && dr2 <= 4 && dc2 >= 2 && dc2 <= 4) ? 1 : 0;
+        setF(r2 + dr2, c3 + dc2, v2);
+      }
+    }
+    finder(0, 0);
+    finder(0, n - 7);
+    finder(n - 7, 0);
+    for (var i2 = 8; i2 < n - 8; i2++) {
+      m[6][i2] = i2 % 2 === 0 ? 1 : 0;
+      m[i2][6] = i2 % 2 === 0 ? 1 : 0;
+    }
+    var ap = ALIGN[ver];
+    for (var a = 0; a < ap.length; a++) for (var b2 = 0; b2 < ap.length; b2++) {
+      var r = ap[a], c = ap[b2];
+      if (r <= 8 && c <= 8 || r <= 8 && c >= n - 9 || r >= n - 9 && c <= 8) continue;
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++)
+        m[r + dr][c + dc] = Math.abs(dr) === 2 || Math.abs(dc) === 2 || dr === 0 && dc === 0 ? 1 : 0;
+    }
+    m[n - 8][8] = 1;
+    for (var i2 = 0; i2 <= 8; i2++) {
+      if (m[8][i2] === -1) m[8][i2] = 0;
+      if (m[i2][8] === -1) m[i2][8] = 0;
+    }
+    for (var i2 = n - 8; i2 < n; i2++) {
+      if (m[8][i2] === -1) m[8][i2] = 0;
+      if (m[i2][8] === -1) m[i2][8] = 0;
+    }
+    if (ver >= 7) {
+      var vi = bch18(ver);
+      for (var i2 = 0; i2 < 18; i2++) {
+        var bit = vi >>> i2 & 1, r = Math.floor(i2 / 3), c = i2 % 3;
+        m[r][n - 11 + c] = bit;
+        m[n - 11 + c][r] = bit;
+      }
+    }
+    var reserved = [];
+    for (var i2 = 0; i2 < n; i2++) reserved.push(Int8Array.from(m[i2]));
+    var bitIdx = 0, upward = true;
+    for (var col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (var k = 0; k < n; k++) {
+        var row = upward ? n - 1 - k : k;
+        for (var c2 = 0; c2 < 2; c2++) {
+          var cc = col - c2;
+          if (reserved[row][cc] !== -1) continue;
+          var bit = 0;
+          if (bitIdx < out.length * 8) bit = out[bitIdx >> 3] >>> 7 - (bitIdx & 7) & 1;
+          bitIdx++;
+          m[row][cc] = bit;
+        }
+      }
+      upward = !upward;
+    }
+    function maskFn(k2, r2, c3) {
+      switch (k2) {
+        case 0:
+          return (r2 + c3) % 2 === 0;
+        case 1:
+          return r2 % 2 === 0;
+        case 2:
+          return c3 % 3 === 0;
+        case 3:
+          return (r2 + c3) % 3 === 0;
+        case 4:
+          return (Math.floor(r2 / 2) + Math.floor(c3 / 3)) % 2 === 0;
+        case 5:
+          return r2 * c3 % 2 + r2 * c3 % 3 === 0;
+        case 6:
+          return (r2 * c3 % 2 + r2 * c3 % 3) % 2 === 0;
+        default:
+          return ((r2 + c3) % 2 + r2 * c3 % 3) % 2 === 0;
+      }
+    }
+    function penalty(g2) {
+      var p1 = 0, p2 = 0, p3 = 0, dark = 0;
+      for (var r2 = 0; r2 < n; r2++) {
+        for (var c3 = 0; c3 < n; c3++) {
+          if (g2[r2][c3]) dark++;
+          if (c3 < n - 1 && r2 < n - 1 && g2[r2][c3] === g2[r2][c3 + 1] && g2[r2][c3] === g2[r2 + 1][c3] && g2[r2][c3] === g2[r2 + 1][c3 + 1]) p2 += 3;
+        }
+      }
+      function runs(get) {
+        var s = 0;
+        for (var a2 = 0; a2 < n; a2++) {
+          var run = 1;
+          for (var b3 = 1; b3 < n; b3++) {
+            if (get(a2, b3) === get(a2, b3 - 1)) run++;
+            else {
+              if (run >= 5) s += run - 2;
+              run = 1;
+            }
+          }
+          if (run >= 5) s += run - 2;
+        }
+        return s;
+      }
+      p1 = runs(function(a2, b3) {
+        return g2[a2][b3];
+      }) + runs(function(a2, b3) {
+        return g2[b3][a2];
+      });
+      var pat1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], pat2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+      function look(get) {
+        var s = 0;
+        for (var a2 = 0; a2 < n; a2++) for (var b3 = 0; b3 + 11 <= n; b3++) {
+          var ok1 = true, ok2 = true;
+          for (var d = 0; d < 11; d++) {
+            if (get(a2, b3 + d) !== pat1[d]) ok1 = false;
+            if (get(a2, b3 + d) !== pat2[d]) ok2 = false;
+          }
+          if (ok1) s += 40;
+          if (ok2) s += 40;
+        }
+        return s;
+      }
+      p3 = look(function(a2, b3) {
+        return g2[a2][b3];
+      }) + look(function(a2, b3) {
+        return g2[b3][a2];
+      });
+      var pct = dark * 100 / (n * n);
+      var p4 = Math.floor(Math.abs(pct - 50) / 5) * 10;
+      return p1 + p2 + p3 + p4;
+    }
+    var best = null, bestScore = Infinity;
+    for (var k = 0; k < 8; k++) {
+      var g = [];
+      for (var r = 0; r < n; r++) {
+        g.push(new Int8Array(n));
+        for (var c = 0; c < n; c++)
+          g[r][c] = reserved[r][c] === -1 ? m[r][c] ^ (maskFn(k, r, c) ? 1 : 0) : m[r][c];
+      }
+      var fi = bch15(1 << 3 | k);
+      for (var i2 = 0; i2 < 15; i2++) {
+        var bit = fi >>> i2 & 1;
+        if (i2 < 6) g[i2][8] = bit;
+        else if (i2 < 8) g[i2 + 1][8] = bit;
+        else if (i2 === 8) g[8][7] = bit;
+        else g[8][14 - i2] = bit;
+        if (i2 < 8) g[8][n - 1 - i2] = bit;
+        else g[n - 15 + i2][8] = bit;
+      }
+      g[n - 8][8] = 1;
+      var sc = penalty(g);
+      if (sc < bestScore) {
+        bestScore = sc;
+        best = g;
+      }
+    }
+    return best;
+  }
+
+  // ui/pages/links/main.ts
+  function drawQR(canvas, text) {
+    const m = encode(text), n = m.length, q = 4, size = n + q * 2;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < n; r++)
+      for (let c = 0; c < n; c++)
+        if (m[r][c]) ctx.fillRect(c + q, r + q, 1, 1);
+  }
+  function showQR(domain, url) {
+    $("qr-domain").textContent = domain;
+    drawQR($("qr-canvas"), url);
+    $("qr-modal").classList.add("show");
+  }
+  function closeQR() {
+    $("qr-modal").classList.remove("show");
+  }
+  var flashTimer;
+  function flash(btn, text) {
+    const old = btn.dataset.label || btn.textContent || "";
+    btn.dataset.label = old;
+    btn.textContent = text;
+    clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => {
+      btn.textContent = btn.dataset.label;
+    }, 1600);
+  }
+  function copy(btn, url) {
+    const done = () => flash(btn, "скопировано");
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(done, () => flash(btn, "не вышло"));
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } catch {
+      flash(btn, "не вышло");
+    }
+    document.body.removeChild(ta);
+  }
+  function render(links) {
+    const el = $("list");
+    if (!links.length) {
+      el.innerHTML = `<div class="card"><div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <span class="t">Сейчас ни одна ссылка не доступна</span>
+      <span class="s">У доменов нет назначенных мастеров — либо пул пуст, либо все ноды в блокировке.
+        Ссылки появятся, как только регистратор назначит домену живую ноду.</span>
+    </div></div>`;
+      return;
+    }
+    const byUser = {};
+    for (const l of links) (byUser[l.user] = byUser[l.user] || []).push(l);
+    el.innerHTML = Object.keys(byUser).sort().map((user) => {
+      const n = byUser[user].length;
+      return `<section class="card" style="margin-bottom:14px">
+      <div class="user-head">
+        <span class="user-name">${esc(user)}</span>
+        <span class="user-count">${n} ${plural(n, "домен", "домена", "доменов")}</span>
+      </div>
+      ${byUser[user].map((l) => `
+        <div class="link-row">
+          <div class="link-main">
+            <div class="link-domain">${esc(l.domain)}<span class="dim" style="font-weight:400">:${l.port}</span></div>
+            <div class="link-url">${esc(l.url)}</div>
+          </div>
+          <div class="link-acts">
+            <a class="btn primary sm" href="${esc(l.url)}">Открыть</a>
+            <button class="btn sm" data-copy="${esc(l.url)}">копировать</button>
+            <button class="btn sm" data-qr="${esc(l.url)}" data-domain="${esc(l.domain)}">QR</button>
+          </div>
+        </div>`).join("")}
+    </section>`;
+    }).join("");
+  }
+  async function refresh() {
+    const pill = $("live-pill");
+    try {
+      const resp = await fetch("/proxylinks", { cache: "no-store" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      render(data.links || []);
+      pill.className = "status-pill live";
+      $("live-text").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
+    } catch {
+      pill.className = "status-pill off";
+      $("live-text").textContent = "нет связи";
+    }
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const c = t.closest("button[data-copy]");
+    if (c) {
+      copy(c, c.dataset.copy);
+      return;
+    }
+    const q = t.closest("button[data-qr]");
+    if (q) {
+      showQR(q.dataset.domain, q.dataset.qr);
+      return;
+    }
+  });
+  $("qr-close").onclick = closeQR;
+  $("qr-modal").addEventListener("click", (e) => {
+    if (e.target.id === "qr-modal") closeQR();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeQR();
+  });
+  initTheme();
+  refresh();
+  setInterval(refresh, 3e4);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+/* ═══ Баннер ══════════════════════════════════════════════════════════ */
+.banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 15px; margin-bottom: 16px;
+  border: 1px solid var(--line); border-left: 3px solid var(--fg-3);
+  border-radius: var(--r-md); background: var(--surf);
+  color: var(--fg-2); font-size: 13px; line-height: 1.5;
+}
+.banner svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.banner b { color: var(--fg); font-weight: 620; }
+.banner.info { border-left-color: var(--acc); background: var(--acc-soft); }
+.banner.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.banner.warn svg { color: var(--warn); }
+.banner.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+.banner.bad svg { color: var(--bad); }
+
+/* ═══ Пустое состояние и скелет ═══════════════════════════════════════ */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 40px 20px; text-align: center; color: var(--fg-3);
+}
+.empty-state svg { width: 26px; height: 26px; opacity: .55; }
+.empty-state .t { color: var(--fg-2); font-size: 13.5px; font-weight: 560; }
+.empty-state .s { font-size: 12.5px; max-width: 44ch; line-height: 1.5; }
+.skeleton {
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--surf-2) 25%, var(--surf-3) 37%, var(--surf-2) 63%);
+  background-size: 400% 100%; animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* ═══ Тост ════════════════════════════════════════════════════════════ */
+#toast {
+  position: fixed; right: 18px; bottom: 18px; z-index: 90; display: none;
+  max-width: min(380px, calc(100vw - 36px)); padding: 11px 15px;
+  border-radius: var(--r-md); border: 1px solid var(--ok); background: var(--surf);
+  box-shadow: var(--sh-pop); color: var(--ok); font-size: 13px;
+}
+#toast.show { display: block; animation: toast-in .18s ease; }
+#toast.err { border-color: var(--bad); color: var(--bad); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* ═══ Пара «ключ — значение» ══════════════════════════════════════════ */
+.kv { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+.kv-k { color: var(--fg-3); font-size: 10.5px; }
+.kv-v { color: var(--fg); font-weight: 560; }
