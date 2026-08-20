@@ -110,19 +110,27 @@ function renderNodeDetail(d: any): void {
   // последняя верификация Globalping по площадкам (регистратор хранит деталь)
   const gp = d.gp_last || null;
   const gpHist = d.gp_hist || [];
+  // Сводка идёт СТРОКОЙ над таблицей, а не колонкой сбоку: в колонке
+  // содержимого на пять строк, а таблица площадок — на двадцать, и под
+  // сводкой оставалось полэкрана пустоты.
   let gpSide: string;
   if (gp) {
-    gpSide = `<div class="gp-side">
+    gpSide = `<div class="gp-summary">
       <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
-      <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
-      <div class="metric-foot">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
-      <div class="metric-foot">проверено: ${esc(fmtAgo(gp.at))}</div>
-      <div class="dim mono" style="margin-top:9px;font-size:11px;word-break:break-all">measurement ${esc(gp.measurement_id)}</div>
+      <div class="gp-facts">
+        <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
+        <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
+        <div class="kv"><span class="kv-k">measurement</span><span class="kv-v mono">${esc(gp.measurement_id)}</span></div>
+      </div>
     </div>`;
   } else {
-    gpSide = `<div class="gp-side">
-      <div class="table-empty" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
-      <div class="metric-foot">текущий статус: ${chip(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+    gpSide = `<div class="gp-summary">
+      <div class="gp-facts">
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip(n.globalping_ok)}</span></div>
+        ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
+        <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
+      </div>
     </div>`;
   }
   const probesTbl = gp && (gp.probes || []).length
@@ -164,7 +172,7 @@ function renderNodeDetail(d: any): void {
     <div class="metrics">${stats}</div>
     <section class="card">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
-      <div class="gp-grid">${gpSide}${probesTbl}</div>
+      ${gpSide}${probesTbl}
     </section>
     <section class="card">
       <div class="card-head"><h2>История проверок</h2></div>

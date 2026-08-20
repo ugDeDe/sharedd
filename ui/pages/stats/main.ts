@@ -224,18 +224,25 @@ async function renderNodeView(id: string): Promise<void> {
 
   const gp = d.gp_last || null;
   const gpHist = d.gp_hist || [];
+  // Сводка строкой над таблицей: у колонки сбоку содержимого на четыре
+  // строки, а у таблицы площадок — на двадцать, и снизу зияла пустота.
   let gpSide: string;
   if (gp) {
-    gpSide = `<div class="gp-side">
+    gpSide = `<div class="gp-summary">
       <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
-      <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
-      <div class="extra">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
-      <div class="extra">проверено: ${esc(fmtAgo(gp.at))}</div>
+      <div class="gp-facts">
+        <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
+        <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
+      </div>
     </div>`;
   } else {
-    gpSide = `<div class="gp-side">
-      <div class="dim" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
-      <div class="extra">текущий статус: ${chip(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+    gpSide = `<div class="gp-summary">
+      <div class="gp-facts">
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip(n.globalping_ok)}</span></div>
+        ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
+        <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
+      </div>
     </div>`;
   }
 
@@ -277,7 +284,7 @@ async function renderNodeView(id: string): Promise<void> {
     <div class="metrics" style="margin-bottom:16px">${stats}</div>
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
-      <div class="gp-grid">${gpSide}${probesTbl}</div>
+      ${gpSide}${probesTbl}
     </section>
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>История проверок</h2></div>

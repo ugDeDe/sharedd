@@ -1350,28 +1350,26 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   .node-reason .banner {
     margin-bottom: 0;
   }
-  .gp-grid {
-    display: grid;
-    grid-template-columns: minmax(230px, .8fr) minmax(0, 1.7fr);
-    gap: 20px;
-    padding: 16px var(--pad) var(--pad);
-    align-items: start;
+  .gp-summary {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    background: var(--surf-2);
   }
-  .gp-side .extra {
-    color: var(--fg-3);
-    font-size: 12.5px;
-    margin-top: 4px;
-  }
-  .gp-side .extra b {
-    color: var(--fg);
-    font-family: var(--mono);
+  .gp-facts {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
   }
   .gp-big {
-    font-size: 38px;
-    font-weight: 700;
-    font-family: var(--mono);
-    line-height: 1.1;
-    margin-bottom: 8px;
+    font-size: 30px;
+    font-weight: 680;
+    letter-spacing: -.03em;
+    line-height: 1;
   }
   .gp-big.ok {
     color: var(--ok);
@@ -1835,16 +1833,21 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     const gpHist = d.gp_hist || [];
     let gpSide;
     if (gp) {
-      gpSide = `<div class="gp-side">
+      gpSide = `<div class="gp-summary">
       <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
-      <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
-      <div class="extra">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
-      <div class="extra">проверено: ${esc(fmtAgo(gp.at))}</div>
+      <div class="gp-facts">
+        <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
+        <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
+      </div>
     </div>`;
     } else {
-      gpSide = `<div class="gp-side">
-      <div class="dim" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
-      <div class="extra">текущий статус: ${chip(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+      gpSide = `<div class="gp-summary">
+      <div class="gp-facts">
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip(n.globalping_ok)}</span></div>
+        ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
+        <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
+      </div>
     </div>`;
     }
     const probesTbl = gp && (gp.probes || []).length ? `<div class="table-wrap"><table class="table-cards">
@@ -1879,7 +1882,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     <div class="metrics" style="margin-bottom:16px">${stats}</div>
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
-      <div class="gp-grid">${gpSide}${probesTbl}</div>
+      ${gpSide}${probesTbl}
     </section>
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>История проверок</h2></div>

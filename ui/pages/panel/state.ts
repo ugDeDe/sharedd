@@ -46,6 +46,17 @@ export function hideLogin(): void {
   $("login-overlay").classList.remove("show");
 }
 
+/* ── полное обновление ──────────────────────────────────────────────
+   Ссылку ставит main.ts при старте. Нужна представлениям, которые после
+   действия обязаны обновить ВЕСЬ снимок — как это делал прежний код,
+   вызывая refresh() напрямую. Через state, чтобы не заводить цикл
+   импортов main.ts ⇄ views/*. */
+let refreshAllFn: (() => Promise<void>) | null = null;
+export function setRefreshAll(fn: () => Promise<void>): void { refreshAllFn = fn; }
+export function refreshAll(): Promise<void> {
+  return refreshAllFn ? refreshAllFn() : Promise.resolve();
+}
+
 /* ── тост ───────────────────────────────────────────────────────────── */
 let toastTimer: number | undefined;
 export function showToast(text: string, isErr?: boolean): void {

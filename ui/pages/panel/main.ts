@@ -6,7 +6,7 @@
 
 import { $, esc } from "../../lib/dom";
 import { initTheme } from "../../lib/theme";
-import { api, state, showLogin, hideLogin, showToast, LS_KEY } from "./state";
+import { api, state, showLogin, hideLogin, showToast, setRefreshAll, LS_KEY } from "./state";
 
 import * as overview from "./views/overview";
 import * as nodes from "./views/nodes";
@@ -161,6 +161,7 @@ document.addEventListener("click", (e) => {
 window.addEventListener("hashchange", route);
 
 /* ── старт ──────────────────────────────────────────────────────────── */
+setRefreshAll(refresh);
 initTheme();
 settings.init();
 srmd.init();

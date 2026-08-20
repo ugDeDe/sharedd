@@ -115,15 +115,15 @@
 .nd-reason { flex-basis: 100%; color: var(--bad); font-size: 12.5px; }
 
 /* Нода: Globalping — сводка слева, таблица проб справа. */
-.gp-grid { display: grid; grid-template-columns: 190px minmax(0, 1fr); }
-.gp-side { padding: var(--pad); border-right: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 5px; }
-.gp-side .table-wrap, .gp-grid > .table-wrap { min-width: 0; }
-.gp-big { font-size: 34px; font-weight: 680; letter-spacing: -.03em; }
+.gp-summary {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px var(--pad); border-bottom: 1px solid var(--line-2); background: var(--surf-2);
+}
+.gp-facts { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.gp-big { font-size: 30px; font-weight: 680; letter-spacing: -.03em; line-height: 1; }
 .gp-big.ok { color: var(--ok); }
 .gp-big.bad { color: var(--bad); }
 @media (max-width: 720px) {
-  .gp-grid { grid-template-columns: minmax(0, 1fr); }
-  .gp-side { border-right: 0; border-bottom: 1px solid var(--line-2); }
 }
 
 /* Нода: история проверок — тики TCP/metrics и столбики GP-ratio. */

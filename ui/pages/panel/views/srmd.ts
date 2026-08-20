@@ -6,7 +6,7 @@
    Меняется только разметка строки таблицы. */
 
 import { $, esc } from "../../../lib/dom";
-import { api, state, getToken, showToast, saveSection } from "../state";
+import { api, state, getToken, showToast, saveSection, refreshAll } from "../state";
 
 function renderSRMD(o: any): void {
   const s = o.srmd;
@@ -89,8 +89,10 @@ export function init(): void {
       .then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`))
       // как в прежней версии — не ждём общий 5-секундный поллинг, сразу
       // подтягиваем свежий /panel/api/overview и перерисовываем таблицу
-      .then(() => api("/panel/api/overview"))
-      .then((ov) => { state.ov = ov; renderSRMD(ov); })
+      // Прежняя версия после take/release дёргала полное обновление —
+      // не только таблицу СРМД, но и шапку, баннер тревог и журнал.
+      // Делаем ровно то же, чтобы поведение не разошлось.
+      .then(() => refreshAll())
       .catch((e) => showToast((e as Error).message, true));
   });
 

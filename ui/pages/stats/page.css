@@ -24,13 +24,13 @@
 .node-reason { flex: 0 0 100%; margin-top: 12px; }
 .node-reason .banner { margin-bottom: 0; }
 
-.gp-grid {
-  display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.7fr);
-  gap: 20px; padding: 16px var(--pad) var(--pad); align-items: start;
+.gp-summary {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px var(--pad); border-bottom: 1px solid var(--line-2); background: var(--surf-2);
 }
-.gp-side .extra { color: var(--fg-3); font-size: 12.5px; margin-top: 4px; }
-.gp-side .extra b { color: var(--fg); font-family: var(--mono); }
-.gp-big { font-size: 38px; font-weight: 700; font-family: var(--mono); line-height: 1.1; margin-bottom: 8px; }
+.gp-facts { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+/* крупное число — основным шрифтом: моноширинный оставлен машинным строкам */
+.gp-big { font-size: 30px; font-weight: 680; letter-spacing: -.03em; line-height: 1; }
 .gp-big.ok { color: var(--ok); }
 .gp-big.bad { color: var(--bad); }
 

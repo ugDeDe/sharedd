@@ -1725,25 +1725,26 @@
     color: var(--bad);
     font-size: 12.5px;
   }
-  .gp-grid {
-    display: grid;
-    grid-template-columns: 190px minmax(0, 1fr);
-  }
-  .gp-side {
-    padding: var(--pad);
-    border-right: 1px solid var(--line-2);
+  .gp-summary {
     display: flex;
-    flex-direction: column;
-    gap: 5px;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    background: var(--surf-2);
   }
-  .gp-side .table-wrap,
-  .gp-grid > .table-wrap {
-    min-width: 0;
+  .gp-facts {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
   }
   .gp-big {
-    font-size: 34px;
+    font-size: 30px;
     font-weight: 680;
     letter-spacing: -.03em;
+    line-height: 1;
   }
   .gp-big.ok {
     color: var(--ok);
@@ -1752,13 +1753,6 @@
     color: var(--bad);
   }
   @media (max-width: 720px) {
-    .gp-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .gp-side {
-      border-right: 0;
-      border-bottom: 1px solid var(--line-2);
-    }
   }
   .chart-cap {
     display: flex;
@@ -2143,6 +2137,13 @@
   }
   function hideLogin() {
     $("login-overlay").classList.remove("show");
+  }
+  var refreshAllFn = null;
+  function setRefreshAll(fn) {
+    refreshAllFn = fn;
+  }
+  function refreshAll() {
+    return refreshAllFn ? refreshAllFn() : Promise.resolve();
   }
   var toastTimer;
   function showToast(text, isErr) {
@@ -2737,17 +2738,22 @@
     const gpHist = d.gp_hist || [];
     let gpSide;
     if (gp) {
-      gpSide = `<div class="gp-side">
+      gpSide = `<div class="gp-summary">
       <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
-      <div>${chip2(gp.ok, "верификация пройдена", "верификация провалена")}</div>
-      <div class="metric-foot">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
-      <div class="metric-foot">проверено: ${esc(fmtAgo(gp.at))}</div>
-      <div class="dim mono" style="margin-top:9px;font-size:11px;word-break:break-all">measurement ${esc(gp.measurement_id)}</div>
+      <div class="gp-facts">
+        <div>${chip2(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
+        <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
+        <div class="kv"><span class="kv-k">measurement</span><span class="kv-v mono">${esc(gp.measurement_id)}</span></div>
+      </div>
     </div>`;
     } else {
-      gpSide = `<div class="gp-side">
-      <div class="table-empty" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
-      <div class="metric-foot">текущий статус: ${chip2(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+      gpSide = `<div class="gp-summary">
+      <div class="gp-facts">
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip2(n.globalping_ok)}</span></div>
+        ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
+        <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
+      </div>
     </div>`;
     }
     const probesTbl = gp && (gp.probes || []).length ? `<div class="table-wrap"><table class="table-cards">
@@ -2783,7 +2789,7 @@
     <div class="metrics">${stats}</div>
     <section class="card">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
-      <div class="gp-grid">${gpSide}${probesTbl}</div>
+      ${gpSide}${probesTbl}
     </section>
     <section class="card">
       <div class="card-head"><h2>История проверок</h2></div>
@@ -2949,10 +2955,7 @@
       if (!take && !rel) return;
       const domain = take ? take.dataset.srmdTake : rel.dataset.srmdRelease;
       const action = take ? "take" : "release";
-      srmdDomainAction(domain, action).then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`)).then(() => api("/panel/api/overview")).then((ov) => {
-        state.ov = ov;
-        renderSRMD(ov);
-      }).catch((e2) => showToast(e2.message, true));
+      srmdDomainAction(domain, action).then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`)).then(() => refreshAll()).catch((e2) => showToast(e2.message, true));
     });
     $("srmd-reload").onclick = () => loadSettings().then(() => showToast("Настройки СРМД перечитаны")).catch(() => {
     });
@@ -3355,6 +3358,7 @@ healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select
     if (inp) inp.type = inp.type === "password" ? "text" : "password";
   });
   window.addEventListener("hashchange", route);
+  setRefreshAll(refresh);
   initTheme();
   init4();
   init3();
