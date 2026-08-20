@@ -193,10 +193,26 @@ export async function load(): Promise<void> {
   ($("s-gp-base") as HTMLInputElement).value = c.globalping.api_base;
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
-  $("s-static").textContent =
-    `static (требуют рестарта): http=${st.http_addr} state=${st.state_file}\n` +
-    `healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select=${st.selection_interval_ms}мс ` +
-    `hb_ttl=${st.heartbeat_ttl_sec}с fail=${st.fail_threshold} recover=${st.recover_threshold} freshness=${st.report_freshness_min}мин prune=${st.prune_unhealthy_min}мин`;
+  // Раньше это был моноширинный дамп в рамке. Те же значения читаются
+  // куда легче парами «ключ — значение»; правки тут невозможны — секции
+  // требуют рестарта регистратора.
+  const row = (k: string, v: unknown, mono = true) =>
+    `<div class="static-row"><span class="static-k">${k}</span>` +
+    `<span class="static-v${mono ? " mono" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
+  $("s-static").innerHTML =
+    `<div class="static-head">Требуют рестарта регистратора</div>` +
+    `<div class="static-grid">` +
+      row("http.addr", st.http_addr) +
+      row("state.file", st.state_file) +
+      row("probe_interval", st.probe_interval_ms + " мс") +
+      row("probe_timeout", st.probe_timeout_ms + " мс") +
+      row("selection_interval", st.selection_interval_ms + " мс") +
+      row("heartbeat_ttl", st.heartbeat_ttl_sec + " с") +
+      row("fail_threshold", st.fail_threshold) +
+      row("recover_threshold", st.recover_threshold) +
+      row("report_freshness", st.report_freshness_min + " мин") +
+      row("prune_unhealthy", st.prune_unhealthy_min + " мин") +
+    `</div>`;
 }
 
 /* ── DNS-push (кнопка «Перезаписать DNS сейчас») ──────────────────── */

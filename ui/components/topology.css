@@ -64,3 +64,22 @@
   .topo { grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
   .topo-wires, .topo-gutter { display: none; }
 }
+
+/* ── подсветка пары «домен ↔ мастер» при наведении ── */
+.topo-item, .topo-wires .wire { transition: opacity .16s ease, border-color .16s ease, box-shadow .16s ease, stroke-width .16s ease; }
+.topo.has-hl .topo-item:not(.hl) { opacity: .34; }
+.topo.has-hl .topo-wires .wire:not(.hl) { opacity: .15; }
+.topo-item.hl { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc), var(--sh-1); }
+.topo-wires .wire.hl { stroke-width: 2.8; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .topo-item, .topo-wires .wire { transition: none; } }
+
+/* ── сводка пула под колонкой доменов ── */
+.pool-summary {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 4px;
+  background: var(--line-2); border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden;
+}
+.pool-cell { background: var(--surf-2); padding: 10px 12px; }
+.pool-v { font-size: 19px; font-weight: 650; letter-spacing: -.02em; line-height: 1.1; }
+.pool-v.warn { color: var(--warn); }
+.pool-v.dim { color: var(--fg-3); }
+.pool-l { font-size: 10.5px; color: var(--fg-3); margin-top: 2px; }

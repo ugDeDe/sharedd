@@ -27,6 +27,9 @@ const VIEW_META: Record<string, { title: string }> = {
 
 interface Route { view: string; id?: string; }
 
+/* экраны, которым тесно в колонке 1280 px */
+const WIDE_VIEWS = new Set(["nodes", "events", "srmd"]);
+
 function currentRoute(): Route {
   const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
   if (parts[0] === "nodes" && parts[1]) return { view: "node", id: decodeURIComponent(parts[1]) };
@@ -39,6 +42,8 @@ function route(): void {
   document.querySelectorAll<HTMLElement>(".nav a").forEach((a) =>
     a.classList.toggle("active", a.dataset.view === (r.view === "node" ? "nodes" : r.view)));
   $("view-title").textContent = r.view === "node" ? "Нода · " + r.id : VIEW_META[r.view].title;
+  // экраны с широкими таблицами разворачиваем на весь монитор
+  $("app").classList.toggle("wide", WIDE_VIEWS.has(r.view));
 
   if (r.view === "node") {
     if (state.nodeId !== r.id) {

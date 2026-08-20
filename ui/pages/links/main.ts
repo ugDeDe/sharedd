@@ -63,7 +63,7 @@ function render(links: ProxyLink[]): void {
   const el = $("list");
   if (!links.length) {
     el.innerHTML = `<div class="card"><div class="empty-state">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
       <span class="t">Сейчас ни одна ссылка не доступна</span>
       <span class="s">У доменов нет назначенных мастеров — либо пул пуст, либо все ноды в блокировке.
         Ссылки появятся, как только регистратор назначит домену живую ноду.</span>

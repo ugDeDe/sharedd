@@ -9,7 +9,7 @@ export const esc = (s: unknown): string =>
 /** SVG-иконка из набора: единая геометрия и толщина штриха. */
 export const icon = (path: string, size = 15): string =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
-  `stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  `stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
 export const ICONS = {
   masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,

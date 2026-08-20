@@ -50,3 +50,10 @@ export function plural(n: number, one: string, few: string, many: string): strin
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
 }
+
+/* Разделитель тысяч: «7059» глазом не читается, «7 059» — читается.
+   Неразрывный пробел, чтобы число не переносилось по разряду. */
+export function fmtNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  return Math.round(n).toLocaleString("ru-RU").replace(/\u00A0/g, "\u202F");
+}

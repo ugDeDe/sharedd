@@ -39,11 +39,21 @@ export async function api(path: string): Promise<any> {
 export function showLogin(bad: boolean): void {
   $("login-overlay").classList.add("show");
   $("login-err").classList.toggle("show", !!bad);
-  setTimeout(() => ($("token-input") as HTMLInputElement).focus(), 50);
+  // preventScroll обязателен: фокус в поле прокручивает страницу под
+  // оверлеем, и после ввода токена пользователь оказывается посреди
+  // экрана вместо начала.
+  setTimeout(() => {
+    const inp = $("token-input") as HTMLInputElement;
+    try { inp.focus({ preventScroll: true }); } catch { inp.focus(); }
+  }, 50);
 }
 
 export function hideLogin(): void {
-  $("login-overlay").classList.remove("show");
+  const ov = $("login-overlay");
+  if (!ov.classList.contains("show")) return;
+  ov.classList.remove("show");
+  // страховка: если фокус всё же сдвинул страницу, возвращаем к началу
+  window.scrollTo({ top: 0 });
 }
 
 /* ── полное обновление ──────────────────────────────────────────────

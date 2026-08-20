@@ -39,8 +39,15 @@ function clientsSparkInteractive(pts: { at: string; v: number }[]): string {
   const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
   return `<div class="sparkwrap" id="clients-sparkwrap">
     <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
-      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="var(--acc)" opacity=".13"/>
-      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <defs><linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--acc)" stop-opacity=".32"/>
+        <stop offset="1" stop-color="var(--acc)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="url(#sparkGrad)"/>
+      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle cx="${xy[xy.length - 1][0].toFixed(1)}" cy="${xy[xy.length - 1][1].toFixed(1)}" r="2.6"
+        fill="var(--acc)" vector-effect="non-scaling-stroke"/>
     </svg>
     <div class="spark-guide" id="clients-guide"></div>
     <div class="spark-dot" id="clients-dot"></div>
@@ -162,8 +169,8 @@ function renderNodeDetail(d: any): void {
   $("node-detail").innerHTML = `
     <div class="card nd-head">
       <div>
-        <div class="nd-id">${esc(n.node_id)}</div>
-        <div class="nd-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        
+        <div class="nd-ip nd-ip-lead"><span class="mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span> · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
         <a class="back-link" style="margin:6px 0 0" href="/statistics/${encodeURIComponent(n.node_id)}" target="_blank" rel="noopener">публичная страница ↗</a>
       </div>
       <div class="nd-chips">${chips}</div>

@@ -34,6 +34,18 @@
       </nav></div>
       <div class="topbar-right">
         <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <span class="topbar-links">
+          <a class="icon-btn" href="/statistics" target="_blank" rel="noopener" title="Публичная статистика пула — то, что видят клиенты" aria-label="Публичная статистика">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+          </a>
+          <a class="icon-btn" href="/dashboard" target="_blank" rel="noopener" title="Дашборд блокировок — история банов" aria-label="Дашборд блокировок">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+          </a>
+          <a class="icon-btn" href="/links" target="_blank" rel="noopener" title="Прокси-ссылки — страница для раздачи пользователям" aria-label="Прокси-ссылки">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          </a>
+        </span>
+        <span class="topbar-sep"></span>
         <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
           <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
@@ -100,6 +112,7 @@
         <div class="card-head">
           <h2>Ноды пула</h2>
           <span class="hint" id="nodes-hint"></span>
+          <span class="hint row-hint">клик по строке — статистика ноды</span>
         </div>
         <div class="table-wrap">
           <table class="table-cards">

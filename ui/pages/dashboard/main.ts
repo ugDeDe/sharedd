@@ -120,15 +120,29 @@ function renderChart(): void {
   }
 
   const { stroke: color, soft: color2 } = metricColor(m);
+
+  // Градиент под столбцы: сверху цвет метрики, книзу гаснет. Полые рамки
+  // читались как «пустые» и терялись на тёмном фоне.
+  const defs = el("defs", {});
+  const grad = el("linearGradient", { id: "barGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
+  const st1 = el("stop", { offset: "0", "stop-color": color, "stop-opacity": ".95" });
+  const st2 = el("stop", { offset: "1", "stop-color": color, "stop-opacity": ".28" });
+  grad.appendChild(st1); grad.appendChild(st2); defs.appendChild(grad);
+  svg.appendChild(defs);
   const pts: ({ x: number; y: number; v: number; ts: number } | null)[] = [];
+  const bars: (SVGElement | null)[] = [];
   if (m === "bans") {
     const bw = Math.max(4, Math.min(26, stepX * 0.62));
     for (let i = 0; i < n; i++) {
       const v = vals[i];
-      if (v == null || v === 0) { pts.push(null); continue; }
+      if (v == null || v === 0) { pts.push(null); bars.push(null); continue; }
       const x = padL + i * stepX + (stepX - bw) / 2;
-      const bar = el("rect", { x, y: y(v), width: bw, height: padT + ch - y(v), rx: 3, fill: color2, stroke: color, "stroke-width": 1.2 });
+      const bar = el("rect", {
+        x, y: y(v), width: bw, height: padT + ch - y(v),
+        rx: Math.min(4, bw / 2), fill: "url(#barGrad)", class: "bar",
+      });
       svg.appendChild(bar);
+      bars.push(bar);
       pts.push({ x: x + bw / 2, y: y(v), v, ts: buckets[i].start_ts });
     }
   } else {
@@ -163,7 +177,12 @@ function renderChart(): void {
   svg.appendChild(cur);
   const hov = el("circle", { r: 4.5, fill: color, visibility: "hidden" });
   svg.appendChild(hov);
+  const hotBar = (i: number | null) => {
+    bars.forEach((b, k) => b && b.classList.toggle("hot", k === i));
+  };
+
   const showTip = (i: number, clientX: number, clientY: number) => {
+    hotBar(i);
     const b = buckets[i], v = vals[i];
     const midX = padL + i * stepX + stepX / 2;
     cur.setAttribute("x1", String(midX)); cur.setAttribute("x2", String(midX));
@@ -184,7 +203,10 @@ function renderChart(): void {
   for (let i = 0; i < n; i++) {
     const zone = el("rect", { x: padL + i * stepX, y: padT, width: stepX, height: ch, fill: "transparent" });
     zone.addEventListener("mousemove", (ev) => showTip(i, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
-    zone.addEventListener("mouseleave", () => { cur.setAttribute("visibility", "hidden"); hov.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+    zone.addEventListener("mouseleave", () => {
+      hotBar(null);
+      cur.setAttribute("visibility", "hidden"); hov.setAttribute("visibility", "hidden"); tip.style.display = "none";
+    });
     svg.appendChild(zone);
   }
   tip.innerHTML = '<div class="t1"></div><div class="t2"></div>';

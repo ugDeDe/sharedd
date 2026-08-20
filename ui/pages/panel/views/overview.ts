@@ -14,7 +14,7 @@
    из макета. */
 
 import { $, esc, icon, ICONS } from "../../../lib/dom";
-import { fmtDur, fmtClock, fmtInterval, fmtTtlMin, plural } from "../../../lib/format";
+import { fmtDur, fmtClock, fmtInterval, fmtTtlMin, plural, fmtNum } from "../../../lib/format";
 
 /* ── KPI-стрип ─────────────────────────────────────────────────────── */
 
@@ -47,15 +47,15 @@ function renderKpis(o: any): void {
       `${o.nodes_tcp_ok}<span class="sep">/</span>${o.nodes_gp_verified}<span class="sep">/</span>${o.nodes_metrics_ok}`, "",
       `из ${o.nodes_total} нод`) +
     card("Активные клиенты", ICONS.users,
-      `${o.clients_unique_ips_total ?? "—"}`, "",
+      `${fmtNum(o.clients_unique_ips_total)}`, "",
       o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${o.writers_active_total ?? 0}`) +
     card("Смен мастера", ICONS.swap,
-      `${c.master_switches_total ?? 0}`, "",
+      `${fmtNum(c.master_switches_total ?? 0)}`, "",
       `блокировок GP: ${c.gp_blocked_total ?? 0}`) +
     card("DNS-обновления", ICONS.dns,
-      `${c.dns_updates_total ?? 0}<span class="unit">ok</span><span class="sep">/</span>` +
+      `${fmtNum(c.dns_updates_total ?? 0)}<span class="unit">ok</span><span class="sep">/</span>` +
       `<span style="color:${dnsErr > 0 ? "var(--bad)" : "inherit"}">${dnsErr}</span><span class="unit">err</span>`, "",
-      `heartbeats: ${c.heartbeats_total ?? 0} · отчёты: ${c.health_reports_total ?? 0}`);
+      `heartbeats: ${fmtNum(c.heartbeats_total ?? 0)} · отчёты: ${fmtNum(c.health_reports_total ?? 0)}`);
 }
 
 /* ── статистика пула по журналу + история банов ───────────────────── */
@@ -130,9 +130,9 @@ function domainSubtitle(m: any): string {
   return `<span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span>`;
 }
 
-function domainItemHTML(m: any, id: string): string {
+function domainItemHTML(m: any, id: string, pair?: number): string {
   const cls = m.node_id ? (m.dead ? "sick" : "live") : "sick";
-  return `<div class="topo-item ${cls}" id="${id}">
+  return `<div class="topo-item ${cls}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <div class="topo-b"><div class="topo-t">${esc(m.domain)}</div><div class="topo-s">${domainSubtitle(m)}</div></div>
     <div class="topo-r"><div class="topo-n">${m.clients != null ? m.clients : "—"}</div><div class="topo-u">клиентов</div></div>
   </div>`;
@@ -146,10 +146,10 @@ function ghostItemHTML(m: any, id: string): string {
   </div>`;
 }
 
-function masterNodeItemHTML(n: any, id: string, dead?: boolean): string {
+function masterNodeItemHTML(n: any, id: string, dead?: boolean, pair?: number): string {
   const type = NODE_TYPE_LABEL[n.node_type as string] || "";
   const avail = (n.availability_pct ?? 0).toFixed(1);
-  return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}">
+  return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <span class="topo-star">${icon(ICONS.masters, 14)}</span>
     <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div>
       <div class="topo-s">${esc(n.ip)}${type ? " · " + type : ""} · ${avail}%</div></div>
@@ -163,6 +163,55 @@ function queuedItemHTML(n: any, first: boolean): string {
     <span class="qnum${first ? " first" : ""}">${n.queue_position}</span>
     <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div></div>
     <span class="dim">${avail}%</span>
+  </div>`;
+}
+
+/* Наведение на домен подсвечивает его ноду и связь между ними, остальное
+   гаснет — ради этого схему и делали: видно, кто на ком сидит.
+   Обработчик вешается один раз на стабильный контейнер, перерисовка
+   раз в 5 секунд его не сбрасывает. */
+let hoverBound = false;
+/* Какая пара подсвечена сейчас. Схема перерисовывается раз в 5 секунд,
+   и без этого подсветка слетала бы прямо под курсором. */
+let hlPair: string | null = null;
+
+function paintTopology(pair: string | null): void {
+  hlPair = pair;
+  const topo = $("topology").querySelector<HTMLElement>(".topo");
+  if (!topo) return;
+  topo.classList.toggle("has-hl", pair !== null);
+  topo.querySelectorAll<HTMLElement>("[data-pair]").forEach((el) => {
+    el.classList.toggle("hl", pair !== null && el.dataset.pair === pair);
+  });
+}
+
+function bindTopologyHover(): void {
+  if (hoverBound) return;
+  hoverBound = true;
+  const root = $("topology");
+  root.addEventListener("mouseover", (e) => {
+    const item = (e.target as HTMLElement).closest<HTMLElement>(".topo-item[data-pair]");
+    if (item) paintTopology(item.dataset.pair!);
+  });
+  root.addEventListener("mouseout", (e) => {
+    const to = (e as MouseEvent).relatedTarget as HTMLElement | null;
+    if (!to || !to.closest(".topo-item[data-pair]")) paintTopology(null);
+  });
+}
+
+/* Под колонкой доменов оставалось пусто — там место сводке по пулу.
+   Всё берётся из того же снимка, новых запросов нет. */
+function poolSummary(o: any): string {
+  const nodes: any[] = o.nodes || [];
+  const quarantined = nodes.filter((n) => n.quarantine).length;
+  const queued = nodes.filter((n) => !n.quarantine && n.queue_position > 0).length;
+  const idle = nodes.filter((n) => !n.quarantine && !(n.queue_position > 0) && !n.is_master).length;
+  const cell = (v: number, label: string, cls = "") =>
+    `<div class="pool-cell"><div class="pool-v ${cls}">${v}</div><div class="pool-l">${label}</div></div>`;
+  return `<div class="pool-summary">
+    ${cell(queued, "в очереди")}
+    ${cell(quarantined, "в карантине", quarantined > 0 ? "warn" : "")}
+    ${cell(idle, "вне очереди", idle > 0 ? "dim" : "")}
   </div>`;
 }
 
@@ -201,11 +250,12 @@ function renderTopology(o: any): void {
   const shownQueued = queued.slice(0, 3);
   const moreNodes = (queued.length - shownQueued.length) + outOfQueue.length;
 
-  const domainsHTML = shownActive.map((m, i) => domainItemHTML(m, `topo-d${i}`)).join("")
+  const wiredSet = new Set(wired.map((w: any) => w.i));
+  const domainsHTML = shownActive.map((m, i) => domainItemHTML(m, `topo-d${i}`, wiredSet.has(i) ? i : undefined)).join("")
     + shownGhost.map((m) => ghostItemHTML(m, "topo-ghost")).join("")
     + (moreDomains > 0 ? `<div class="topo-more">ещё ${moreDomains} ${plural(moreDomains, "домен", "домена", "доменов")}</div>` : "");
 
-  const nodesHTML = wired.map(({ node, i, m }: any) => masterNodeItemHTML(node, `topo-n${i}`, !!m.dead)).join("")
+  const nodesHTML = wired.map(({ node, i, m }: any) => masterNodeItemHTML(node, `topo-n${i}`, !!m.dead, i)).join("")
     + shownQueued.map((n, i) => queuedItemHTML(n, i === 0)).join("")
     + (moreNodes > 0
       ? `<div class="topo-more">ещё ${moreNodes} ${plural(moreNodes, "нода", "ноды", "нод")}${outOfQueue.length ? " · вне очереди: " + outOfQueue.length : ""}</div>`
@@ -215,12 +265,14 @@ function renderTopology(o: any): void {
     <div class="card-head"><h2>Топология пула</h2><span class="hint">домен → мастер → очередь здоровья</span></div>
     <div class="topo">
       <div class="topo-gutter" id="topo-gutter"><svg viewBox="0 0 34 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
-      <div class="topo-col"><div class="topo-cap">Домены</div>${domainsHTML}</div>
+      <div class="topo-col"><div class="topo-cap">Домены</div>${domainsHTML}${poolSummary(o)}</div>
       <div class="topo-wires" id="topo-wires"><svg viewBox="0 0 92 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
       <div class="topo-col"><div class="topo-cap">Ноды пула</div>${nodesHTML}</div>
     </div>
   </div>`;
 
+  bindTopologyHover();
+  if (hlPair !== null) paintTopology(hlPair);   // пережить перерисовку
   drawTopologyLinks(wired.map((w) => w.i), ghostTargetIdx >= 0 ? ghostTargetIdx : null,
     new Set(wired.filter((w: any) => w.m.dead).map((w) => w.i)));
 }
@@ -246,7 +298,7 @@ function drawTopologyLinks(wiredIdx: number[], ghostTargetIdx: number | null, si
     const yD = centerY(`topo-d${i}`), yN = centerY(`topo-n${i}`);
     if (yD == null || yN == null) continue;
     const col = sick.has(i) ? "var(--warn)" : "var(--ok)";
-    wiresSvg += `<path d="M0,${yD.toFixed(1)} C40,${yD.toFixed(1)} 52,${yN.toFixed(1)} 88,${yN.toFixed(1)}" ` +
+    wiresSvg += `<path class="wire" data-pair="${i}" d="M0,${yD.toFixed(1)} C40,${yD.toFixed(1)} 52,${yN.toFixed(1)} 88,${yN.toFixed(1)}" ` +
       `fill="none" stroke="${col}" stroke-width="1.6" opacity=".85"/>` +
       `<circle cx="3" cy="${yD.toFixed(1)}" r="2.8" fill="${col}"/><circle cx="89" cy="${yN.toFixed(1)}" r="2.8" fill="${col}"/>`;
   }

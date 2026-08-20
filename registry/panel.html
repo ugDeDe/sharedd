@@ -290,6 +290,10 @@
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
+    transition: max-width .18s ease;
+  }
+  .wrap.wide {
+    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -511,18 +515,32 @@
     height: 30px;
     border-radius: var(--r-sm);
     flex: none;
-    border: 1px solid var(--gl-brd);
-    background: var(--thumb);
+    border: 0;
+    background: transparent;
     color: var(--fg-2);
     cursor: pointer;
     display: grid;
     place-items: center;
-    transition: .15s;
-    box-shadow: inset 0 1px 0 var(--thumb-hi);
+    transition: color .13s ease, background .13s ease;
   }
   .icon-btn:hover {
     color: var(--fg);
-    box-shadow: inset 0 1px 0 var(--thumb-hi), 0 2px 6px rgba(16, 23, 37, .10);
+    background: var(--track);
+  }
+  .icon-btn:active {
+    background: var(--track-in);
+  }
+  .topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line);
+    flex: none;
+    margin: 0 4px;
   }
   .icon-btn .i-sun {
     display: none;
@@ -1333,6 +1351,65 @@
       display: none;
     }
   }
+  .topo-item,
+  .topo-wires .wire {
+    transition:
+      opacity .16s ease,
+      border-color .16s ease,
+      box-shadow .16s ease,
+      stroke-width .16s ease;
+  }
+  .topo.has-hl .topo-item:not(.hl) {
+    opacity: .34;
+  }
+  .topo.has-hl .topo-wires .wire:not(.hl) {
+    opacity: .15;
+  }
+  .topo-item.hl {
+    border-color: var(--acc);
+    box-shadow: 0 0 0 1px var(--acc), var(--sh-1);
+  }
+  .topo-wires .wire.hl {
+    stroke-width: 2.8;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .topo-item,
+    .topo-wires .wire {
+      transition: none;
+    }
+  }
+  .pool-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin-top: 4px;
+    background: var(--line-2);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .pool-cell {
+    background: var(--surf-2);
+    padding: 10px 12px;
+  }
+  .pool-v {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+  }
+  .pool-v.warn {
+    color: var(--warn);
+  }
+  .pool-v.dim {
+    color: var(--fg-3);
+  }
+  .pool-l {
+    font-size: 10.5px;
+    color: var(--fg-3);
+    margin-top: 2px;
+  }
 
   /* ui/components/misc.css */
   .banner {
@@ -1626,19 +1703,51 @@
     padding-left: 8px;
   }
   .static-info {
-    padding: 14px var(--pad);
+    padding: 0;
     margin-bottom: var(--gap);
     border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    background: var(--surf-2);
-    color: var(--fg-3);
-    font-size: 11.5px;
-    font-family: var(--mono);
-    white-space: pre-wrap;
-    line-height: 1.65;
-    overflow-x: auto;
+    border-radius: var(--r-lg);
+    background: var(--surf);
+    overflow: hidden;
+    box-shadow: var(--sh-1);
   }
-  #login-overlay {
+  .static-head {
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .static-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: 0 28px;
+    padding: 6px var(--pad) 14px;
+  }
+  .static-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line-2);
+    font-size: 12.5px;
+  }
+  .static-k {
+    color: var(--fg-3);
+    flex: none;
+  }
+  .static-v {
+    color: var(--fg);
+    font-weight: 550;
+    margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  } #login-overlay {
     position: fixed;
     inset: 0;
     z-index: 100;
@@ -1712,11 +1821,12 @@
     flex-wrap: wrap;
     padding: var(--pad);
   }
-  .nd-id {
-    font-family: var(--mono);
-    font-size: 17px;
-    font-weight: 650;
-    letter-spacing: -.01em;
+  .nd-ip-lead {
+    font-size: 13.5px !important;
+    color: var(--fg-2) !important;
+  }
+  .nd-ip-lead .mono {
+    color: var(--fg);
   }
   .nd-ip {
     color: var(--fg-3);
@@ -1780,15 +1890,21 @@
   }
   .ticks {
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
+    gap: 1px;
+    height: 18px;
+    border-radius: var(--r-xs);
+    overflow: hidden;
+    background: var(--surf-3);
   }
   .tick {
-    width: 6px;
-    height: 16px;
-    border-radius: 1px;
+    flex: 1 1 0;
+    min-width: 2px;
     background: var(--ok);
     opacity: .8;
+    transition: opacity .12s ease;
+  }
+  .tick:hover {
+    opacity: 1;
   }
   .tick.fail {
     background: var(--bad);
@@ -1804,6 +1920,10 @@
     width: 6px;
     border-radius: 2px 2px 0 0;
     background: var(--ok);
+    transition: opacity .12s ease;
+  }
+  .gbar:hover {
+    opacity: .75;
   }
   .gbar.mid {
     background: var(--warn);
@@ -1860,6 +1980,102 @@
   .sparkwrap.hover .spark-tip {
     opacity: 1;
   }
+  .group-row td {
+    padding: 9px var(--pad) 7px !important;
+    background: var(--surf-2);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .group-row td span + span {
+    margin-left: 10px;
+    letter-spacing: .02em;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .group-row:hover td {
+    background: var(--surf-2);
+  }
+  tbody tr.master td {
+    background: color-mix(in srgb, var(--gold) 7%, transparent);
+  }
+  tbody tr.master:hover td {
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+  }
+  tbody tr.master td:first-child {
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    tbody tr.master td {
+      background: var(--gold-soft);
+    }
+  }
+  .node-status {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 230px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-head .row-hint {
+    margin-left: 0;
+  }
+  tbody tr.clickable td:last-child {
+    position: relative;
+  }
+  tbody tr.clickable:hover td:last-child::after {
+    content: "→";
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--acc);
+    font-size: 13px;
+  }
+  @media (max-width: 720px) {
+    .card-head .row-hint {
+      display: none;
+    }
+  }
+  #cards:empty,
+  #pool-stats:empty,
+  #topology:empty,
+  #masters-full:empty {
+    display: block;
+    border-radius: var(--r-lg);
+    margin-bottom: var(--gap);
+    background:
+      linear-gradient(
+        90deg,
+        var(--surf) 25%,
+        var(--surf-2) 37%,
+        var(--surf) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border: 1px solid var(--line);
+  }
+  #cards:empty,
+  #pool-stats:empty {
+    height: 118px;
+  }
+  #topology:empty {
+    height: 320px;
+  }
+  #masters-full:empty {
+    height: 180px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #cards:empty,
+    #pool-stats:empty,
+    #topology:empty,
+    #masters-full:empty {
+      animation: none;
+    }
+  }
 </style>
 </head>
 <body>
@@ -1885,6 +2101,18 @@
       </nav></div>
       <div class="topbar-right">
         <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <span class="topbar-links">
+          <a class="icon-btn" href="/statistics" target="_blank" rel="noopener" title="Публичная статистика пула — то, что видят клиенты" aria-label="Публичная статистика">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+          </a>
+          <a class="icon-btn" href="/dashboard" target="_blank" rel="noopener" title="Дашборд блокировок — история банов" aria-label="Дашборд блокировок">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+          </a>
+          <a class="icon-btn" href="/links" target="_blank" rel="noopener" title="Прокси-ссылки — страница для раздачи пользователям" aria-label="Прокси-ссылки">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          </a>
+        </span>
+        <span class="topbar-sep"></span>
         <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
           <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
@@ -1951,6 +2179,7 @@
         <div class="card-head">
           <h2>Ноды пула</h2>
           <span class="hint" id="nodes-hint"></span>
+          <span class="hint row-hint">клик по строке — статистика ноды</span>
         </div>
         <div class="table-wrap">
           <table class="table-cards">
@@ -2078,7 +2307,7 @@
   // ui/lib/dom.ts
   var $ = (id) => document.getElementById(id);
   var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
   var ICONS = {
     masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,
     nodes: `<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>`,
@@ -2143,10 +2372,20 @@
   function showLogin(bad) {
     $("login-overlay").classList.add("show");
     $("login-err").classList.toggle("show", !!bad);
-    setTimeout(() => $("token-input").focus(), 50);
+    setTimeout(() => {
+      const inp = $("token-input");
+      try {
+        inp.focus({ preventScroll: true });
+      } catch {
+        inp.focus();
+      }
+    }, 50);
   }
   function hideLogin() {
-    $("login-overlay").classList.remove("show");
+    const ov = $("login-overlay");
+    if (!ov.classList.contains("show")) return;
+    ov.classList.remove("show");
+    window.scrollTo({ top: 0 });
   }
   var refreshAllFn = null;
   function setRefreshAll(fn) {
@@ -2230,10 +2469,14 @@
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
     return many;
   }
+  function fmtNum(n) {
+    if (n === null || n === void 0) return "—";
+    return Math.round(n).toLocaleString("ru-RU").replace(/\u00A0/g, " ");
+  }
 
   // ui/pages/panel/views/overview.ts
   function renderKpis(o) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g;
     const c = o.counters || {};
     const masters = o.masters || [];
     const active = masters.filter((m) => !m.cname_target);
@@ -2267,21 +2510,21 @@
     ) + card(
       "Активные клиенты",
       ICONS.users,
-      `${(_b = o.clients_unique_ips_total) != null ? _b : "—"}`,
+      `${fmtNum(o.clients_unique_ips_total)}`,
       "",
-      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${(_c = o.writers_active_total) != null ? _c : 0}`
+      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${(_b = o.writers_active_total) != null ? _b : 0}`
     ) + card(
       "Смен мастера",
       ICONS.swap,
-      `${(_d = c.master_switches_total) != null ? _d : 0}`,
+      `${fmtNum((_c = c.master_switches_total) != null ? _c : 0)}`,
       "",
-      `блокировок GP: ${(_e = c.gp_blocked_total) != null ? _e : 0}`
+      `блокировок GP: ${(_d = c.gp_blocked_total) != null ? _d : 0}`
     ) + card(
       "DNS-обновления",
       ICONS.dns,
-      `${(_f = c.dns_updates_total) != null ? _f : 0}<span class="unit">ok</span><span class="sep">/</span><span style="color:${dnsErr > 0 ? "var(--bad)" : "inherit"}">${dnsErr}</span><span class="unit">err</span>`,
+      `${fmtNum((_e = c.dns_updates_total) != null ? _e : 0)}<span class="unit">ok</span><span class="sep">/</span><span style="color:${dnsErr > 0 ? "var(--bad)" : "inherit"}">${dnsErr}</span><span class="unit">err</span>`,
       "",
-      `heartbeats: ${(_g = c.heartbeats_total) != null ? _g : 0} · отчёты: ${(_h = c.health_reports_total) != null ? _h : 0}`
+      `heartbeats: ${fmtNum((_f = c.heartbeats_total) != null ? _f : 0)} · отчёты: ${fmtNum((_g = c.health_reports_total) != null ? _g : 0)}`
     );
   }
   function banStatusBadge(b) {
@@ -2348,9 +2591,9 @@
     }
     return `<span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span>`;
   }
-  function domainItemHTML(m, id) {
+  function domainItemHTML(m, id, pair) {
     const cls = m.node_id ? m.dead ? "sick" : "live" : "sick";
-    return `<div class="topo-item ${cls}" id="${id}">
+    return `<div class="topo-item ${cls}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <div class="topo-b"><div class="topo-t">${esc(m.domain)}</div><div class="topo-s">${domainSubtitle(m)}</div></div>
     <div class="topo-r"><div class="topo-n">${m.clients != null ? m.clients : "—"}</div><div class="topo-u">клиентов</div></div>
   </div>`;
@@ -2362,11 +2605,11 @@
     <span class="badge">CNAME</span>
   </div>`;
   }
-  function masterNodeItemHTML(n, id, dead) {
+  function masterNodeItemHTML(n, id, dead, pair) {
     var _a;
     const type = NODE_TYPE_LABEL[n.node_type] || "";
     const avail = ((_a = n.availability_pct) != null ? _a : 0).toFixed(1);
-    return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}">
+    return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <span class="topo-star">${icon(ICONS.masters, 14)}</span>
     <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div>
       <div class="topo-s">${esc(n.ip)}${type ? " · " + type : ""} · ${avail}%</div></div>
@@ -2380,6 +2623,42 @@
     <span class="qnum${first ? " first" : ""}">${n.queue_position}</span>
     <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div></div>
     <span class="dim">${avail}%</span>
+  </div>`;
+  }
+  var hoverBound = false;
+  var hlPair = null;
+  function paintTopology(pair) {
+    hlPair = pair;
+    const topo = $("topology").querySelector(".topo");
+    if (!topo) return;
+    topo.classList.toggle("has-hl", pair !== null);
+    topo.querySelectorAll("[data-pair]").forEach((el) => {
+      el.classList.toggle("hl", pair !== null && el.dataset.pair === pair);
+    });
+  }
+  function bindTopologyHover() {
+    if (hoverBound) return;
+    hoverBound = true;
+    const root = $("topology");
+    root.addEventListener("mouseover", (e) => {
+      const item = e.target.closest(".topo-item[data-pair]");
+      if (item) paintTopology(item.dataset.pair);
+    });
+    root.addEventListener("mouseout", (e) => {
+      const to = e.relatedTarget;
+      if (!to || !to.closest(".topo-item[data-pair]")) paintTopology(null);
+    });
+  }
+  function poolSummary(o) {
+    const nodes = o.nodes || [];
+    const quarantined = nodes.filter((n) => n.quarantine).length;
+    const queued = nodes.filter((n) => !n.quarantine && n.queue_position > 0).length;
+    const idle = nodes.filter((n) => !n.quarantine && !(n.queue_position > 0) && !n.is_master).length;
+    const cell = (v, label, cls = "") => `<div class="pool-cell"><div class="pool-v ${cls}">${v}</div><div class="pool-l">${label}</div></div>`;
+    return `<div class="pool-summary">
+    ${cell(queued, "в очереди")}
+    ${cell(quarantined, "в карантине", quarantined > 0 ? "warn" : "")}
+    ${cell(idle, "вне очереди", idle > 0 ? "dim" : "")}
   </div>`;
   }
   function renderTopology(o) {
@@ -2407,17 +2686,20 @@
     const outOfQueue = nonMaster.filter((n) => !(n.queue_position > 0));
     const shownQueued = queued.slice(0, 3);
     const moreNodes = queued.length - shownQueued.length + outOfQueue.length;
-    const domainsHTML = shownActive.map((m, i) => domainItemHTML(m, `topo-d${i}`)).join("") + shownGhost.map((m) => ghostItemHTML(m, "topo-ghost")).join("") + (moreDomains > 0 ? `<div class="topo-more">ещё ${moreDomains} ${plural(moreDomains, "домен", "домена", "доменов")}</div>` : "");
-    const nodesHTML = wired.map(({ node, i, m }) => masterNodeItemHTML(node, `topo-n${i}`, !!m.dead)).join("") + shownQueued.map((n, i) => queuedItemHTML(n, i === 0)).join("") + (moreNodes > 0 ? `<div class="topo-more">ещё ${moreNodes} ${plural(moreNodes, "нода", "ноды", "нод")}${outOfQueue.length ? " · вне очереди: " + outOfQueue.length : ""}</div>` : "");
+    const wiredSet = new Set(wired.map((w) => w.i));
+    const domainsHTML = shownActive.map((m, i) => domainItemHTML(m, `topo-d${i}`, wiredSet.has(i) ? i : void 0)).join("") + shownGhost.map((m) => ghostItemHTML(m, "topo-ghost")).join("") + (moreDomains > 0 ? `<div class="topo-more">ещё ${moreDomains} ${plural(moreDomains, "домен", "домена", "доменов")}</div>` : "");
+    const nodesHTML = wired.map(({ node, i, m }) => masterNodeItemHTML(node, `topo-n${i}`, !!m.dead, i)).join("") + shownQueued.map((n, i) => queuedItemHTML(n, i === 0)).join("") + (moreNodes > 0 ? `<div class="topo-more">ещё ${moreNodes} ${plural(moreNodes, "нода", "ноды", "нод")}${outOfQueue.length ? " · вне очереди: " + outOfQueue.length : ""}</div>` : "");
     el.innerHTML = `<div class="card glass">
     <div class="card-head"><h2>Топология пула</h2><span class="hint">домен → мастер → очередь здоровья</span></div>
     <div class="topo">
       <div class="topo-gutter" id="topo-gutter"><svg viewBox="0 0 34 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
-      <div class="topo-col"><div class="topo-cap">Домены</div>${domainsHTML}</div>
+      <div class="topo-col"><div class="topo-cap">Домены</div>${domainsHTML}${poolSummary(o)}</div>
       <div class="topo-wires" id="topo-wires"><svg viewBox="0 0 92 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
       <div class="topo-col"><div class="topo-cap">Ноды пула</div>${nodesHTML}</div>
     </div>
   </div>`;
+    bindTopologyHover();
+    if (hlPair !== null) paintTopology(hlPair);
     drawTopologyLinks(
       wired.map((w) => w.i),
       ghostTargetIdx >= 0 ? ghostTargetIdx : null,
@@ -2440,7 +2722,7 @@
       const yD = centerY(`topo-d${i}`), yN = centerY(`topo-n${i}`);
       if (yD == null || yN == null) continue;
       const col = sick.has(i) ? "var(--warn)" : "var(--ok)";
-      wiresSvg += `<path d="M0,${yD.toFixed(1)} C40,${yD.toFixed(1)} 52,${yN.toFixed(1)} 88,${yN.toFixed(1)}" fill="none" stroke="${col}" stroke-width="1.6" opacity=".85"/><circle cx="3" cy="${yD.toFixed(1)}" r="2.8" fill="${col}"/><circle cx="89" cy="${yN.toFixed(1)}" r="2.8" fill="${col}"/>`;
+      wiresSvg += `<path class="wire" data-pair="${i}" d="M0,${yD.toFixed(1)} C40,${yD.toFixed(1)} 52,${yN.toFixed(1)} 88,${yN.toFixed(1)}" fill="none" stroke="${col}" stroke-width="1.6" opacity=".85"/><circle cx="3" cy="${yD.toFixed(1)}" r="2.8" fill="${col}"/><circle cx="89" cy="${yN.toFixed(1)}" r="2.8" fill="${col}"/>`;
     }
     wiresDiv.querySelector("svg").innerHTML = wiresSvg;
     let gutterSvg = "";
@@ -2493,8 +2775,8 @@
     const avail = (_a = n.availability_pct) != null ? _a : 0;
     const gpTxt = n.gp_checks_total > 0 ? `${chip(n.globalping_ok)} <span class="dim mono" title="последняя верификация · % успешных за всё время">${(n.globalping_ratio * 100).toFixed(0)}% · вериф. ${n.gp_verified_pct.toFixed(0)}%</span>` : chip(n.globalping_ok);
     const clients = (_b = n.clients_unique_ips) != null ? _b : null;
-    const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${clients}</span>`;
-    const status = n.is_master && n.queue_position === 0 ? `<span style="color:var(--bad)">мастер, но вне очереди!</span>` : n.unhealthy_reason ? `<span style="color:var(--bad)">${esc(n.unhealthy_reason)}</span>` : n.report_error ? `<span style="color:var(--bad)">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`;
+    const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${fmtNum(clients)}</span>`;
+    const status = n.is_master && n.queue_position === 0 ? `<span style="color:var(--bad)">мастер, но вне очереди!</span>` : n.unhealthy_reason ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.unhealthy_reason)}">${esc(n.unhealthy_reason)}</span>` : n.report_error ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.report_error)}">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`;
     const mdoms = n.master_domains || [];
     const role = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info">#${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
     const typeBadge = nodeTypeBadge(n.node_type);
@@ -2526,7 +2808,24 @@
       body.innerHTML = `<tr><td colspan="12" class="table-empty">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст — ноды регистрируются через POST /register"}</td></tr>`;
       return;
     }
-    body.innerHTML = main.map(nodeRowHTML).join("");
+    const masters = main.filter((n) => n.is_master);
+    const queued = main.filter((n) => !n.is_master && n.queue_position > 0).sort((a, b) => a.queue_position - b.queue_position);
+    const rest = main.filter((n) => !n.is_master && !(n.queue_position > 0));
+    const group = (title, note) => `<tr class="group-row"><td colspan="12"><span>${title}</span><span class="dim">${note}</span></td></tr>`;
+    let html = "";
+    if (masters.length) {
+      html += group("Мастера доменов", `${masters.length} · держат A-записи`);
+      html += masters.map(nodeRowHTML).join("");
+    }
+    if (queued.length) {
+      html += group("Очередь здоровья", `${queued.length} · следующие кандидаты в мастера`);
+      html += queued.map(nodeRowHTML).join("");
+    }
+    if (rest.length) {
+      html += group("Вне очереди", `${rest.length} · не участвуют в выборе мастера`);
+      html += rest.map(nodeRowHTML).join("");
+    }
+    body.innerHTML = html;
   }
   function init() {
     $("nodes-body").addEventListener("click", (e) => {
@@ -2681,8 +2980,15 @@
     const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
     return `<div class="sparkwrap" id="clients-sparkwrap">
     <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
-      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="var(--acc)" opacity=".13"/>
-      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <defs><linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--acc)" stop-opacity=".32"/>
+        <stop offset="1" stop-color="var(--acc)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="url(#sparkGrad)"/>
+      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle cx="${xy[xy.length - 1][0].toFixed(1)}" cy="${xy[xy.length - 1][1].toFixed(1)}" r="2.6"
+        fill="var(--acc)" vector-effect="non-scaling-stroke"/>
     </svg>
     <div class="spark-guide" id="clients-guide"></div>
     <div class="spark-dot" id="clients-dot"></div>
@@ -2791,8 +3097,8 @@
     $("node-detail").innerHTML = `
     <div class="card nd-head">
       <div>
-        <div class="nd-id">${esc(n.node_id)}</div>
-        <div class="nd-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        
+        <div class="nd-ip nd-ip-lead"><span class="mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span> · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
         <a class="back-link" style="margin:6px 0 0" href="/statistics/${encodeURIComponent(n.node_id)}" target="_blank" rel="noopener">публичная страница ↗</a>
       </div>
       <div class="nd-chips">${chips}</div>
@@ -3152,8 +3458,8 @@
     $("s-gp-base").value = c.globalping.api_base;
     $("s-panel-token").value = c.panel.token;
     $("s-panel-events").value = c.panel.events_max;
-    $("s-static").textContent = `static (требуют рестарта): http=${st.http_addr} state=${st.state_file}
-healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select=${st.selection_interval_ms}мс hb_ttl=${st.heartbeat_ttl_sec}с fail=${st.fail_threshold} recover=${st.recover_threshold} freshness=${st.report_freshness_min}мин prune=${st.prune_unhealthy_min}мин`;
+    const row = (k, v, mono = true) => `<div class="static-row"><span class="static-k">${k}</span><span class="static-v${mono ? " mono" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
+    $("s-static").innerHTML = `<div class="static-head">Требуют рестарта регистратора</div><div class="static-grid">` + row("http.addr", st.http_addr) + row("state.file", st.state_file) + row("probe_interval", st.probe_interval_ms + " мс") + row("probe_timeout", st.probe_timeout_ms + " мс") + row("selection_interval", st.selection_interval_ms + " мс") + row("heartbeat_ttl", st.heartbeat_ttl_sec + " с") + row("fail_threshold", st.fail_threshold) + row("recover_threshold", st.recover_threshold) + row("report_freshness", st.report_freshness_min + " мин") + row("prune_unhealthy", st.prune_unhealthy_min + " мин") + `</div>`;
   }
   async function dnsPush2() {
     try {
@@ -3240,6 +3546,7 @@ healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select
     events: { title: "Журнал событий" },
     settings: { title: "Настройки" }
   };
+  var WIDE_VIEWS = /* @__PURE__ */ new Set(["nodes", "events", "srmd"]);
   function currentRoute() {
     const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
     if (parts[0] === "nodes" && parts[1]) return { view: "node", id: decodeURIComponent(parts[1]) };
@@ -3252,6 +3559,7 @@ healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select
     });
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === (r.view === "node" ? "nodes" : r.view)));
     $("view-title").textContent = r.view === "node" ? "Нода · " + r.id : VIEW_META[r.view].title;
+    $("app").classList.toggle("wide", WIDE_VIEWS.has(r.view));
     if (r.view === "node") {
       if (state.nodeId !== r.id) {
         state.nodeId = r.id;

@@ -291,6 +291,10 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
+    transition: max-width .18s ease;
+  }
+  .wrap.wide {
+    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -512,18 +516,32 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     height: 30px;
     border-radius: var(--r-sm);
     flex: none;
-    border: 1px solid var(--gl-brd);
-    background: var(--thumb);
+    border: 0;
+    background: transparent;
     color: var(--fg-2);
     cursor: pointer;
     display: grid;
     place-items: center;
-    transition: .15s;
-    box-shadow: inset 0 1px 0 var(--thumb-hi);
+    transition: color .13s ease, background .13s ease;
   }
   .icon-btn:hover {
     color: var(--fg);
-    box-shadow: inset 0 1px 0 var(--thumb-hi), 0 2px 6px rgba(16, 23, 37, .10);
+    background: var(--track);
+  }
+  .icon-btn:active {
+    background: var(--track-in);
+  }
+  .topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line);
+    flex: none;
+    margin: 0 4px;
   }
   .icon-btn .i-sun {
     display: none;
@@ -1259,7 +1277,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   </header>
 
   <div class="banner info">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
     <span>Нажмите <b>Открыть</b> на телефоне с Telegram — прокси добавится сам. <b>QR</b> — если Telegram на другом устройстве. Ссылка ведёт на живой домен: если нода попадёт под блокировку, домен переедет на другую, а ссылка останется прежней.</span>
   </div>
 
@@ -1673,7 +1691,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     const el = $("list");
     if (!links.length) {
       el.innerHTML = `<div class="card"><div class="empty-state">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
       <span class="t">Сейчас ни одна ссылка не доступна</span>
       <span class="s">У доменов нет назначенных мастеров — либо пул пуст, либо все ноды в блокировке.
         Ссылки появятся, как только регистратор назначит домену живую ноду.</span>

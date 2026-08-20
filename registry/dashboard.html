@@ -292,6 +292,10 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
+    transition: max-width .18s ease;
+  }
+  .wrap.wide {
+    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -513,18 +517,32 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     height: 30px;
     border-radius: var(--r-sm);
     flex: none;
-    border: 1px solid var(--gl-brd);
-    background: var(--thumb);
+    border: 0;
+    background: transparent;
     color: var(--fg-2);
     cursor: pointer;
     display: grid;
     place-items: center;
-    transition: .15s;
-    box-shadow: inset 0 1px 0 var(--thumb-hi);
+    transition: color .13s ease, background .13s ease;
   }
   .icon-btn:hover {
     color: var(--fg);
-    box-shadow: inset 0 1px 0 var(--thumb-hi), 0 2px 6px rgba(16, 23, 37, .10);
+    background: var(--track);
+  }
+  .icon-btn:active {
+    background: var(--track-in);
+  }
+  .topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line);
+    flex: none;
+    margin: 0 4px;
   }
   .icon-btn .i-sun {
     display: none;
@@ -1236,25 +1254,43 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     pointer-events: none;
     display: none;
     z-index: 5;
-    background: var(--surf);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    padding: 8px 10px;
+    padding: 9px 12px;
     font-size: 12px;
-    box-shadow: var(--sh-pop);
     white-space: nowrap;
+    border-radius: var(--r-md);
+    background:
+      linear-gradient(
+        180deg,
+        var(--gl-a),
+        var(--gl-b));
+    border: 1px solid var(--gl-brd);
+    box-shadow: inset 0 1px 0 var(--gl-hi), var(--sh-pop);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
   }
   #tip .t1 {
     color: var(--fg-3);
     font-size: 11px;
   }
   #tip .t2 {
-    font-weight: 700;
-    margin-top: 2px;
+    font-weight: 660;
+    margin-top: 3px;
+    font-size: 13.5px;
+    letter-spacing: -.01em;
   }
   .chart-note {
     font-size: 12px;
     margin-top: 10px;
+  }
+  #chart .bar {
+    transition: opacity .13s ease;
+  }
+  #chart-box:hover .bar {
+    opacity: .55;
+  }
+  #chart .bar.hot,
+  #chart-box:hover .bar.hot {
+    opacity: 1;
   }
 </style>
 </head>
@@ -1286,15 +1322,15 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
 
   <div class="metrics kpi-row">
     <div class="card metric">
-      <div class="metric-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg><span id="k1-cap">Баны GP (без восстановления)</span></div>
+      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg><span id="k1-cap">Баны GP (без восстановления)</span></div>
       <div class="metric-value" id="k1">—</div>
     </div>
     <div class="card metric">
-      <div class="metric-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Периодичность банов <span class="dim">(средний интервал)</span></div>
+      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Периодичность банов <span class="dim">(средний интервал)</span></div>
       <div class="metric-value" id="k2">—</div>
     </div>
     <div class="card metric">
-      <div class="metric-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12"/><path d="M6 22h12"/><path d="M6 2c0 5 12 5 12 0"/><path d="M6 22c0-5 12-5 12 0"/></svg>Время жизни ноды <span class="dim">(регистрация → бан)</span></div>
+      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12"/><path d="M6 22h12"/><path d="M6 2c0 5 12 5 12 0"/><path d="M6 22c0-5 12-5 12 0"/></svg>Время жизни ноды <span class="dim">(регистрация → бан)</span></div>
       <div class="metric-value" id="k3">—</div>
     </div>
   </div>
@@ -1452,18 +1488,37 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       svg.appendChild(lt);
     }
     const { stroke: color, soft: color2 } = metricColor(m);
+    const defs = el("defs", {});
+    const grad = el("linearGradient", { id: "barGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
+    const st1 = el("stop", { offset: "0", "stop-color": color, "stop-opacity": ".95" });
+    const st2 = el("stop", { offset: "1", "stop-color": color, "stop-opacity": ".28" });
+    grad.appendChild(st1);
+    grad.appendChild(st2);
+    defs.appendChild(grad);
+    svg.appendChild(defs);
     const pts = [];
+    const bars = [];
     if (m === "bans") {
       const bw = Math.max(4, Math.min(26, stepX * 0.62));
       for (let i = 0; i < n; i++) {
         const v = vals[i];
         if (v == null || v === 0) {
           pts.push(null);
+          bars.push(null);
           continue;
         }
         const x = padL + i * stepX + (stepX - bw) / 2;
-        const bar = el("rect", { x, y: y(v), width: bw, height: padT + ch - y(v), rx: 3, fill: color2, stroke: color, "stroke-width": 1.2 });
+        const bar = el("rect", {
+          x,
+          y: y(v),
+          width: bw,
+          height: padT + ch - y(v),
+          rx: Math.min(4, bw / 2),
+          fill: "url(#barGrad)",
+          class: "bar"
+        });
         svg.appendChild(bar);
+        bars.push(bar);
         pts.push({ x: x + bw / 2, y: y(v), v, ts: buckets[i].start_ts });
       }
     } else {
@@ -1509,7 +1564,11 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     svg.appendChild(cur);
     const hov = el("circle", { r: 4.5, fill: color, visibility: "hidden" });
     svg.appendChild(hov);
+    const hotBar = (i) => {
+      bars.forEach((b, k) => b && b.classList.toggle("hot", k === i));
+    };
     const showTip = (i, clientX, clientY) => {
+      hotBar(i);
       const b = buckets[i], v = vals[i];
       const midX = padL + i * stepX + stepX / 2;
       cur.setAttribute("x1", String(midX));
@@ -1537,6 +1596,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       const zone = el("rect", { x: padL + i * stepX, y: padT, width: stepX, height: ch, fill: "transparent" });
       zone.addEventListener("mousemove", (ev) => showTip(i, ev.clientX, ev.clientY));
       zone.addEventListener("mouseleave", () => {
+        hotBar(null);
         cur.setAttribute("visibility", "hidden");
         hov.setAttribute("visibility", "hidden");
         tip.style.display = "none";

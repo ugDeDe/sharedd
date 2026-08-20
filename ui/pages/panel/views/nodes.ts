@@ -7,7 +7,7 @@
    на них завязан переход на карточку ноды). */
 
 import { $, esc } from "../../../lib/dom";
-import { fmtDur } from "../../../lib/format";
+import { fmtDur, fmtNum } from "../../../lib/format";
 
 function chip(flag: boolean | null | undefined, okText?: string, noText?: string): string {
   if (flag === null || flag === undefined) return `<span class="badge">—</span>`;
@@ -54,11 +54,11 @@ function nodeRowHTML(n: any): string {
   // «Клиенты» = уникальные активные IP из метрик ноды (НЕ me_writers —
   // writers это апстрим-подключения к Telegram ME, их сумма и была багом).
   const clients = n.clients_unique_ips ?? null;
-  const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${clients}</span>`;
+  const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${fmtNum(clients)}</span>`;
   const status = n.is_master && n.queue_position === 0
     ? `<span style="color:var(--bad)">мастер, но вне очереди!</span>`
-    : (n.unhealthy_reason ? `<span style="color:var(--bad)">${esc(n.unhealthy_reason)}</span>`
-      : (n.report_error ? `<span style="color:var(--bad)">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`));
+    : (n.unhealthy_reason ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.unhealthy_reason)}">${esc(n.unhealthy_reason)}</span>`
+      : (n.report_error ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.report_error)}">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`));
   const mdoms = n.master_domains || [];
   const role = n.is_master
     ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>`
@@ -96,7 +96,32 @@ export function render(o: any): void {
     body.innerHTML = `<tr><td colspan="12" class="table-empty">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст — ноды регистрируются через POST /register"}</td></tr>`;
     return;
   }
-  body.innerHTML = main.map(nodeRowHTML).join("");
+  // Регистратор отдаёт ноды по алфавиту node_id, поэтому мастер мог
+  // оказаться в середине списка и терялся среди прочих. Порядок меняем
+  // ТОЛЬКО на отображении: сперва мастера, затем очередь по номеру,
+  // затем остальные. Данные и запросы прежние.
+  const masters = main.filter((n: any) => n.is_master);
+  const queued = main.filter((n: any) => !n.is_master && n.queue_position > 0)
+    .sort((a: any, b: any) => a.queue_position - b.queue_position);
+  const rest = main.filter((n: any) => !n.is_master && !(n.queue_position > 0));
+
+  const group = (title: string, note: string) =>
+    `<tr class="group-row"><td colspan="12"><span>${title}</span><span class="dim">${note}</span></td></tr>`;
+
+  let html = "";
+  if (masters.length) {
+    html += group("Мастера доменов", `${masters.length} · держат A-записи`);
+    html += masters.map(nodeRowHTML).join("");
+  }
+  if (queued.length) {
+    html += group("Очередь здоровья", `${queued.length} · следующие кандидаты в мастера`);
+    html += queued.map(nodeRowHTML).join("");
+  }
+  if (rest.length) {
+    html += group("Вне очереди", `${rest.length} · не участвуют в выборе мастера`);
+    html += rest.map(nodeRowHTML).join("");
+  }
+  body.innerHTML = html;
 }
 
 export function init(): void {

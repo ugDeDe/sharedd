@@ -32,11 +32,21 @@
 
 #chart-box { position: relative; }
 #chart { width: 100%; height: auto; display: block; font-family: var(--sans); }
+/* Тултип — стеклянная карточка дизайн-системы, а не плоская плашка. */
 #tip {
   position: absolute; pointer-events: none; display: none; z-index: 5;
-  background: var(--surf); border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 8px 10px; font-size: 12px; box-shadow: var(--sh-pop); white-space: nowrap;
+  padding: 9px 12px; font-size: 12px; white-space: nowrap;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--gl-a), var(--gl-b));
+  border: 1px solid var(--gl-brd);
+  box-shadow: inset 0 1px 0 var(--gl-hi), var(--sh-pop);
+  -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%);
 }
 #tip .t1 { color: var(--fg-3); font-size: 11px; }
-#tip .t2 { font-weight: 700; margin-top: 2px; }
+#tip .t2 { font-weight: 660; margin-top: 3px; font-size: 13.5px; letter-spacing: -.01em; }
 .chart-note { font-size: 12px; margin-top: 10px; }
+
+/* столбец подсвечивается целиком при наведении на его зону */
+#chart .bar { transition: opacity .13s ease; }
+#chart-box:hover .bar { opacity: .55; }
+#chart .bar.hot, #chart-box:hover .bar.hot { opacity: 1; }
