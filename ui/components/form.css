@@ -36,6 +36,17 @@ input:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft);
 }
 input::placeholder, textarea::placeholder { color: var(--fg-3); }
+/* Свой раскрывающийся список: нативная стрелка не поддаётся теме и
+   в тёмной остаётся светлым пятном. */
+select {
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  padding-right: 30px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%),
+                    linear-gradient(135deg, var(--fg-3) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
 input.mono, textarea.mono { font-family: var(--mono); font-size: 12px; }
 input[type="number"] { max-width: 150px; -moz-appearance: textfield; }
 input[type="number"]::-webkit-outer-spin-button,

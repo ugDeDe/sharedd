@@ -876,6 +876,25 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   textarea::placeholder {
     color: var(--fg-3);
   }
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 30px;
+    cursor: pointer;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent 50%,
+        var(--fg-3) 50%),
+      linear-gradient(
+        135deg,
+        var(--fg-3) 50%,
+        transparent 50%);
+    background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
   input.mono,
   textarea.mono {
     font-family: var(--mono);

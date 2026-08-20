@@ -1003,6 +1003,25 @@
   textarea::placeholder {
     color: var(--fg-3);
   }
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 30px;
+    cursor: pointer;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent 50%,
+        var(--fg-3) 50%),
+      linear-gradient(
+        135deg,
+        var(--fg-3) 50%,
+        transparent 50%);
+    background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
   input.mono,
   textarea.mono {
     font-family: var(--mono);
@@ -1832,10 +1851,6 @@
     <!-- ═══ Журнал ══════════════════════════════════════════════════ -->
     <section class="view" id="view-events" hidden>
       <section class="card">
-        <div class="card-head">
-          <h2>Журнал событий</h2>
-          <span class="hint">новые сверху</span>
-        </div>
         <div class="ev-toolbar">
           <div class="chips" id="ev-filters">
             <button class="chip active" data-f="all">Все</button>
@@ -1855,8 +1870,7 @@
     <!-- ═══ Настройки ═══════════════════════════════════════════════ -->
     <section class="view" id="view-settings" hidden>
       <div class="card-head" style="border:0;padding-left:0;padding-right:0">
-        <h2>Настройки</h2>
-        <span class="hint">применяются на лету и персистятся в registry.toml · секции сохраняются независимо</span>
+        <span class="hint" style="margin-left:0">применяются на лету и персистятся в registry.toml · секции сохраняются независимо</span>
         <button class="btn ghost sm" style="margin-left:auto" id="cfg-reload">Обновить</button>
       </div>
       <div class="settings-grid" id="settings-grid"></div>
@@ -1885,6 +1899,25 @@
   // ui/lib/dom.ts
   var $ = (id) => document.getElementById(id);
   var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  var ICONS = {
+    masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,
+    nodes: `<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>`,
+    users: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/>`,
+    ban: `<circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/>`,
+    dns: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>`,
+    clock: `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
+    health: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
+    swap: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`,
+    layers: `<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>`,
+    list: `<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>`,
+    sliders: `<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>`,
+    link: `<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>`,
+    chart: `<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>`,
+    info: `<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`,
+    check: `<polyline points="20 6 9 17 4 12"/>`,
+    back: `<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>`
+  };
 
   // ui/lib/theme.ts
   var KEY = "sharedd.theme";
@@ -1945,6 +1978,28 @@
     clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => t.classList.remove("show"), 5e3);
   }
+  async function saveSection(payload, note) {
+    const resp = await fetch("/panel/api/config", {
+      method: "PUT",
+      headers: { "Authorization": "Bearer " + getToken(), "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 401) {
+      showLogin(true);
+      throw new Error("unauthorized");
+    }
+    if (!resp.ok) throw new Error(data.error || "HTTP " + resp.status);
+    const msg = note || "Сохранено";
+    const bits = [];
+    if (data.persisted === false) bits.push("⚠ в файл НЕ записано: " + (data.persist_warning || ""));
+    if (data.dns_push) {
+      const up = (data.dns_push.updated || []).length, er = (data.dns_push.errors || []).length;
+      bits.push(`DNS-push: ${up} ok / ${er} err`);
+    }
+    showToast(bits.length ? msg + " · " + bits.join(" · ") : msg, data.persisted === false);
+    return data;
+  }
 
   // ui/pages/panel/views/overview.ts
   function render(_o) {
@@ -1974,18 +2029,386 @@
   function render5(_o) {
   }
 
-  // ui/pages/panel/views/events.ts
-  function init3() {
+  // ui/lib/format.ts
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
   }
-  function renderInto(_el, _list) {
+
+  // ui/pages/panel/views/events.ts
+  var evFilter = "all";
+  var evTypeFilter = "";
+  var evSearch = "";
+  var EV_META = {
+    registry_started: { label: "Запуск регистратора", cls: "ev-neutral", grp: "system" },
+    config_changed: { label: "Конфиг изменён", cls: "ev-info", grp: "system" },
+    node_registered: { label: "Регистрация ноды", cls: "ev-info", grp: "nodes" },
+    node_replaced: { label: "Нода вытеснена", cls: "ev-warn", grp: "nodes" },
+    node_expired: { label: "Нода отвалилась", cls: "ev-warn", grp: "nodes" },
+    node_pruned: { label: "Удалена (неактивна)", cls: "ev-warn", grp: "nodes" },
+    tcp_down: { label: "TCP недоступен", cls: "ev-bad", grp: "blocks" },
+    tcp_up: { label: "TCP восстановлен", cls: "ev-good", grp: "blocks" },
+    metrics_down: { label: "Метрики в отказе", cls: "ev-bad", grp: "blocks" },
+    metrics_up: { label: "Метрики восстановлены", cls: "ev-good", grp: "blocks" },
+    globalping_blocked: { label: "Блокировка (GP)", cls: "ev-bad", grp: "blocks" },
+    globalping_recovered: { label: "GP восстановлен", cls: "ev-good", grp: "blocks" },
+    queue_joined: { label: "В очереди мастеров", cls: "ev-info", grp: "nodes" },
+    queue_left: { label: "Вышла из очереди", cls: "ev-warn", grp: "nodes" },
+    master_elected: { label: "МАСТЕР ИЗБРАН", cls: "ev-good", grp: "master" },
+    master_lost: { label: "Мастер потерян", cls: "ev-bad", grp: "master" },
+    dns_updated: { label: "DNS обновлён", cls: "ev-info", grp: "master" },
+    dns_error: { label: "Ошибка DNS", cls: "ev-bad", grp: "master" },
+    dns_deleted: { label: "DNS запись удалена", cls: "ev-warn", grp: "master" },
+    node_quarantined: { label: "Карантин (GP)", cls: "ev-warn", grp: "blocks" },
+    quarantine_recovered: { label: "Вышла из карантина", cls: "ev-good", grp: "blocks" },
+    node_terminated: { label: "Нода завершена (бан)", cls: "ev-bad", grp: "nodes" },
+    ban_lifted: { label: "Бан снят (смена IP)", cls: "ev-info", grp: "nodes" },
+    ip_blocked: { label: "IP заблокирован (смена в карантине)", cls: "ev-bad", grp: "blocks" },
+    srmd_domain_created: { label: "СРМД: домен создан", cls: "ev-info", grp: "master" },
+    srmd_domain_folded: { label: "СРМД: домен свёрнут", cls: "ev-warn", grp: "master" },
+    srmd_domain_unfolded: { label: "СРМД: домен развёрнут", cls: "ev-good", grp: "master" },
+    srmd_domain_taken: { label: "СРМД: домен взят под контроль", cls: "ev-info", grp: "master" },
+    srmd_domain_released: { label: "СРМД: домен в ручной режим", cls: "ev-warn", grp: "master" }
+  };
+  function dotClass(cls) {
+    switch (cls) {
+      case "ev-good":
+        return "ok";
+      case "ev-bad":
+        return "bad";
+      case "ev-warn":
+        return "warn";
+      case "ev-info":
+        return "info";
+      default:
+        return "";
+    }
+  }
+  function renderEventRow(ev) {
+    const m = EV_META[ev.type] || { label: ev.type, cls: "ev-neutral", grp: "" };
+    const idParts = [ev.node_id, ev.ip, ev.domain].filter(Boolean).map((v) => `<code>${esc(v)}</code>`).join(" ");
+    const detailText = ev.detail ? esc(ev.detail) : "";
+    const line = [idParts, detailText].filter(Boolean).join(idParts && detailText ? " — " : "");
+    return `<li class="feed-item">
+    <span class="feed-dot ${dotClass(m.cls)}"></span>
+    <div class="feed-body">
+      <div class="feed-head">
+        <span class="feed-kind">${esc(m.label)}</span>
+        <span class="feed-time" title="${esc(ev.at)}">${fmtClock(ev.at)}</span>
+      </div>
+      ${line ? `<div class="feed-detail">${line}</div>` : ""}
+    </div>
+  </li>`;
+  }
+  function renderInto(el, list) {
+    if (!list || list.length === 0) {
+      el.innerHTML = `<li class="table-empty">Событий пока нет</li>`;
+      return;
+    }
+    el.innerHTML = list.map(renderEventRow).join("");
+  }
+  function eventMatchesSearch(ev, q) {
+    if (!q) return true;
+    const meta = EV_META[ev.type] || {};
+    const hay = [ev.type, meta.label || "", ev.node_id || "", ev.ip || "", ev.domain || "", ev.detail || ""].join(" ").toLowerCase();
+    return q.split(/\s+/).every((w) => hay.includes(w));
+  }
+  function filteredEvents() {
+    return state.events.filter((ev) => {
+      if (evFilter !== "all") {
+        const meta = EV_META[ev.type];
+        if (!meta || meta.grp !== evFilter) return false;
+      }
+      if (evTypeFilter && ev.type !== evTypeFilter) return false;
+      return eventMatchesSearch(ev, evSearch);
+    });
   }
   function renderView() {
+    const list = filteredEvents();
+    renderInto($("events-list"), list);
+    const filtered = evFilter !== "all" || evTypeFilter !== "" || evSearch !== "";
+    $("ev-found").textContent = filtered ? `найдено: ${list.length} из ${state.events.length}` : `всего: ${state.events.length}`;
+  }
+  function initEvTypeFilter() {
+    const opts = Object.entries(EV_META).sort((a, b) => a[1].label.localeCompare(b[1].label, "ru"));
+    $("ev-type-filter").innerHTML = `<option value="">Все события (тег)</option>` + opts.map(([code, m]) => `<option value="${esc(code)}" title="${esc(code)}">${esc(m.label)}</option>`).join("");
+  }
+  function init3() {
+    initEvTypeFilter();
+    $("ev-filters").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-f]");
+      if (!b) return;
+      evFilter = b.dataset.f;
+      document.querySelectorAll("#ev-filters button").forEach((x) => x.classList.toggle("active", x === b));
+      renderView();
+    });
+    $("ev-type-filter").addEventListener("change", (e) => {
+      evTypeFilter = e.target.value;
+      renderView();
+    });
+    $("ev-search").addEventListener("input", (e) => {
+      evSearch = e.target.value.trim().toLowerCase();
+      renderView();
+    });
   }
 
   // ui/pages/panel/views/settings.ts
-  function init4() {
+  var EYE = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  function renderGrid() {
+    $("settings-grid").innerHTML = `
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.link)}<span>Прокси · SNI</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-sni">tls_domain</label>
+          <input type="text" id="s-sni" class="mono" placeholder="www.microsoft.com">
+          <span class="help">Домен маскировки; уходит нодам в tls_domains.</span>
+        </div>
+        <div class="note">Ноды подтянут на ближайшем sync (sync_ms) и обновят telemt.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-sni-save">Сохранить SNI</button></div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.users)}<span>Пользователи MTProto</span></div>
+      <div class="cfg-body">
+        <table id="users-tbl"><tbody id="users-body"></tbody></table>
+        <div class="note">Ноды только ДОБАВЛЯЮТ пользователей в telemt — удалённые здесь остаются на нодах до ручной чистки.</div>
+      </div>
+      <div class="cfg-foot">
+        <button class="btn" id="s-user-add">+ пользователь</button>
+        <button class="btn" id="s-user-gen">сгенерить имя+secret</button>
+        <button class="btn primary" id="s-users-save" style="margin-left:auto">Сохранить пользователей</button>
+      </div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.dns)}<span>Cloudflare DNS</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-cf-token">api_token</label>
+          <div class="input-group">
+            <input type="password" id="s-cf-token" class="mono" autocomplete="off">
+            <button class="in-btn" type="button" data-reveal="s-cf-token" title="Показать/скрыть">${icon(EYE)}</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="s-cf-zone">zone_id</label>
+          <input type="text" id="s-cf-zone" class="mono">
+        </div>
+        <div class="field">
+          <label for="s-cf-domains">managed-домены</label>
+          <textarea id="s-cf-domains" class="mono" spellcheck="false"></textarea>
+          <span class="help">По одному домену в строке.</span>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:1 1 130px">
+            <label for="s-cf-ttl">dns_ttl</label>
+            <input type="number" id="s-cf-ttl" min="1" max="86400">
+          </div>
+          <label class="check"><input type="checkbox" id="s-cf-proxied"><span class="box"></span> proxied</label>
+        </div>
+      </div>
+      <div class="cfg-foot">
+        <button class="btn" id="s-dns-push">Перезаписать DNS сейчас</button>
+        <button class="btn primary" id="s-cf-save" style="margin-left:auto">Сохранить Cloudflare</button>
+      </div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.clock)}<span>Интервалы нод (мс)</span></div>
+      <div class="cfg-body">
+        <div class="field"><label for="s-nd-heartbeat">heartbeat</label><input type="number" id="s-nd-heartbeat"></div>
+        <div class="field"><label for="s-nd-globalping">globalping</label><input type="number" id="s-nd-globalping"></div>
+        <div class="field"><label for="s-nd-metrics">metrics</label><input type="number" id="s-nd-metrics"></div>
+        <div class="field"><label for="s-nd-sync">sync</label><input type="number" id="s-nd-sync"></div>
+        <div class="note">Ноды получают интервалы в GET /config и применяют без рестарта.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-nd-save">Сохранить интервалы</button></div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.swap)}<span>Ротация мастерства</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-rot-ttl">master_ttl_minutes</label>
+          <input type="number" id="s-rot-ttl" min="0" max="43200">
+          <span class="help">Максимум времени мастером одного домена, мин. 0 = без лимита.</span>
+        </div>
+        <div class="note">По истечении домен уходит следующей здоровой ноде очереди, бывший мастер — в конец очереди (round-robin). 0..43200 мин.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-rot-save">Сохранить ротацию</button></div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.health)}<span>Globalping</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-gp-base">api_base</label>
+          <input type="text" id="s-gp-base" class="mono">
+        </div>
+        <div class="note">Measurement'ы создают сами ноды; API-токен не нужен.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-gp-save">Сохранить Globalping</button></div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.ban)}<span>Карантин GP</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-hc-quar">quarantine_attempts</label>
+          <input type="number" id="s-hc-quar" min="1" max="20">
+          <span class="help">Неудачных проверок globalping до бана по IP.</span>
+        </div>
+        <div class="note">Попытка = независимо верифицированный measurement. Применяется на лету, 1..20. Выход из карантина любым путём, кроме восстановления, — бан.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-hc-quar-save">Сохранить карантин</button></div>
+    </div>
+
+    <div class="cfg">
+      <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-panel-token">token</label>
+          <div class="input-group">
+            <input type="password" id="s-panel-token" class="mono" autocomplete="off">
+            <button class="in-btn" type="button" data-reveal="s-panel-token" title="Показать/скрыть">${icon(EYE)}</button>
+          </div>
+          <span class="help">Bearer для API панели и /status.</span>
+        </div>
+        <div class="field">
+          <label for="s-panel-events">events_max</label>
+          <input type="number" id="s-panel-events" min="50" max="10000">
+          <span class="help">Размер журнала.</span>
+        </div>
+        <div class="note">После смены токена сессия слетит — войдите с новым.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-panel-save">Сохранить параметры панели</button></div>
+    </div>
+  `;
+  }
+  var usersModel = {};
+  function renderUsersEditor() {
+    const body = $("users-body");
+    const names = Object.keys(usersModel).sort();
+    if (names.length === 0) {
+      body.innerHTML = `<tr><td class="muted">нет пользователей</td></tr>`;
+      return;
+    }
+    body.innerHTML = names.map((n) => `<tr>
+    <td class="mono">${esc(n)}</td>
+    <td><input type="text" class="mono" data-user="${esc(n)}" value="${esc(usersModel[n])}" spellcheck="false"></td>
+    <td style="width:40px"><button class="btn icon sm danger" data-del="${esc(n)}" title="Удалить">✕</button></td>
+  </tr>`).join("");
+  }
+  function randHex(n) {
+    const b = new Uint8Array(n);
+    crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   }
   async function load2() {
+    const data = await api("/panel/api/config");
+    const c = data.config, st = data.static;
+    $("s-sni").value = c.shared_proxy.tls_domain;
+    usersModel = { ...c.shared_proxy.users || {} };
+    renderUsersEditor();
+    $("s-cf-token").value = c.cloudflare.api_token;
+    $("s-cf-zone").value = c.cloudflare.zone_id;
+    $("s-cf-domains").value = (c.cloudflare.domains || []).join("\n");
+    $("s-cf-ttl").value = c.cloudflare.dns_ttl;
+    $("s-cf-proxied").checked = !!c.cloudflare.proxied;
+    $("s-nd-heartbeat").value = c.node_defaults.heartbeat_ms;
+    $("s-nd-globalping").value = c.node_defaults.globalping_ms;
+    $("s-nd-metrics").value = c.node_defaults.metrics_ms;
+    $("s-nd-sync").value = c.node_defaults.sync_ms;
+    $("s-rot-ttl").value = c.rotation ? c.rotation.master_ttl_minutes : 30;
+    $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
+    $("s-gp-base").value = c.globalping.api_base;
+    $("s-panel-token").value = c.panel.token;
+    $("s-panel-events").value = c.panel.events_max;
+    $("s-static").textContent = `static (требуют рестарта): http=${st.http_addr} state=${st.state_file}
+healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select=${st.selection_interval_ms}мс hb_ttl=${st.heartbeat_ttl_sec}с fail=${st.fail_threshold} recover=${st.recover_threshold} freshness=${st.report_freshness_min}мин prune=${st.prune_unhealthy_min}мин`;
+  }
+  async function dnsPush() {
+    try {
+      const resp = await fetch("/panel/api/dns-push", { method: "POST", headers: { "Authorization": "Bearer " + getToken() } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      showToast(
+        `DNS-push: ${(data.updated || []).join(", ") || "—"}${(data.errors || []).length ? " · ошибки: " + data.errors.join("; ") : ""}`,
+        (data.errors || []).length > 0 && (data.updated || []).length === 0
+      );
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+  function init4() {
+    renderGrid();
+    $("users-body").addEventListener("click", (e) => {
+      const del = e.target.closest("button[data-del]");
+      if (del) {
+        delete usersModel[del.dataset.del];
+        renderUsersEditor();
+      }
+    });
+    $("users-body").addEventListener("input", (e) => {
+      const inp = e.target.closest("input[data-user]");
+      if (inp) usersModel[inp.dataset.user] = inp.value.trim();
+    });
+    $("s-user-add").onclick = () => {
+      let i = 1;
+      while (usersModel["user" + i] !== void 0) i++;
+      usersModel["user" + i] = randHex(16);
+      renderUsersEditor();
+    };
+    $("s-user-gen").onclick = () => {
+      const name = "u" + randHex(3);
+      usersModel[name] = randHex(16);
+      renderUsersEditor();
+    };
+    $("cfg-reload").onclick = () => load2().then(() => showToast("Настройки перечитаны")).catch(() => {
+    });
+    $("s-sni-save").onclick = () => saveSection({ shared_proxy: { tls_domain: $("s-sni").value.trim(), users: usersModel } }, "SNI сохранён").catch((e) => showToast(e.message, true));
+    $("s-users-save").onclick = () => saveSection({ shared_proxy: { tls_domain: $("s-sni").value.trim(), users: usersModel } }, "Пользователи сохранены").catch((e) => showToast(e.message, true));
+    $("s-cf-save").onclick = () => {
+      const domains = $("s-cf-domains").value.split("\n").map((s) => s.trim()).filter(Boolean);
+      saveSection({
+        cloudflare: {
+          api_token: $("s-cf-token").value.trim(),
+          zone_id: $("s-cf-zone").value.trim(),
+          domains,
+          dns_ttl: parseInt($("s-cf-ttl").value, 10) || 60,
+          proxied: $("s-cf-proxied").checked
+        }
+      }, "Cloudflare сохранён").catch((e) => showToast(e.message, true));
+    };
+    $("s-dns-push").onclick = dnsPush;
+    $("s-nd-save").onclick = () => saveSection({
+      node_defaults: {
+        heartbeat_ms: parseInt($("s-nd-heartbeat").value, 10) || 0,
+        globalping_ms: parseInt($("s-nd-globalping").value, 10) || 0,
+        metrics_ms: parseInt($("s-nd-metrics").value, 10) || 0,
+        sync_ms: parseInt($("s-nd-sync").value, 10) || 0
+      }
+    }, "Интервалы сохранены").catch((e) => showToast(e.message, true));
+    $("s-rot-save").onclick = () => saveSection({ rotation: { master_ttl_minutes: Math.max(0, parseInt($("s-rot-ttl").value, 10) || 0) } }, "Лимит мастерства сохранён").catch((e) => showToast(e.message, true));
+    $("s-hc-quar-save").onclick = () => saveSection({ healthcheck: { quarantine_attempts: Math.max(1, parseInt($("s-hc-quar").value, 10) || 3) } }, "Карантин сохранён").catch((e) => showToast(e.message, true));
+    $("s-gp-save").onclick = () => saveSection({ globalping: { api_base: $("s-gp-base").value.trim() } }, "Globalping сохранён").catch((e) => showToast(e.message, true));
+    $("s-panel-save").onclick = () => {
+      const newTok = $("s-panel-token").value.trim();
+      saveSection({ panel: { token: newTok, events_max: parseInt($("s-panel-events").value, 10) || 500 } }, "Параметры панели сохранены").then(() => {
+        if (newTok && newTok !== getToken()) {
+          localStorage.setItem("sharedd.panelToken", newTok);
+          showToast("Токен обновлён — сессия переключена на новый токен");
+        }
+      }).catch((e) => showToast(e.message, true));
+    };
   }
 
   // ui/pages/panel/main.ts
