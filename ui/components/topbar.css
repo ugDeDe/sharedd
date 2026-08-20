@@ -63,4 +63,14 @@
 :root[data-theme="light"] .icon-btn .i-sun { display: block; }
 :root[data-theme="light"] .icon-btn .i-moon { display: none; }
 
-@media (max-width: 640px) { .nav { display: none; } .brand-sub { display: none; } }
+@media (max-width: 640px) {
+  .nav { display: none; }
+  .brand-sub { display: none; }
+  /* На публичных страницах в шапке ещё и перекрёстные ссылки — в одну
+     строку они не влезают и обрезались. Разрешаем перенос — но только
+     при нехватке места: где всё помещается, шапка остаётся однострочной. */
+  .topbar-inner { flex-wrap: wrap; row-gap: 8px; }
+  /* flex:none из базового правила мешает переносу внутри группы —
+     на узком экране разрешаем ей ужиматься и переносить содержимое */
+  .topbar-right { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+}
