@@ -118,4 +118,3 @@ export function render(o: any): void {
 
   $("s-dns-push2").onclick = dnsPush;
 }
-

@@ -169,7 +169,6 @@ function renderNodeDetail(d: any): void {
   $("node-detail").innerHTML = `
     <div class="card nd-head">
       <div>
-        
         <div class="nd-ip nd-ip-lead"><span class="mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span> · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
         <a class="back-link" style="margin:6px 0 0" href="/statistics/${encodeURIComponent(n.node_id)}" target="_blank" rel="noopener">публичная страница ↗</a>
       </div>
