@@ -1,0 +1,363 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/table.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/feed.css";
+@import "../../components/topology.css";
+@import "../../components/misc.css";
+
+/* ═══ Панель ══════════════════════════════════════════════════════════ */
+.view-title { margin: 4px 2px 14px; }
+.view[hidden] { display: none; }
+.card { margin-bottom: var(--gap); }
+.nav-count {
+  display: inline-grid; place-items: center; min-width: 18px; height: 17px; padding: 0 5px;
+  margin-left: 5px; border-radius: var(--r-pill); background: var(--surf-3); color: var(--fg-3);
+  font-size: 10.5px; font-weight: 650;
+}
+.nav a.active .nav-count { background: var(--acc); color: var(--acc-fg); }
+.nav-count:empty { display: none; }
+
+.back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; color: var(--fg-2); font-size: 13px; }
+.back-link:hover { color: var(--fg); text-decoration: none; }
+
+/* баннер тревог управляется классом .show из renderBanner() */
+#alert-banner { display: none; }
+#alert-banner.show { display: flex; }
+
+/* ═══ Журнал: панель фильтров ═════════════════════════════════════════ */
+.ev-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.ev-toolbar select { width: auto; min-width: 150px; max-width: 220px; height: 30px; font-size: 12.5px; }
+.ev-toolbar input[type="search"] { flex: 1 1 200px; max-width: 340px; height: 30px; font-size: 12.5px; }
+.ev-toolbar .found { margin-left: auto; color: var(--fg-3); font-size: 12px; }
+
+/* ═══ Настройки ═══════════════════════════════════════════════════════
+   Колоночная раскладка, а не grid: секции разной высоты пакуются встык.
+   В grid высота строки равна самой высокой карточке — под короткими
+   секциями зияли дыры в сотню пикселей. */
+.settings-grid { columns: 340px auto; column-gap: var(--gap); }
+.cfg {
+  display: block; break-inside: avoid; -webkit-column-break-inside: avoid;
+  margin: 0 0 var(--gap); min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surf); overflow: hidden; box-shadow: var(--sh-1);
+}
+.cfg-head {
+  padding: 12px 15px; border-bottom: 1px solid var(--line-2);
+  color: var(--fg); font-size: 12.5px; font-weight: 620;
+  display: flex; align-items: center; gap: 8px;
+}
+.cfg-head svg { width: 15px; height: 15px; color: var(--fg-3); flex: none; }
+.cfg-body { display: flex; flex-direction: column; gap: 12px; padding: 15px; }
+.cfg-body .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cfg-body .row > label { flex: 1 1 auto; color: var(--fg-2); font-size: 12.5px; }
+.cfg-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 15px; border-top: 1px solid var(--line-2); background: var(--surf-2);
+}
+.note { color: var(--fg-3); font-size: 11.5px; line-height: 1.5; }
+.note .mono { color: var(--fg-2); }
+#users-tbl { width: 100%; }
+#users-tbl td { padding: 5px 0; border: 0; }
+#users-tbl td:first-child { padding-right: 10px; width: 1%; white-space: nowrap; }
+#users-tbl td:last-child { width: 1%; padding-left: 8px; }
+.static-info {
+  padding: 0; margin-bottom: var(--gap);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surf); overflow: hidden; box-shadow: var(--sh-1);
+}
+.static-head {
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-3);
+}
+.static-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 0 28px; padding: 6px var(--pad) 14px;
+}
+.static-row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--line-2); font-size: 12.5px;
+}
+.static-k { color: var(--fg-3); flex: none; }
+/* длинные пути обрезаем: полный текст — в подсказке, иначе значение
+   наезжает на соседнюю колонку */
+.static-v {
+  color: var(--fg); font-weight: 550; margin-left: auto;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+}
+
+/* ═══ Вход ════════════════════════════════════════════════════════════ */
+#login-overlay {
+  position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 20px;
+  background: var(--bg);
+}
+#login-overlay.show { display: grid; }
+.login-box {
+  width: 100%; max-width: 360px; padding: 28px; border-radius: var(--r-xl);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.login-box .brand-mark { width: 40px; height: 40px; font-size: 14px; }
+.login-box h2 { font-size: 17px; }
+.login-box p { margin: 0; color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+.login-err {
+  display: none; padding: 9px 12px; border-radius: var(--r-sm);
+  background: var(--bad-soft); color: var(--bad); font-size: 12.5px;
+}
+.login-err.show { display: block; }
+
+@media (max-width: 640px) {
+  .settings-grid { columns: 1; }
+  .card-head, .ev-toolbar { padding-left: 12px; padding-right: 12px; }
+}
+
+/* ── экраны: panel-core ─────────────────────────────────────────────── */
+
+/* Обзор: доп. отступ у метрик статистики пула, чтобы не липли к
+   заголовку следующего блока (истории банов) внутри одной карточки. */
+#pool-stats { padding: 16px var(--pad) 4px; margin-bottom: 0; }
+#stats-block .card-head { border-top: 1px solid var(--line-2); }
+#stats-block .card-head:first-child { border-top: 0; }
+
+/* Нода: шапка карточки — id/адрес слева, чипы статуса справа. */
+.nd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: var(--pad); }
+/* id ноды теперь только в заголовке экрана — в карточке ведущей строкой
+   идёт адрес, чтобы одно и то же не стояло дважды подряд */
+.nd-ip-lead { font-size: 13.5px !important; color: var(--fg-2) !important; }
+.nd-ip-lead .mono { color: var(--fg); }
+.nd-ip { color: var(--fg-3); font-size: 12.5px; margin-top: 4px; }
+.nd-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; max-width: 100%; }
+.nd-reason { flex-basis: 100%; color: var(--bad); font-size: 12.5px; }
+
+/* Нода: Globalping — сводка слева, таблица проб справа. */
+.gp-summary {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px var(--pad); border-bottom: 1px solid var(--line-2); background: var(--surf-2);
+}
+.gp-facts { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.gp-big { font-size: 30px; font-weight: 680; letter-spacing: -.03em; line-height: 1; }
+.gp-big.ok { color: var(--ok); }
+.gp-big.bad { color: var(--bad); }
+@media (max-width: 720px) {
+}
+
+/* Нода: история проверок — тики TCP/metrics и столбики GP-ratio. */
+.chart-cap { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 7px; font-size: 11.5px; color: var(--fg-3); }
+.chart-cap:first-child { margin-top: 0; }
+.chart-cap .hint { margin-left: auto; }
+/* История проверок — сплошная полоса состояний, а не россыпь квадратиков:
+   96 отдельных плиток читались как шум, полоса же сразу показывает, где
+   был провал. */
+.ticks {
+  display: flex; gap: 1px; height: 18px; border-radius: var(--r-xs);
+  overflow: hidden; background: var(--surf-3);
+}
+.tick { flex: 1 1 0; min-width: 2px; background: var(--ok); opacity: .8; transition: opacity .12s ease; }
+.tick:hover { opacity: 1; }
+.tick.fail { background: var(--bad); opacity: 1; }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 56px; }
+.gbar { width: 6px; border-radius: 2px 2px 0 0; background: var(--ok); transition: opacity .12s ease; }
+.gbar:hover { opacity: .75; }
+.gbar.mid { background: var(--warn); }
+.gbar.fail { background: var(--bad); }
+
+/* Нода: спарклайн клиентов с ховером — направляющая, точка, подсказка
+   позиционируются абсолютно поверх SVG (сам SVG координаты не знает). */
+.sparkwrap { position: relative; }
+.spark { display: block; width: 100%; height: 56px; }
+.spark-guide {
+  position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2);
+  opacity: 0; pointer-events: none; transform: translateX(-.5px);
+}
+.spark-dot {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--acc); border: 2px solid var(--surf); opacity: 0; pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.spark-tip {
+  position: absolute; top: -8px; transform: translate(-50%, -100%);
+  padding: 4px 8px; border-radius: var(--r-xs); border: 1px solid var(--line);
+  background: var(--surf-3); box-shadow: var(--sh-1); color: var(--fg);
+  font-size: 11px; white-space: nowrap; opacity: 0; pointer-events: none;
+}
+.sparkwrap.hover .spark-guide, .sparkwrap.hover .spark-dot, .sparkwrap.hover .spark-tip { opacity: 1; }
+
+/* ── таблица нод: группы и мастера ─────────────────────────────────────
+   Порядок строк осмысленный (мастера → очередь → остальные), поэтому у
+   групп есть заголовки. Строка мастера подсвечена целиком: золотая метка
+   слева легко теряется, когда таблица на восемь строк. */
+.group-row td {
+  padding: 9px var(--pad) 7px !important;
+  background: var(--surf-2);
+  border-bottom: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-2);
+}
+.group-row td span + span { margin-left: 10px; letter-spacing: .02em; text-transform: none; font-weight: 500; }
+.group-row:hover td { background: var(--surf-2); }
+
+tbody tr.master td { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+tbody tr.master:hover td { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+tbody tr.master td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  tbody tr.master td { background: var(--gold-soft); }
+}
+
+/* Длинная ошибка раздувала строку вдвое: текст переносился на четыре
+   строки, а соседние ячейки центрировались — получалась пустая полоса. */
+.node-status { display: inline-block; vertical-align: middle; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* подсказка про клик и стрелка при наведении: узнать о переходе на
+   страницу ноды иначе можно было только случайно */
+.card-head .row-hint { margin-left: 0; }
+tbody tr.clickable td:last-child { position: relative; }
+tbody tr.clickable:hover td:last-child::after {
+  content: "→"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--acc); font-size: 13px;
+}
+@media (max-width: 720px) { .card-head .row-hint { display: none; } }
+
+/* ── скелет первой загрузки ────────────────────────────────────────────
+   Пока не пришёл первый ответ, контейнеры пустые и экран выглядит
+   сломанным. Заглушка чисто на CSS: как только JS положит содержимое,
+   :empty перестаёт срабатывать и правило исчезает само. */
+#cards:empty, #pool-stats:empty, #topology:empty, #masters-full:empty {
+  display: block; border-radius: var(--r-lg); margin-bottom: var(--gap);
+  background: linear-gradient(90deg, var(--surf) 25%, var(--surf-2) 37%, var(--surf) 63%);
+  background-size: 400% 100%; animation: shimmer 1.4s ease infinite;
+  border: 1px solid var(--line);
+}
+#cards:empty, #pool-stats:empty { height: 118px; }
+#topology:empty { height: 320px; }
+#masters-full:empty { height: 180px; }
+@media (prefers-reduced-motion: reduce) {
+  #cards:empty, #pool-stats:empty, #topology:empty, #masters-full:empty { animation: none; }
+}
+
+/* ═══ Карточка-строка ноды ═════════════════════════════════════════════
+   Таблица на двенадцать колонок не помещалась в экран и читалась как
+   простыня. Здесь каждая нода — объект: сверху кто и какая роль, снизу
+   адрес, тип и три проверки, справа клиенты и доступность. Редкое
+   (мастерство, heartbeat, отчёты) раскрывается по клику. */
+.node-list { display: block; }
+.node-group {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 12px var(--pad) 8px; background: var(--surf-2);
+  border-bottom: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-2);
+}
+.node-group .dim { letter-spacing: .02em; text-transform: none; font-weight: 500; }
+
+.node-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 6px 18px;
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+  cursor: pointer; transition: background .12s ease;
+}
+.node-card:last-child { border-bottom: 0; }
+.node-card:hover { background: var(--surf-2); }
+.node-card.master {
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.node-card.master:hover { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .node-card.master { background: var(--gold-soft); }
+}
+
+.node-main { min-width: 0; }
+.node-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.node-id { font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.node-sub {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 5px; font-size: 11.5px; color: var(--fg-3);
+}
+.node-problem {
+  color: var(--bad); max-width: 320px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.node-side { display: flex; align-items: center; gap: 20px; flex: none; }
+.node-clients { text-align: right; }
+.node-clients-v { display: block; font-size: 15px; font-weight: 640; letter-spacing: -.02em; }
+.node-clients-l { font-size: 10.5px; color: var(--fg-3); }
+.node-meter { min-width: 140px; }
+
+/* раскрытие */
+.node-more {
+  grid-column: 1 / -1; display: none;
+  gap: 10px 26px; flex-wrap: wrap; align-items: center;
+  margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.node-card.open .node-more { display: flex; }
+.node-more .kv-v.late { color: var(--bad); }
+.node-more .node-open { margin-left: auto; }
+
+.node-card.quar { cursor: pointer; }
+.node-card.quar .node-sub { gap: 12px; }
+
+@media (max-width: 720px) {
+  .node-card { grid-template-columns: minmax(0, 1fr); }
+  .node-side { justify-content: space-between; gap: 12px; margin-top: 8px; }
+  .node-meter { min-width: 0; flex: 1; }
+  .node-problem { max-width: 100%; white-space: normal; }
+  .node-group, .node-card { padding-left: 12px; padding-right: 12px; }
+  .node-more .node-open { margin-left: 0; width: 100%; }
+}
+
+/* ═══ СРМД: вместимость и домены ═══════════════════════════════════════
+   Из таблицы не читалось, ПОЧЕМУ система решает создать или свернуть
+   домен. Полоса показывает главное соотношение: сколько нод в очереди
+   против того, сколько их вмещают домены. */
+.capacity { padding: 16px var(--pad); border-bottom: 1px solid var(--line-2); }
+.cap-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.cap-title { font-size: 12.5px; font-weight: 620; }
+.cap-nums { margin-left: auto; font-size: 12px; color: var(--fg-2); }
+.cap-nums b { color: var(--fg); font-weight: 640; font-size: 13px; }
+.cap-bar { height: 10px; border-radius: var(--r-pill); background: var(--surf-3); overflow: hidden; }
+.cap-fill { height: 100%; border-radius: inherit; transition: width .3s ease; background: var(--ok); }
+.cap-fill.warn { background: var(--warn); }
+.cap-fill.over { background: var(--bad); }
+.cap-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11.5px; }
+.cap-verdict { color: var(--fg-2); }
+.cap-verdict.ok { color: var(--ok); }
+.cap-verdict.warn { color: var(--warn); }
+.cap-state { margin-left: auto; padding: 2px 8px; border-radius: var(--r-pill);
+  font-size: 10.5px; font-weight: 640; }
+.cap-state.on { background: var(--ok-soft); color: var(--ok); }
+.cap-state.off { background: var(--surf-2); color: var(--fg-3); }
+
+.srmd-list { display: block; }
+.srmd-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: 16px;
+  padding: 13px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.srmd-card:last-child { border-bottom: 0; }
+.srmd-card:hover { background: var(--surf-2); }
+.srmd-card.folded { opacity: .68; }
+.srmd-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.srmd-name { font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.srmd-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 4px; font-size: 11.5px; }
+.srmd-clients { text-align: right; }
+.srmd-clients b { display: block; font-size: 15px; font-weight: 640; letter-spacing: -.02em; }
+.srmd-clients b i { font-style: normal; color: var(--fg-3); }
+.srmd-clients span { font-size: 10.5px; color: var(--fg-3); }
+
+@media (max-width: 720px) {
+  .capacity, .srmd-card { padding-left: 12px; padding-right: 12px; }
+  .srmd-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .srmd-ctl { grid-column: 1 / -1; }
+  .srmd-ctl .btn { width: 100%; }
+  .cap-nums { margin-left: 0; width: 100%; }
+}

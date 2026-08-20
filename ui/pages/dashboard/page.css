@@ -1,0 +1,52 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/table.css";
+@import "../../components/misc.css";
+@import "../../components/form.css";
+
+/* ═══ Дашборд блокировок ═══════════════════════════════════════════════ */
+.dash-wrap { max-width: 1280px; }
+.page-title { margin: 4px 0 16px; }
+
+.kpi-row { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .kpi-row { grid-template-columns: 1fr; } }
+.metric-value small { font-size: 13px; font-weight: 500; color: var(--fg-2); }
+
+/* Сегментированный переключатель: дорожка утоплена, бегунок приподнят —
+   иначе активный пункт читается как дырка. */
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-md); background: var(--track); box-shadow: inset 0 1px 2px var(--track-in); }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--fg-2); cursor: pointer;
+  padding: 6px 13px; border-radius: var(--r-sm); font: inherit; font-size: 12.5px; font-weight: 520;
+  white-space: nowrap; transition: color .15s, background .15s;
+}
+.seg button:hover { color: var(--fg); }
+.seg button.active {
+  color: var(--fg); font-weight: 600; background: var(--thumb);
+  box-shadow: 0 1px 2px rgba(16, 23, 37, .1), inset 0 1px 0 var(--thumb-hi);
+}
+
+#chart-box { position: relative; }
+#chart { width: 100%; height: auto; display: block; font-family: var(--sans); }
+/* Тултип — стеклянная карточка дизайн-системы, а не плоская плашка. */
+#tip {
+  position: absolute; pointer-events: none; display: none; z-index: 5;
+  padding: 9px 12px; font-size: 12px; white-space: nowrap;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--gl-a), var(--gl-b));
+  border: 1px solid var(--gl-brd);
+  box-shadow: inset 0 1px 0 var(--gl-hi), var(--sh-pop);
+  -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%);
+}
+#tip .t1 { color: var(--fg-3); font-size: 11px; }
+#tip .t2 { font-weight: 660; margin-top: 3px; font-size: 13.5px; letter-spacing: -.01em; }
+.chart-note { font-size: 12px; margin-top: 10px; }
+
+/* столбец подсвечивается целиком при наведении на его зону */
+#chart .bar { transition: opacity .13s ease; }
+#chart-box:hover .bar { opacity: .55; }
+#chart .bar.hot, #chart-box:hover .bar.hot { opacity: 1; }

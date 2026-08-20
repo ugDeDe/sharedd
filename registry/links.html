@@ -1,4 +1,4 @@
-<!-- ВНИМАНИЕ: файл собран автоматически из ui/pages/dashboard/.
+<!-- ВНИМАНИЕ: файл собран автоматически из ui/pages/links/.
      Правки здесь будут потеряны при следующей сборке.
      Исходники: ui/  ·  пересборка: bash scripts/build_ui.sh -->
 <!DOCTYPE html>
@@ -7,9 +7,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta name="robots" content="noindex">
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
-<title>sharedd · дашборд блокировок</title>
+<title>sharedd · прокси-ссылки</title>
 <script>/* тема до первой отрисовки, иначе мигает светлый кадр */
 try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
 <style>
@@ -828,267 +827,114 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     }
   }
 
-  /* ui/components/table.css */
-  .table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-  }
-  thead th {
-    text-align: left;
-    padding: 9px var(--pad);
-    white-space: nowrap;
-    font-size: 10px;
-    font-weight: 640;
-    letter-spacing: .09em;
-    text-transform: uppercase;
-    color: var(--fg-3);
-    border-bottom: 1px solid var(--line-2);
-  }
-  tbody td {
-    padding: 11px var(--pad);
-    border-bottom: 1px solid var(--line-2);
-    vertical-align: middle;
-  }
-  tbody tr:last-child td {
-    border-bottom: 0;
-  }
-  tbody tr {
-    transition: background .12s;
-  }
-  tbody tr.clickable {
-    cursor: pointer;
-  }
-  tbody tr:hover td {
-    background: var(--surf-2);
-  }
-  tbody tr.master td:first-child {
-    box-shadow: inset 2px 0 0 var(--gold);
-  }
-  td.num,
-  th.num {
-    text-align: right;
-  }
-  tbody td.mono,
-  tbody td .mono {
-    white-space: nowrap;
-  }
-  tbody td.wrap,
-  tbody td.wrap .mono {
-    white-space: normal;
-  }
-  .table-empty {
-    padding: 34px var(--pad);
-    text-align: center;
-    color: var(--fg-3);
-    font-size: 13px;
-  }
-  .meter {
-    display: flex;
+  /* ui/components/badge.css */
+  .badge {
+    display: inline-flex;
     align-items: center;
-    gap: 9px;
-    min-width: 118px;
-  }
-  .meter-track {
-    flex: 1;
-    height: 5px;
-    min-width: 46px;
-    border-radius: var(--r-pill);
-    background: var(--surf-3);
-    overflow: hidden;
-  }
-  .meter-fill {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--fg-3);
-    transition: width .3s ease;
-  }
-  .meter-fill.ok {
-    background: var(--ok);
-  }
-  .meter-fill.warn {
-    background: var(--warn);
-  }
-  .meter-fill.bad {
-    background: var(--bad);
-  }
-  .meter-value {
-    font-size: 12.5px;
+    gap: 5px;
+    height: 21px;
+    padding: 0 7px;
+    border-radius: var(--r-xs);
+    background: var(--surf-2);
     color: var(--fg-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    white-space: nowrap;
   }
-  @media (max-width: 720px) {
-    .table-cards thead {
-      display: none;
-    }
-    .table-cards tbody tr {
-      display: block;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line-2);
-    }
-    .table-cards tbody tr:last-child {
-      border-bottom: 0;
-    }
-    .table-cards tbody td {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      padding: 3px 0;
-      border: 0;
-    }
-    .table-cards tbody td::before {
-      content: attr(data-label);
-      flex: 0 0 92px;
-      color: var(--fg-3);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    .table-cards tbody td.num {
-      text-align: left;
-    }
-    .table-cards tbody tr:hover td {
-      background: none;
-    }
+  .badge.ok {
+    background: var(--ok-soft);
+    color: var(--ok);
   }
-
-  /* ui/components/misc.css */
-  .banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 15px;
-    margin-bottom: 16px;
-    border: 1px solid var(--line);
-    border-left: 3px solid var(--fg-3);
-    border-radius: var(--r-md);
-    background: var(--surf);
-    color: var(--fg-2);
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .banner svg {
-    width: 16px;
-    height: 16px;
-    flex: none;
-    margin-top: 2px;
-  }
-  .banner b {
-    color: var(--fg);
-    font-weight: 620;
-  }
-  .banner.info {
-    border-left-color: var(--acc);
-    background: var(--acc-soft);
-  }
-  .banner.warn {
-    border-left-color: var(--warn);
+  .badge.warn {
     background: var(--warn-soft);
-  }
-  .banner.warn svg {
     color: var(--warn);
   }
-  .banner.bad {
-    border-left-color: var(--bad);
+  .badge.bad {
     background: var(--bad-soft);
-  }
-  .banner.bad svg {
     color: var(--bad);
   }
-  .empty-state {
+  .badge.info {
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .badge.special {
+    background: var(--special-soft);
+    color: var(--special);
+  }
+  .badge.gold {
+    background: var(--gold-soft);
+    color: var(--gold);
+  }
+  .badge.mono {
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .badge i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .chips {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--fg-3);
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  .empty-state svg {
-    width: 26px;
-    height: 26px;
-    opacity: .55;
-  }
-  .empty-state .t {
-    color: var(--fg-2);
-    font-size: 13.5px;
-    font-weight: 560;
-  }
-  .empty-state .s {
-    font-size: 12.5px;
-    max-width: 44ch;
-    line-height: 1.5;
-  }
-  .skeleton {
-    border-radius: var(--r-xs);
-    background:
-      linear-gradient(
-        90deg,
-        var(--surf-2) 25%,
-        var(--surf-3) 37%,
-        var(--surf-2) 63%);
-    background-size: 400% 100%;
-    animation: shimmer 1.4s ease infinite;
-  }
-  @keyframes shimmer {
-    from {
-      background-position: 100% 0;
-    }
-    to {
-      background-position: -100% 0;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .skeleton {
-      animation: none;
-    }
-  }
-  #toast {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    z-index: 90;
-    display: none;
-    max-width: min(380px, calc(100vw - 36px));
-    padding: 11px 15px;
-    border-radius: var(--r-md);
-    border: 1px solid var(--ok);
+  .chip {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    border: 1px solid var(--line);
     background: var(--surf);
-    box-shadow: var(--sh-pop);
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 520;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: .14s;
+  }
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-3);
+  }
+  .chip.active {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
     color: var(--ok);
-    font-size: 13px;
   }
-  #toast.show {
-    display: block;
-    animation: toast-in .18s ease;
+  .check-tag.warn {
+    color: var(--warn);
   }
-  #toast.err {
-    border-color: var(--bad);
+  .check-tag.bad {
     color: var(--bad);
   }
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-  }
-  .kv {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    font-size: 12px;
-  }
-  .kv-k {
+  .check-tag.unknown {
     color: var(--fg-3);
-    font-size: 10.5px;
-  }
-  .kv-v {
-    color: var(--fg);
-    font-weight: 560;
+    opacity: .55;
   }
 
   /* ui/components/form.css */
@@ -1321,132 +1167,275 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     color: var(--fg);
   }
 
-  /* ui/pages/dashboard/page.css */
-  .dash-wrap {
-    max-width: 1280px;
-  }
-  .page-title {
-    margin: 4px 0 16px;
-  }
-  .kpi-row {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  @media (max-width: 900px) {
-    .kpi-row {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-  @media (max-width: 560px) {
-    .kpi-row {
-      grid-template-columns: 1fr;
-    }
-  }
-  .metric-value small {
+  /* ui/components/misc.css */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 15px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-3);
+    border-radius: var(--r-md);
+    background: var(--surf);
+    color: var(--fg-2);
     font-size: 13px;
-    font-weight: 500;
-    color: var(--fg-2);
+    line-height: 1.5;
   }
-  .seg {
-    display: inline-flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: var(--r-md);
-    background: var(--track);
-    box-shadow: inset 0 1px 2px var(--track-in);
+  .banner svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    margin-top: 2px;
   }
-  .seg button {
-    appearance: none;
-    border: 0;
-    background: transparent;
-    color: var(--fg-2);
-    cursor: pointer;
-    padding: 6px 13px;
-    border-radius: var(--r-sm);
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 520;
-    white-space: nowrap;
-    transition: color .15s, background .15s;
-  }
-  .seg button:hover {
+  .banner b {
     color: var(--fg);
+    font-weight: 620;
   }
-  .seg button.active {
-    color: var(--fg);
-    font-weight: 600;
-    background: var(--thumb);
-    box-shadow: 0 1px 2px rgba(16, 23, 37, .1), inset 0 1px 0 var(--thumb-hi);
+  .banner.info {
+    border-left-color: var(--acc);
+    background: var(--acc-soft);
   }
-  #chart-box {
-    position: relative;
+  .banner.warn {
+    border-left-color: var(--warn);
+    background: var(--warn-soft);
   }
-  #chart {
-    width: 100%;
-    height: auto;
-    display: block;
-    font-family: var(--sans);
+  .banner.warn svg {
+    color: var(--warn);
   }
-  #tip {
-    position: absolute;
-    pointer-events: none;
-    display: none;
-    z-index: 5;
-    padding: 9px 12px;
-    font-size: 12px;
-    white-space: nowrap;
-    border-radius: var(--r-md);
-    background:
-      linear-gradient(
-        180deg,
-        var(--gl-a),
-        var(--gl-b));
-    border: 1px solid var(--gl-brd);
-    box-shadow: inset 0 1px 0 var(--gl-hi), var(--sh-pop);
-    -webkit-backdrop-filter: blur(18px) saturate(180%);
-    backdrop-filter: blur(18px) saturate(180%);
+  .banner.bad {
+    border-left-color: var(--bad);
+    background: var(--bad-soft);
   }
-  #tip .t1 {
+  .banner.bad svg {
+    color: var(--bad);
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
     color: var(--fg-3);
-    font-size: 11px;
   }
-  #tip .t2 {
-    font-weight: 660;
-    margin-top: 3px;
-    font-size: 13.5px;
-    letter-spacing: -.01em;
-  }
-  .chart-note {
-    font-size: 12px;
-    margin-top: 10px;
-  }
-  #chart .bar {
-    transition: opacity .13s ease;
-  }
-  #chart-box:hover .bar {
+  .empty-state svg {
+    width: 26px;
+    height: 26px;
     opacity: .55;
   }
-  #chart .bar.hot,
-  #chart-box:hover .bar.hot {
-    opacity: 1;
+  .empty-state .t {
+    color: var(--fg-2);
+    font-size: 13.5px;
+    font-weight: 560;
+  }
+  .empty-state .s {
+    font-size: 12.5px;
+    max-width: 44ch;
+    line-height: 1.5;
+  }
+  .skeleton {
+    border-radius: var(--r-xs);
+    background:
+      linear-gradient(
+        90deg,
+        var(--surf-2) 25%,
+        var(--surf-3) 37%,
+        var(--surf-2) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+  #toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 90;
+    display: none;
+    max-width: min(380px, calc(100vw - 36px));
+    padding: 11px 15px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ok);
+    background: var(--surf);
+    box-shadow: var(--sh-pop);
+    color: var(--ok);
+    font-size: 13px;
+  }
+  #toast.show {
+    display: block;
+    animation: toast-in .18s ease;
+  }
+  #toast.err {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .kv {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 12px;
+  }
+  .kv-k {
+    color: var(--fg-3);
+    font-size: 10.5px;
+  }
+  .kv-v {
+    color: var(--fg);
+    font-weight: 560;
+  }
+
+  /* ui/pages/links/page.css */
+  .links-wrap {
+    max-width: 1020px;
+  }
+  .user-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .user-name {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+  .user-count {
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .link-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .link-row:last-child {
+    border-bottom: 0;
+  }
+  .link-row:hover {
+    background: var(--surf-2);
+  }
+  .link-main {
+    min-width: 0;
+    flex: 1 1 260px;
+  }
+  .link-domain {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .link-url {
+    color: var(--fg-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+  }
+  .link-acts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .modal {
+      background: var(--bg);
+    }
+  }
+  .modal.show {
+    display: grid;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 340px;
+    padding: 22px;
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+  .modal-box .d {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+  .qr-canvas {
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 1;
+    image-rendering: pixelated;
+    background: #fff;
+    border-radius: var(--r-sm);
+    padding: 10px;
+    border: 1px solid var(--line);
+  }
+  @media (max-width: 640px) {
+    .user-head,
+    .link-row {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .link-acts {
+      margin-left: 0;
+      width: 100%;
+    }
   }
 </style>
 </head>
 <body>
 
-<div class="wrap dash-wrap" id="app">
+<div class="wrap links-wrap">
   <header class="topbar">
     <div class="topbar-inner glass">
       <div class="brand">
         <div class="brand-mark">DD</div>
         <div>
           <div class="brand-name">sharedd</div>
-          <div class="brand-sub">терминальные баны нод · история в SQLite</div>
+          <div class="brand-sub">прокси-ссылки</div>
         </div>
       </div>
       <div class="topbar-right">
         <a class="btn ghost sm" href="/statistics">Статистика нод →</a>
-        <a class="btn ghost sm" href="/links">Прокси-ссылки →</a>
-        <span class="status-pill live" id="live-pill"><i></i><span id="live-text">обновлено</span></span>
+        <a class="btn ghost sm" href="/dashboard">Дашборд блокировок →</a>
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">загрузка…</span></span>
         <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
           <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
@@ -1455,64 +1444,38 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     </div>
   </header>
 
-  <h1 class="page-title">Дашборд блокировок</h1>
-
-  <div class="metrics kpi-row">
-    <div class="card metric">
-      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg><span id="k1-cap">Баны GP (без восстановления)</span></div>
-      <div class="metric-value" id="k1">—</div>
-    </div>
-    <div class="card metric">
-      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Периодичность банов <span class="dim">(средний интервал)</span></div>
-      <div class="metric-value" id="k2">—</div>
-    </div>
-    <div class="card metric">
-      <div class="metric-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12"/><path d="M6 22h12"/><path d="M6 2c0 5 12 5 12 0"/><path d="M6 22c0-5 12-5 12 0"/></svg>Время жизни ноды <span class="dim">(регистрация → бан)</span></div>
-      <div class="metric-value" id="k3">—</div>
-    </div>
+  <div class="banner info">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <span>Нажмите <b>Открыть</b> на телефоне с Telegram — прокси добавится сам. <b>QR</b> — если Telegram на другом устройстве. Ссылка ведёт на живой домен: если нода попадёт под блокировку, домен переедет на другую, а ссылка останется прежней.</span>
   </div>
 
-  <section class="card" style="margin-bottom:16px">
-    <div class="card-head">
-      <h2 id="chart-title">Баны GP</h2>
-      <span class="spacer"></span>
-      <div class="seg" id="metric-seg">
-        <button data-m="bans" class="active" type="button">Баны</button>
-        <button data-m="gap" type="button">Периодичность</button>
-        <button data-m="life" type="button">Время жизни</button>
-      </div>
-      <div class="seg" id="range-seg">
-        <button data-r="day" class="active" type="button">Сегодня</button>
-        <button data-r="week" type="button">Неделя</button>
-        <button data-r="month" type="button">Месяц</button>
-      </div>
-    </div>
-    <div class="card-body">
-      <div id="chart-box">
-        <svg id="chart" viewBox="0 0 860 280" preserveAspectRatio="xMidYMid meet"></svg>
-        <div id="tip"></div>
-      </div>
-      <div class="dim chart-note" id="chart-note"></div>
-    </div>
-  </section>
+  <div id="list"></div>
 
-  <section class="card">
-    <div class="card-head"><h2>Последние баны за период</h2></div>
-    <div class="table-wrap">
-      <table class="table-cards">
-        <thead><tr><th>Время</th><th>Нода</th><th>IP</th><th>Время жизни</th><th>Интервал с прошлого</th></tr></thead>
-        <tbody id="recent"><tr><td colspan="5" class="dim">загрузка…</td></tr></tbody>
-      </table>
-    </div>
-  </section>
+  <footer class="page-foot">sharedd · публичные прокси-ссылки · обновление каждые 30 с</footer>
+</div>
 
-  <footer class="page-foot">sharedd · метрики блокировок хранятся постоянно (bans), журнал событий ротируется · обновление каждые 60 сек</footer>
+<div class="modal" id="qr-modal">
+  <div class="modal-box glass">
+    <div class="d" id="qr-domain"></div>
+    <canvas class="qr-canvas" id="qr-canvas"></canvas>
+    <div class="dim" style="font-size:12px">Наведите камеру Telegram или системного сканера</div>
+    <button class="btn" id="qr-close">Закрыть</button>
+  </div>
 </div>
 
 <script>
 (() => {
   // ui/lib/dom.ts
   var $ = (id) => document.getElementById(id);
+  var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // ui/lib/format.ts
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
 
   // ui/lib/theme.ts
   var KEY = "sharedd.theme";
@@ -1530,288 +1493,440 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       document.dispatchEvent(new CustomEvent("themechange"));
     });
   }
-  function token(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  // ui/pages/links/qr.ts
+  var EXP = new Uint8Array(512);
+  var LOG = new Uint8Array(256);
+  for (i = 0, x = 1; i < 255; i++) {
+    EXP[i] = x;
+    LOG[x] = i;
+    x <<= 1;
+    if (x & 256) x ^= 285;
+  }
+  var i;
+  var x;
+  for (i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  var i;
+  function mul(a, b) {
+    return a && b ? EXP[LOG[a] + LOG[b]] : 0;
+  }
+  function rsGen(deg) {
+    var p = [1];
+    for (var i2 = 0; i2 < deg; i2++) {
+      var np = new Array(p.length + 1).fill(0);
+      for (var j = 0; j < p.length; j++) {
+        np[j] ^= mul(p[j], 1);
+        np[j + 1] ^= mul(p[j], EXP[i2]);
+      }
+      p = np;
+    }
+    return p;
+  }
+  function rsEnc(data, deg) {
+    var gen = rsGen(deg), res = new Array(deg).fill(0);
+    for (var i2 = 0; i2 < data.length; i2++) {
+      var f = data[i2] ^ res[0];
+      res.shift();
+      res.push(0);
+      for (var j = 0; j < deg; j++) res[j] ^= mul(gen[j + 1], f);
+    }
+    return res;
+  }
+  var ECL = [
+    null,
+    [7, 1, 19, 0, 0],
+    [10, 1, 34, 0, 0],
+    [15, 1, 55, 0, 0],
+    [20, 1, 80, 0, 0],
+    [26, 1, 108, 0, 0],
+    [18, 2, 68, 0, 0],
+    [20, 2, 78, 0, 0],
+    [24, 2, 97, 0, 0],
+    [30, 2, 116, 0, 0],
+    [18, 2, 68, 2, 69],
+    [20, 4, 81, 0, 0],
+    [24, 2, 92, 2, 93],
+    [26, 4, 107, 0, 0],
+    [30, 3, 115, 1, 116],
+    [22, 5, 87, 1, 88],
+    [24, 5, 98, 1, 99],
+    [28, 1, 107, 5, 108],
+    [30, 5, 120, 1, 121],
+    [28, 3, 113, 4, 114],
+    [28, 3, 107, 5, 108]
+  ];
+  var ALIGN = [
+    null,
+    [],
+    [6, 18],
+    [6, 22],
+    [6, 26],
+    [6, 30],
+    [6, 34],
+    [6, 22, 38],
+    [6, 24, 42],
+    [6, 26, 46],
+    [6, 28, 50],
+    [6, 30, 54],
+    [6, 32, 58],
+    [6, 34, 62],
+    [6, 26, 46, 66],
+    [6, 26, 48, 70],
+    [6, 26, 50, 74],
+    [6, 30, 54, 78],
+    [6, 30, 56, 82],
+    [6, 30, 58, 86],
+    [6, 34, 62, 90]
+  ];
+  function dataCapacity(v) {
+    var t = ECL[v];
+    return t[1] * t[2] + t[3] * t[4];
+  }
+  function bch15(v) {
+    var d = v << 10;
+    for (var i2 = 4; i2 >= 0; i2--) if (d >>> 10 + i2 & 1) d ^= 1335 << i2;
+    return (v << 10 | d) ^ 21522;
+  }
+  function bch18(v) {
+    var d = v << 12;
+    for (var i2 = 5; i2 >= 0; i2--) if (d >>> 12 + i2 & 1) d ^= 7973 << i2;
+    return v << 12 | d;
+  }
+  function utf8(s) {
+    var out = [], b = new TextEncoder().encode(s);
+    for (var i2 = 0; i2 < b.length; i2++) out.push(b[i2]);
+    return out;
+  }
+  function encode(text) {
+    var bytes = utf8(text), ver = 0;
+    for (var v = 1; v <= 20; v++) {
+      var cci = v < 10 ? 8 : 16;
+      if (dataCapacity(v) * 8 >= 4 + cci + bytes.length * 8) {
+        ver = v;
+        break;
+      }
+    }
+    if (!ver) throw new Error("строка слишком длинная для QR");
+    var bits = [];
+    function put(val, len) {
+      for (var i3 = len - 1; i3 >= 0; i3--) bits.push(val >>> i3 & 1);
+    }
+    put(4, 4);
+    put(bytes.length, ver < 10 ? 8 : 16);
+    for (var i2 = 0; i2 < bytes.length; i2++) put(bytes[i2], 8);
+    var cap = dataCapacity(ver) * 8;
+    for (var i2 = 0; i2 < 4 && bits.length < cap; i2++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var dat = [];
+    for (var i2 = 0; i2 < bits.length; i2 += 8) {
+      var b = 0;
+      for (var j = 0; j < 8; j++) b = b << 1 | bits[i2 + j];
+      dat.push(b);
+    }
+    for (var pad = 0; dat.length < dataCapacity(ver); pad++) dat.push(pad % 2 ? 17 : 236);
+    var t = ECL[ver], blocks = [], ecs = [], p = 0;
+    for (var i2 = 0; i2 < t[1]; i2++) {
+      var b = dat.slice(p, p + t[2]);
+      p += t[2];
+      blocks.push(b);
+      ecs.push(rsEnc(b, t[0]));
+    }
+    for (var i2 = 0; i2 < t[3]; i2++) {
+      var b = dat.slice(p, p + t[4]);
+      p += t[4];
+      blocks.push(b);
+      ecs.push(rsEnc(b, t[0]));
+    }
+    var maxD = Math.max(t[2], t[4]), out = [];
+    for (var i2 = 0; i2 < maxD; i2++) for (var j = 0; j < blocks.length; j++) if (i2 < blocks[j].length) out.push(blocks[j][i2]);
+    for (var i2 = 0; i2 < t[0]; i2++) for (var j = 0; j < ecs.length; j++) out.push(ecs[j][i2]);
+    var n = ver * 4 + 17;
+    var m = [], res = [];
+    for (var i2 = 0; i2 < n; i2++) {
+      m.push(new Int8Array(n).fill(-1));
+      res.push(new Int8Array(n));
+    }
+    function setF(r2, c3, v2) {
+      if (r2 >= 0 && r2 < n && c3 >= 0 && c3 < n) m[r2][c3] = v2;
+    }
+    function finder(r2, c3) {
+      for (var dr2 = -1; dr2 <= 7; dr2++) for (var dc2 = -1; dc2 <= 7; dc2++) {
+        var inb = dr2 >= 0 && dr2 <= 6 && dc2 >= 0 && dc2 <= 6;
+        var v2 = inb && (dr2 === 0 || dr2 === 6 || dc2 === 0 || dc2 === 6 || dr2 >= 2 && dr2 <= 4 && dc2 >= 2 && dc2 <= 4) ? 1 : 0;
+        setF(r2 + dr2, c3 + dc2, v2);
+      }
+    }
+    finder(0, 0);
+    finder(0, n - 7);
+    finder(n - 7, 0);
+    for (var i2 = 8; i2 < n - 8; i2++) {
+      m[6][i2] = i2 % 2 === 0 ? 1 : 0;
+      m[i2][6] = i2 % 2 === 0 ? 1 : 0;
+    }
+    var ap = ALIGN[ver];
+    for (var a = 0; a < ap.length; a++) for (var b2 = 0; b2 < ap.length; b2++) {
+      var r = ap[a], c = ap[b2];
+      if (r <= 8 && c <= 8 || r <= 8 && c >= n - 9 || r >= n - 9 && c <= 8) continue;
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++)
+        m[r + dr][c + dc] = Math.abs(dr) === 2 || Math.abs(dc) === 2 || dr === 0 && dc === 0 ? 1 : 0;
+    }
+    m[n - 8][8] = 1;
+    for (var i2 = 0; i2 <= 8; i2++) {
+      if (m[8][i2] === -1) m[8][i2] = 0;
+      if (m[i2][8] === -1) m[i2][8] = 0;
+    }
+    for (var i2 = n - 8; i2 < n; i2++) {
+      if (m[8][i2] === -1) m[8][i2] = 0;
+      if (m[i2][8] === -1) m[i2][8] = 0;
+    }
+    if (ver >= 7) {
+      var vi = bch18(ver);
+      for (var i2 = 0; i2 < 18; i2++) {
+        var bit = vi >>> i2 & 1, r = Math.floor(i2 / 3), c = i2 % 3;
+        m[r][n - 11 + c] = bit;
+        m[n - 11 + c][r] = bit;
+      }
+    }
+    var reserved = [];
+    for (var i2 = 0; i2 < n; i2++) reserved.push(Int8Array.from(m[i2]));
+    var bitIdx = 0, upward = true;
+    for (var col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (var k = 0; k < n; k++) {
+        var row = upward ? n - 1 - k : k;
+        for (var c2 = 0; c2 < 2; c2++) {
+          var cc = col - c2;
+          if (reserved[row][cc] !== -1) continue;
+          var bit = 0;
+          if (bitIdx < out.length * 8) bit = out[bitIdx >> 3] >>> 7 - (bitIdx & 7) & 1;
+          bitIdx++;
+          m[row][cc] = bit;
+        }
+      }
+      upward = !upward;
+    }
+    function maskFn(k2, r2, c3) {
+      switch (k2) {
+        case 0:
+          return (r2 + c3) % 2 === 0;
+        case 1:
+          return r2 % 2 === 0;
+        case 2:
+          return c3 % 3 === 0;
+        case 3:
+          return (r2 + c3) % 3 === 0;
+        case 4:
+          return (Math.floor(r2 / 2) + Math.floor(c3 / 3)) % 2 === 0;
+        case 5:
+          return r2 * c3 % 2 + r2 * c3 % 3 === 0;
+        case 6:
+          return (r2 * c3 % 2 + r2 * c3 % 3) % 2 === 0;
+        default:
+          return ((r2 + c3) % 2 + r2 * c3 % 3) % 2 === 0;
+      }
+    }
+    function penalty(g2) {
+      var p1 = 0, p2 = 0, p3 = 0, dark = 0;
+      for (var r2 = 0; r2 < n; r2++) {
+        for (var c3 = 0; c3 < n; c3++) {
+          if (g2[r2][c3]) dark++;
+          if (c3 < n - 1 && r2 < n - 1 && g2[r2][c3] === g2[r2][c3 + 1] && g2[r2][c3] === g2[r2 + 1][c3] && g2[r2][c3] === g2[r2 + 1][c3 + 1]) p2 += 3;
+        }
+      }
+      function runs(get) {
+        var s = 0;
+        for (var a2 = 0; a2 < n; a2++) {
+          var run = 1;
+          for (var b3 = 1; b3 < n; b3++) {
+            if (get(a2, b3) === get(a2, b3 - 1)) run++;
+            else {
+              if (run >= 5) s += run - 2;
+              run = 1;
+            }
+          }
+          if (run >= 5) s += run - 2;
+        }
+        return s;
+      }
+      p1 = runs(function(a2, b3) {
+        return g2[a2][b3];
+      }) + runs(function(a2, b3) {
+        return g2[b3][a2];
+      });
+      var pat1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], pat2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+      function look(get) {
+        var s = 0;
+        for (var a2 = 0; a2 < n; a2++) for (var b3 = 0; b3 + 11 <= n; b3++) {
+          var ok1 = true, ok2 = true;
+          for (var d = 0; d < 11; d++) {
+            if (get(a2, b3 + d) !== pat1[d]) ok1 = false;
+            if (get(a2, b3 + d) !== pat2[d]) ok2 = false;
+          }
+          if (ok1) s += 40;
+          if (ok2) s += 40;
+        }
+        return s;
+      }
+      p3 = look(function(a2, b3) {
+        return g2[a2][b3];
+      }) + look(function(a2, b3) {
+        return g2[b3][a2];
+      });
+      var pct = dark * 100 / (n * n);
+      var p4 = Math.floor(Math.abs(pct - 50) / 5) * 10;
+      return p1 + p2 + p3 + p4;
+    }
+    var best = null, bestScore = Infinity;
+    for (var k = 0; k < 8; k++) {
+      var g = [];
+      for (var r = 0; r < n; r++) {
+        g.push(new Int8Array(n));
+        for (var c = 0; c < n; c++)
+          g[r][c] = reserved[r][c] === -1 ? m[r][c] ^ (maskFn(k, r, c) ? 1 : 0) : m[r][c];
+      }
+      var fi = bch15(1 << 3 | k);
+      for (var i2 = 0; i2 < 15; i2++) {
+        var bit = fi >>> i2 & 1;
+        if (i2 < 6) g[i2][8] = bit;
+        else if (i2 < 8) g[i2 + 1][8] = bit;
+        else if (i2 === 8) g[8][7] = bit;
+        else g[8][14 - i2] = bit;
+        if (i2 < 8) g[8][n - 1 - i2] = bit;
+        else g[n - 15 + i2][8] = bit;
+      }
+      g[n - 8][8] = 1;
+      var sc = penalty(g);
+      if (sc < bestScore) {
+        bestScore = sc;
+        best = g;
+      }
+    }
+    return best;
   }
 
-  // ui/pages/dashboard/main.ts
-  var state = { range: "day", metric: "bans", data: null };
-  var RANGE_LABEL = { day: "за сегодня", week: "за 7 дней", month: "за 30 дней" };
-  var METRIC_TITLE = {
-    bans: "Баны GP",
-    gap: "Периодичность банов (интервал между блокировками)",
-    life: "Среднее время жизни ноды"
-  };
-  function fmtDur(sec) {
-    if (sec == null || sec < 0) return "—";
-    if (sec >= 86400) return (sec / 86400).toFixed(1) + " дн";
-    if (sec >= 3600) return (sec / 3600).toFixed(1) + " ч";
-    if (sec >= 60) return Math.round(sec / 60) + " мин";
-    return Math.round(sec) + " с";
+  // ui/pages/links/main.ts
+  function drawQR(canvas, text) {
+    const m = encode(text), n = m.length, q = 4, size = n + q * 2;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < n; r++)
+      for (let c = 0; c < n; c++)
+        if (m[r][c]) ctx.fillRect(c + q, r + q, 1, 1);
   }
-  function fmtDurLong(sec) {
-    if (sec == null || sec < 0) return "—";
-    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
-    if (d > 0) return d + " дн " + h + " ч";
-    if (h > 0) return h + " ч " + m + " мин";
-    if (m > 0) return m + " мин";
-    return Math.round(sec) + " с";
+  function showQR(domain, url) {
+    $("qr-domain").textContent = domain;
+    drawQR($("qr-canvas"), url);
+    $("qr-modal").classList.add("show");
   }
-  function fmtTs(sec, range) {
-    const d = new Date(sec * 1e3);
-    const p = (v) => (v < 10 ? "0" : "") + v;
-    const hm = p(d.getHours()) + ":" + p(d.getMinutes());
-    if (range === "day") return hm;
-    return p(d.getDate()) + "." + p(d.getMonth() + 1) + (range === "month" ? "" : " " + hm);
+  function closeQR() {
+    $("qr-modal").classList.remove("show");
   }
-  function bucketVal(b, m) {
-    if (m === "bans") return b.bans;
-    if (m === "gap") return b.avg_gap_sec != null ? b.avg_gap_sec : null;
-    return b.avg_lifetime_sec != null ? b.avg_lifetime_sec : null;
+  var flashTimer;
+  function flash(btn, text) {
+    const old = btn.dataset.label || btn.textContent || "";
+    btn.dataset.label = old;
+    btn.textContent = text;
+    clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => {
+      btn.textContent = btn.dataset.label;
+    }, 1600);
   }
-  var NS = "http://www.w3.org/2000/svg";
-  function el(name, attrs) {
-    const e = document.createElementNS(NS, name);
-    for (const k in attrs) e.setAttribute(k, String(attrs[k]));
-    return e;
-  }
-  function metricColor(m) {
-    if (m === "bans") return { stroke: token("--bad"), soft: token("--bad-soft") };
-    if (m === "gap") return { stroke: token("--info"), soft: token("--info-soft") };
-    return { stroke: token("--warn"), soft: token("--warn-soft") };
-  }
-  function renderChart() {
-    const svg = $("chart"), tip = $("tip");
-    svg.innerHTML = "";
-    const d = state.data;
-    if (!d) return;
-    const W = 860, H = 280, padL = 46, padR = 12, padT = 14, padB = 30;
-    const cw = W - padL - padR, ch = H - padT - padB;
-    const buckets = d.buckets, m = state.metric;
-    const vals = buckets.map((b) => bucketVal(b, m));
-    let maxV = 0;
-    for (const v of vals) if (v != null && v > maxV) maxV = v;
-    if (m === "bans") maxV = Math.max(maxV, 2);
-    const lineColor = token("--line"), fg3 = token("--fg-3"), surf = token("--surf");
-    if (maxV === 0) {
-      $("chart-note").textContent = d.history_ok ? "За период банов нет." : "История недоступна (БД не открыта).";
-      const em = el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: fg3, "font-size": 13 });
-      em.textContent = d.history_ok ? "нет данных за период" : "история недоступна";
-      svg.appendChild(em);
+  function copy(btn, url) {
+    const done = () => flash(btn, "скопировано");
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(done, () => flash(btn, "не вышло"));
       return;
     }
-    maxV = maxV * 1.15;
-    const n = buckets.length;
-    const stepX = cw / n;
-    const y = (v) => padT + ch - v / maxV * ch;
-    const ticks = 4;
-    let prevLbl = null;
-    for (let i = 0; i <= ticks; i++) {
-      const v = maxV * i / ticks, yy = y(v);
-      svg.appendChild(el("line", { x1: padL, y1: yy, x2: W - padR, y2: yy, stroke: lineColor, "stroke-width": 1 }));
-      const text = m === "bans" ? String(Math.round(v)) : fmtDur(v);
-      if (text !== prevLbl) {
-        const lbl = el("text", { x: padL - 8, y: yy + 4, "text-anchor": "end", fill: fg3, "font-size": 10 });
-        lbl.textContent = text;
-        svg.appendChild(lbl);
-        prevLbl = text;
-      }
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } catch {
+      flash(btn, "не вышло");
     }
-    const labEvery = Math.max(1, Math.ceil(n / 8));
-    for (let i = 0; i < n; i += labEvery) {
-      const lx = padL + i * stepX + stepX / 2;
-      const lt = el("text", { x: lx, y: H - 10, "text-anchor": "middle", fill: fg3, "font-size": 10 });
-      lt.textContent = fmtTs(buckets[i].start_ts, state.range);
-      svg.appendChild(lt);
-    }
-    const { stroke: color, soft: color2 } = metricColor(m);
-    const defs = el("defs", {});
-    const grad = el("linearGradient", { id: "barGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
-    const st1 = el("stop", { offset: "0", "stop-color": color, "stop-opacity": ".95" });
-    const st2 = el("stop", { offset: "1", "stop-color": color, "stop-opacity": ".28" });
-    grad.appendChild(st1);
-    grad.appendChild(st2);
-    defs.appendChild(grad);
-    svg.appendChild(defs);
-    const pts = [];
-    const bars = [];
-    if (m === "bans") {
-      const bw = Math.max(4, Math.min(26, stepX * 0.62));
-      for (let i = 0; i < n; i++) {
-        const v = vals[i];
-        if (v == null || v === 0) {
-          pts.push(null);
-          bars.push(null);
-          continue;
-        }
-        const x = padL + i * stepX + (stepX - bw) / 2;
-        const bar = el("rect", {
-          x,
-          y: y(v),
-          width: bw,
-          height: padT + ch - y(v),
-          rx: Math.min(4, bw / 2),
-          fill: "url(#barGrad)",
-          class: "bar"
-        });
-        svg.appendChild(bar);
-        bars.push(bar);
-        pts.push({ x: x + bw / 2, y: y(v), v, ts: buckets[i].start_ts });
-      }
-    } else {
-      let pathD = "", areaD = "";
-      for (let i = 0; i < n; i++) {
-        const v = vals[i];
-        if (v == null) {
-          pts.push(null);
-          continue;
-        }
-        const px = padL + i * stepX + stepX / 2, py = y(v);
-        pathD += (pathD ? " L" : "M") + px.toFixed(1) + " " + py.toFixed(1);
-        areaD += (areaD ? " L" : "M" + px.toFixed(1) + " " + (padT + ch) + " L") + px.toFixed(1) + " " + py.toFixed(1);
-        pts.push({ x: px, y: py, v, ts: buckets[i].start_ts });
-      }
-      if (pathD) {
-        let lastX = 0;
-        for (let i = n - 1; i >= 0; i--) {
-          const p = pts[i];
-          if (p) {
-            lastX = p.x;
-            break;
-          }
-        }
-        let firstX = 0;
-        for (let i = 0; i < n; i++) {
-          const p = pts[i];
-          if (p) {
-            firstX = p.x;
-            break;
-          }
-        }
-        const area = el("path", { d: areaD + " L" + lastX.toFixed(1) + " " + (padT + ch) + " L" + firstX.toFixed(1) + " " + (padT + ch) + " Z", fill: color2, stroke: "none" });
-        svg.appendChild(area);
-        svg.appendChild(el("path", { d: pathD, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
-        for (let i = 0; i < n; i++) {
-          const p = pts[i];
-          if (p && p.v != null) svg.appendChild(el("circle", { cx: p.x, cy: p.y, r: 3, fill: surf, stroke: color, "stroke-width": 1.6 }));
-        }
-      }
-    }
-    const cur = el("line", { x1: 0, y1: padT, x2: 0, y2: padT + ch, stroke: fg3, "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
-    svg.appendChild(cur);
-    const hov = el("circle", { r: 4.5, fill: color, visibility: "hidden" });
-    svg.appendChild(hov);
-    const hotBar = (i) => {
-      bars.forEach((b, k) => b && b.classList.toggle("hot", k === i));
-    };
-    const showTip = (i, clientX, clientY) => {
-      hotBar(i);
-      const b = buckets[i], v = vals[i];
-      const midX = padL + i * stepX + stepX / 2;
-      cur.setAttribute("x1", String(midX));
-      cur.setAttribute("x2", String(midX));
-      cur.setAttribute("visibility", "visible");
-      const p = pts[i];
-      if (p) {
-        hov.setAttribute("cx", String(p.x));
-        hov.setAttribute("cy", String(p.y));
-        hov.setAttribute("visibility", "visible");
-      } else hov.setAttribute("visibility", "hidden");
-      let t1 = fmtTs(b.start_ts, state.range);
-      if (state.range !== "day") t1 = new Date(b.start_ts * 1e3).toLocaleDateString("ru-RU");
-      tip.querySelector(".t1").textContent = t1;
-      tip.querySelector(".t2").textContent = v == null ? "нет данных" : m === "bans" ? v + " бан" + (v === 1 ? "" : "ов") : fmtDurLong(v);
-      const box = $("chart-box").getBoundingClientRect();
-      let x = clientX - box.left + 14;
-      const yy = clientY - box.top - 10;
-      tip.style.display = "block";
-      if (x + tip.offsetWidth > box.width - 8) x = clientX - box.left - tip.offsetWidth - 14;
-      tip.style.left = x + "px";
-      tip.style.top = Math.max(0, yy) + "px";
-    };
-    for (let i = 0; i < n; i++) {
-      const zone = el("rect", { x: padL + i * stepX, y: padT, width: stepX, height: ch, fill: "transparent" });
-      zone.addEventListener("mousemove", (ev) => showTip(i, ev.clientX, ev.clientY));
-      zone.addEventListener("mouseleave", () => {
-        hotBar(null);
-        cur.setAttribute("visibility", "hidden");
-        hov.setAttribute("visibility", "hidden");
-        tip.style.display = "none";
-      });
-      svg.appendChild(zone);
-    }
-    tip.innerHTML = '<div class="t1"></div><div class="t2"></div>';
+    document.body.removeChild(ta);
   }
-  function renderKPI() {
-    const d = state.data;
-    if (!d) return;
-    $("k1").innerHTML = String(d.kpi.bans) + '<span class="unit">' + RANGE_LABEL[state.range] + "</span>";
-    $("k2").textContent = d.kpi.avg_gap_sec != null ? fmtDur(d.kpi.avg_gap_sec) : "—";
-    $("k3").textContent = d.kpi.avg_lifetime_sec != null ? fmtDur(d.kpi.avg_lifetime_sec) : "—";
-    $("k1-cap").textContent = d.history_ok ? "Баны GP (без восстановления)" : "Баны GP — история недоступна (БД не открыта)";
-    const dead = d.by_reason && d.by_reason.dead ? d.by_reason.dead : 0;
-    $("chart-note").textContent = dead > 0 ? "За период также терминально завершено по dead (порт/метрики не отвечали): " + dead + " — в метриках банов GP не участвуют." : "";
-  }
-  function renderRecent() {
-    const d = state.data;
-    if (!d) return;
-    const tb = $("recent");
-    if (!d.recent || d.recent.length === 0) {
-      tb.innerHTML = '<tr><td colspan="5" class="dim">за период банов нет</td></tr>';
+  function render(links) {
+    const el = $("list");
+    if (!links.length) {
+      el.innerHTML = `<div class="card"><div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <span class="t">Сейчас ни одна ссылка не доступна</span>
+      <span class="s">У доменов нет назначенных мастеров — либо пул пуст, либо все ноды в блокировке.
+        Ссылки появятся, как только регистратор назначит домену живую ноду.</span>
+    </div></div>`;
       return;
     }
-    let html = "";
-    for (const b of d.recent) {
-      html += "<tr><td class='dim' data-label='Время'>" + new Date(b.ts).toLocaleString("ru-RU") + "</td><td class='mono' data-label='Нода'>" + b.node_id + "</td><td class='mono dim' data-label='IP'>" + (b.ip_masked || "—") + "</td><td data-label='Время жизни'>" + (b.lifetime_sec >= 0 ? fmtDurLong(b.lifetime_sec) : "—") + "</td><td data-label='Интервал с прошлого'>" + (b.gap_sec >= 0 ? fmtDurLong(b.gap_sec) : "—") + "</td></tr>";
-    }
-    tb.innerHTML = html;
+    const byUser = {};
+    for (const l of links) (byUser[l.user] = byUser[l.user] || []).push(l);
+    el.innerHTML = Object.keys(byUser).sort().map((user) => {
+      const n = byUser[user].length;
+      return `<section class="card" style="margin-bottom:14px">
+      <div class="user-head">
+        <span class="user-name">${esc(user)}</span>
+        <span class="user-count">${n} ${plural(n, "домен", "домена", "доменов")}</span>
+      </div>
+      ${byUser[user].map((l) => `
+        <div class="link-row">
+          <div class="link-main">
+            <div class="link-domain">${esc(l.domain)}<span class="dim" style="font-weight:400">:${l.port}</span></div>
+            <div class="link-url">${esc(l.url)}</div>
+          </div>
+          <div class="link-acts">
+            <a class="btn primary sm" href="${esc(l.url)}">Открыть</a>
+            <button class="btn sm" data-copy="${esc(l.url)}">копировать</button>
+            <button class="btn sm" data-qr="${esc(l.url)}" data-domain="${esc(l.domain)}">QR</button>
+          </div>
+        </div>`).join("")}
+    </section>`;
+    }).join("");
   }
-  function load() {
-    fetch("/dashboard/api?range=" + state.range, { cache: "no-store" }).then((r) => {
-      if (!r.ok) throw new Error("http " + r.status);
-      return r.json();
-    }).then((d) => {
-      state.data = d;
-      $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
-      renderKPI();
-      renderChart();
-      renderRecent();
-      const now = /* @__PURE__ */ new Date();
-      $("live-text").textContent = "обновлено " + now.toLocaleTimeString("ru-RU");
-      $("live-pill").className = "status-pill live";
-    }).catch(() => {
+  async function refresh() {
+    const pill = $("live-pill");
+    try {
+      const resp = await fetch("/proxylinks", { cache: "no-store" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      render(data.links || []);
+      pill.className = "status-pill live";
+      $("live-text").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
+    } catch {
+      pill.className = "status-pill off";
       $("live-text").textContent = "нет связи";
-      $("live-pill").className = "status-pill off";
-    });
+    }
   }
-  $("range-seg").addEventListener("click", (ev) => {
-    const b = ev.target.closest("button");
-    if (!b) return;
-    state.range = b.dataset.r;
-    $("range-seg").querySelectorAll("button").forEach((x) => {
-      x.className = x === b ? "active" : "";
-    });
-    load();
-  });
-  $("metric-seg").addEventListener("click", (ev) => {
-    const b = ev.target.closest("button");
-    if (!b) return;
-    state.metric = b.dataset.m;
-    $("metric-seg").querySelectorAll("button").forEach((x) => {
-      x.className = x === b ? "active" : "";
-    });
-    if (state.data) {
-      $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
-      renderChart();
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const c = t.closest("button[data-copy]");
+    if (c) {
+      copy(c, c.dataset.copy);
+      return;
+    }
+    const q = t.closest("button[data-qr]");
+    if (q) {
+      showQR(q.dataset.domain, q.dataset.qr);
+      return;
     }
   });
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) load();
+  $("qr-close").onclick = closeQR;
+  $("qr-modal").addEventListener("click", (e) => {
+    if (e.target.id === "qr-modal") closeQR();
   });
-  document.addEventListener("themechange", () => renderChart());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeQR();
+  });
   initTheme();
-  setInterval(load, 6e4);
-  load();
+  refresh();
+  setInterval(refresh, 3e4);
 })();
 </script>
 </body>

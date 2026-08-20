@@ -1,0 +1,43 @@
+/* ═══ Лента событий ═══════════════════════════════════════════════════ */
+.feed { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.feed-item { display: flex; gap: 11px; padding: 11px var(--pad); border-bottom: 1px solid var(--line-2); }
+.feed-item:last-child { border-bottom: 0; }
+.feed-item:hover { background: var(--surf-2); }
+.feed-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--fg-3); }
+.feed-dot.ok { background: var(--ok); }
+.feed-dot.warn { background: var(--warn); }
+.feed-dot.bad { background: var(--bad); }
+.feed-dot.info { background: var(--acc); }
+.feed-body { min-width: 0; flex: 1; }
+.feed-head { display: flex; gap: 8px; align-items: baseline; }
+.feed-kind { font-size: 12.5px; font-weight: 600; }
+.feed-time { margin-left: auto; font-size: 10.5px; color: var(--fg-3); font-family: var(--mono); flex: none; }
+.feed-detail { font-size: 12px; color: var(--fg-2); margin-top: 2px; line-height: 1.4; overflow-wrap: anywhere; }
+.feed-detail code { font-family: var(--mono); font-size: 11.5px; color: var(--fg); }
+
+/* ═══ Лента как ось времени ════════════════════════════════════════════
+   Плоский список читался как простыня. Здесь события собраны по дням под
+   липким разделителем, а слева проходит линия с точками — сразу видно
+   плотность событий и где случился разрыв. */
+.feed { position: relative; }
+.feed-day {
+  position: sticky; top: 0; z-index: 3;
+  padding: 8px var(--pad) 8px 44px;
+  background: linear-gradient(180deg, var(--surf) 62%, transparent);
+  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-3);
+}
+.feed-day span { display: inline-block; padding: 2px 9px; border-radius: var(--r-pill);
+  background: var(--surf-2); border: 1px solid var(--line-2); }
+.feed-item { position: relative; padding-left: 44px; }
+/* сама ось */
+.feed-item::before {
+  content: ""; position: absolute; left: 21px; top: 0; bottom: 0;
+  width: 1px; background: var(--line);
+}
+.feed-item:last-child::before { bottom: 50%; }
+.feed-dot {
+  position: absolute; left: 17px; top: 15px; margin: 0; z-index: 1;
+  box-shadow: 0 0 0 3px var(--surf);
+}
+.feed-item:hover .feed-dot { box-shadow: 0 0 0 3px var(--surf-2); }
