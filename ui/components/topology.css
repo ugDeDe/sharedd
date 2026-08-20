@@ -25,6 +25,12 @@
   border-color: color-mix(in srgb, var(--ok) 45%, transparent);
   background: linear-gradient(180deg, var(--ok-soft), transparent 90%);
 }
+/* мастер есть, но нездоров — жёлтый, а не зелёный: иначе схема говорит
+   «всё хорошо» ровно там, где всё плохо */
+.topo-item.sick {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: linear-gradient(180deg, var(--warn-soft), transparent 90%);
+}
 .topo-item.ghost { border-style: dashed; background: none; height: 52px; }
 .topo-item.queued { height: 44px; }
 .topo-b { min-width: 0; flex: 1; }

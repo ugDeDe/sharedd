@@ -587,9 +587,9 @@
   }
   .metrics {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
   }
   .metric {
     padding: 15px 17px;
@@ -651,11 +651,6 @@
     width: 100%;
     height: 26px;
     margin: 2px 0 6px;
-  }
-  @media (max-width: 1080px) {
-    .metrics {
-      grid-template-columns: repeat(2, 1fr);
-    }
   }
   @media (max-width: 640px) {
     .metrics {
@@ -1223,6 +1218,14 @@
         var(--ok-soft),
         transparent 90%);
   }
+  .topo-item.sick {
+    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        var(--warn-soft),
+        transparent 90%);
+  }
   .topo-item.ghost {
     border-style: dashed;
     background: none;
@@ -1681,6 +1684,178 @@
       padding-right: 12px;
     }
   }
+  #pool-stats {
+    padding: 16px var(--pad) 4px;
+    margin-bottom: 0;
+  }
+  #stats-block .card-head {
+    border-top: 1px solid var(--line-2);
+  }
+  #stats-block .card-head:first-child {
+    border-top: 0;
+  }
+  .nd-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: var(--pad);
+  }
+  .nd-id {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+  }
+  .nd-ip {
+    color: var(--fg-3);
+    font-size: 12.5px;
+    margin-top: 4px;
+  }
+  .nd-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    max-width: 100%;
+  }
+  .nd-reason {
+    flex-basis: 100%;
+    color: var(--bad);
+    font-size: 12.5px;
+  }
+  .gp-grid {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .gp-side {
+    padding: var(--pad);
+    border-right: 1px solid var(--line-2);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .gp-side .table-wrap,
+  .gp-grid > .table-wrap {
+    min-width: 0;
+  }
+  .gp-big {
+    font-size: 34px;
+    font-weight: 680;
+    letter-spacing: -.03em;
+  }
+  .gp-big.ok {
+    color: var(--ok);
+  }
+  .gp-big.bad {
+    color: var(--bad);
+  }
+  @media (max-width: 720px) {
+    .gp-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .gp-side {
+      border-right: 0;
+      border-bottom: 1px solid var(--line-2);
+    }
+  }
+  .chart-cap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 16px 0 7px;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .chart-cap:first-child {
+    margin-top: 0;
+  }
+  .chart-cap .hint {
+    margin-left: auto;
+  }
+  .ticks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .tick {
+    width: 6px;
+    height: 16px;
+    border-radius: 1px;
+    background: var(--ok);
+    opacity: .8;
+  }
+  .tick.fail {
+    background: var(--bad);
+    opacity: 1;
+  }
+  .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 56px;
+  }
+  .gbar {
+    width: 6px;
+    border-radius: 2px 2px 0 0;
+    background: var(--ok);
+  }
+  .gbar.mid {
+    background: var(--warn);
+  }
+  .gbar.fail {
+    background: var(--bad);
+  }
+  .sparkwrap {
+    position: relative;
+  }
+  .spark {
+    display: block;
+    width: 100%;
+    height: 56px;
+  }
+  .spark-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line-2);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-.5px);
+  }
+  .spark-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--acc);
+    border: 2px solid var(--surf);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+  .spark-tip {
+    position: absolute;
+    top: -8px;
+    transform: translate(-50%, -100%);
+    padding: 4px 8px;
+    border-radius: var(--r-xs);
+    border: 1px solid var(--line);
+    background: var(--surf-3);
+    box-shadow: var(--sh-1);
+    color: var(--fg);
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .sparkwrap.hover .spark-guide,
+  .sparkwrap.hover .spark-dot,
+  .sparkwrap.hover .spark-tip {
+    opacity: 1;
+  }
 </style>
 </head>
 <body>
@@ -2001,35 +2176,23 @@
     return data;
   }
 
-  // ui/pages/panel/views/overview.ts
-  function render(_o) {
-  }
-
-  // ui/pages/panel/views/nodes.ts
-  function init() {
-  }
-  function render2(_o) {
-  }
-
-  // ui/pages/panel/views/node.ts
-  async function load(_id) {
-  }
-  function render3(_d) {
-  }
-
-  // ui/pages/panel/views/dns.ts
-  function render4(_o) {
-  }
-
-  // ui/pages/panel/views/srmd.ts
-  function init2() {
-  }
-  async function loadSettings() {
-  }
-  function render5(_o) {
-  }
-
   // ui/lib/format.ts
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    if (d > 0) return `${d}д ${h}ч`;
+    if (h > 0) return `${h}ч ${m}м`;
+    if (m > 0) return `${m}м ${s}с`;
+    return `${s}с`;
+  }
+  function fmtAgo(iso) {
+    if (!iso) return "—";
+    const sec = (Date.now() - new Date(iso).getTime()) / 1e3;
+    if (sec < 10) return "только что";
+    if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
+    return `${Math.floor(sec / 86400)} дн назад`;
+  }
   function fmtClock(iso) {
     const d = new Date(iso);
     return d.toLocaleString("ru-RU", {
@@ -2038,6 +2201,328 @@
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit"
+    });
+  }
+  function fmtInterval(sec) {
+    if (sec === null || sec === void 0) return "—";
+    return fmtDur(Math.round(sec));
+  }
+  function fmtTtlMin(m) {
+    m = Math.round(m);
+    if (m < 120) return m + " мин";
+    if (m < 4320) return (Math.round(m / 6) / 10 + " ч").replace(/\.0 ч$/, " ч");
+    return (Math.round(m / 144) / 10 + " д").replace(/\.0 д$/, " д");
+  }
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  // ui/pages/panel/views/overview.ts
+  function renderKpis(o) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const c = o.counters || {};
+    const masters = o.masters || [];
+    const active = masters.filter((m) => !m.cname_target);
+    const folded = masters.length - active.length;
+    const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
+    const dnsErr = (_a = c.dns_errors_total) != null ? _a : 0;
+    const card = (label, iconPath, valueHtml, valueCls, foot) => `
+    <div class="card metric">
+      <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
+      <div class="metric-value ${valueCls}">${valueHtml}</div>
+      <div class="metric-foot">${foot}</div>
+    </div>`;
+    $("cards").innerHTML = card(
+      "Мастера",
+      ICONS.masters,
+      `${aliveMs}<span class="sep">/</span>${active.length}`,
+      active.length > 0 && aliveMs === active.length ? "ok" : "bad",
+      `живых назначений${folded ? " · свёрнуто СРМД: " + folded : ""}`
+    ) + card(
+      "Нод в пуле",
+      ICONS.nodes,
+      `${o.nodes_total}`,
+      "",
+      `fully healthy: ${o.nodes_fully_healthy} · очередь: ${o.queue_size}`
+    ) + card(
+      "TCP / GP / Metrics OK",
+      ICONS.health,
+      `${o.nodes_tcp_ok}<span class="sep">/</span>${o.nodes_gp_verified}<span class="sep">/</span>${o.nodes_metrics_ok}`,
+      "",
+      `из ${o.nodes_total} нод`
+    ) + card(
+      "Активные клиенты",
+      ICONS.users,
+      `${(_b = o.clients_unique_ips_total) != null ? _b : "—"}`,
+      "",
+      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${(_c = o.writers_active_total) != null ? _c : 0}`
+    ) + card(
+      "Смен мастера",
+      ICONS.swap,
+      `${(_d = c.master_switches_total) != null ? _d : 0}`,
+      "",
+      `блокировок GP: ${(_e = c.gp_blocked_total) != null ? _e : 0}`
+    ) + card(
+      "DNS-обновления",
+      ICONS.dns,
+      `${(_f = c.dns_updates_total) != null ? _f : 0}<span class="unit">ok</span><span class="sep">/</span><span style="color:${dnsErr > 0 ? "var(--bad)" : "inherit"}">${dnsErr}</span><span class="unit">err</span>`,
+      "",
+      `heartbeats: ${(_g = c.heartbeats_total) != null ? _g : 0} · отчёты: ${(_h = c.health_reports_total) != null ? _h : 0}`
+    );
+  }
+  function banStatusBadge(b) {
+    if (b.active) return `<span class="badge bad">активен</span>`;
+    const by = b.closed_by === "node_expired" ? "нода отвалилась" : b.closed_by === "node_replaced" ? "вытеснена новым ID" : b.closed_by === "node_pruned" ? "удалена (неактивна)" : b.closed_by === "node_terminated" ? "завершена навсегда" : b.closed_by || "закрыт";
+    return `<span class="badge">${esc(by)}</span>`;
+  }
+  function renderGPStats(o) {
+    var _a, _b, _c, _d;
+    const st = o.stats || {};
+    $("stats-hint").textContent = `окно анализа: ${(_a = st.events_window) != null ? _a : 0} событий журнала`;
+    const card = (label, iconPath, value, foot) => `
+    <div class="card metric">
+      <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
+      <div class="metric-value">${value}</div>
+      <div class="metric-foot">${foot}</div>
+    </div>`;
+    $("pool-stats").innerHTML = card(
+      "Баны GP",
+      ICONS.ban,
+      `${(_b = st.gp_bans_total) != null ? _b : 0}`,
+      `активных: ${(_c = st.gp_bans_active) != null ? _c : 0} · уникальных нод: ${(_d = st.gp_bans_nodes) != null ? _d : 0}`
+    ) + card(
+      "Периодичность банов GP",
+      ICONS.clock,
+      fmtInterval(st.gp_ban_interval_sec),
+      "средний промежуток между банами"
+    ) + card(
+      "Периодичность смен DNS",
+      ICONS.dns,
+      fmtInterval(st.dns_switch_interval_sec),
+      "средний промежуток между переключениями"
+    ) + card(
+      "Среднее время мастерства",
+      ICONS.masters,
+      fmtInterval(st.master_avg_sec),
+      "от избрания до потери домена"
+    );
+    const bans = st.gp_ban_history || [];
+    const body = $("bans-body");
+    if (bans.length === 0) {
+      body.innerHTML = `<tr><td colspan="6" class="table-empty">банов за окно журнала не было 🎉</td></tr>`;
+      return;
+    }
+    body.innerHTML = bans.map((b) => `<tr>
+    <td class="mono" data-label="Начало" title="${esc(b.started_at)}">${fmtClock(b.started_at)}</td>
+    <td class="mono" data-label="Нода" title="${esc(b.node_id)}">${esc(b.node_id)}</td>
+    <td class="mono" data-label="IP">${esc(b.ip || "—")}</td>
+    <td class="mono" data-label="Длительность">${fmtDur(b.duration_sec || 0)}${b.active ? " · идёт" : ""}</td>
+    <td data-label="Статус">${banStatusBadge(b)}</td>
+    <td class="dim wrap" data-label="Причина">${esc(b.cause || "—")}</td>
+  </tr>`).join("");
+  }
+  var NODE_TYPE_LABEL = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO" };
+  function domainSubtitle(m) {
+    if (m.node_id) {
+      let ttl = "";
+      if (m.ttl_sec > 0) {
+        ttl = m.ttl_remaining_sec < 0 ? " · TTL истёк" : ` · TTL ${fmtTtlMin(Math.max(0, Math.round(m.ttl_remaining_sec / 60)))}`;
+      }
+      return `A → ${esc(m.ip || "?")}${ttl}${m.dead ? " · нода нездорова" : ""}`;
+    }
+    return `<span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span>`;
+  }
+  function domainItemHTML(m, id) {
+    const cls = m.node_id ? m.dead ? "sick" : "live" : "sick";
+    return `<div class="topo-item ${cls}" id="${id}">
+    <div class="topo-b"><div class="topo-t">${esc(m.domain)}</div><div class="topo-s">${domainSubtitle(m)}</div></div>
+    <div class="topo-r"><div class="topo-n">${m.clients != null ? m.clients : "—"}</div><div class="topo-u">клиентов</div></div>
+  </div>`;
+  }
+  function ghostItemHTML(m, id) {
+    return `<div class="topo-item ghost" id="${id}">
+    <div class="topo-b"><div class="topo-t dim">${esc(m.domain)}</div>
+      <div class="topo-s">CNAME → ${esc(m.cname_target)} · свёрнут СРМД${m.clients != null ? " · клиентов: " + m.clients : ""}</div></div>
+    <span class="badge">CNAME</span>
+  </div>`;
+  }
+  function masterNodeItemHTML(n, id, dead) {
+    var _a;
+    const type = NODE_TYPE_LABEL[n.node_type] || "";
+    const avail = ((_a = n.availability_pct) != null ? _a : 0).toFixed(1);
+    return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}">
+    <span class="topo-star">${icon(ICONS.masters, 14)}</span>
+    <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div>
+      <div class="topo-s">${esc(n.ip)}${type ? " · " + type : ""} · ${avail}%</div></div>
+    <span class="badge ${dead ? "warn" : "ok"}">мастер</span>
+  </div>`;
+  }
+  function queuedItemHTML(n, first) {
+    var _a;
+    const avail = ((_a = n.availability_pct) != null ? _a : 0).toFixed(1);
+    return `<div class="topo-item queued">
+    <span class="qnum${first ? " first" : ""}">${n.queue_position}</span>
+    <div class="topo-b"><div class="topo-t">${esc(n.node_id)}</div></div>
+    <span class="dim">${avail}%</span>
+  </div>`;
+  }
+  function renderTopology(o) {
+    const el = $("topology");
+    const masters = o.masters || [];
+    const nodes = o.nodes || [];
+    if (masters.length === 0 && nodes.length === 0) {
+      el.innerHTML = `<div class="card">
+      <div class="empty-state">
+        <div class="t">Пул пуст</div>
+        <div class="s">Ноды регистрируются через POST /register, домены — в «Настройки → Cloudflare DNS».</div>
+      </div>
+    </div>`;
+      return;
+    }
+    const active = masters.filter((m) => !m.cname_target);
+    const folded = masters.filter((m) => m.cname_target);
+    const shownActive = active.slice(0, 2);
+    const shownGhost = folded.slice(0, 1);
+    const moreDomains = active.length - shownActive.length + (folded.length - shownGhost.length);
+    const wired = shownActive.map((m, i) => ({ m, i, node: m.node_id ? nodes.find((n) => n.node_id === m.node_id) : void 0 })).filter((x) => x.node);
+    const ghostTargetIdx = shownGhost.length ? shownActive.findIndex((m) => m.domain === shownGhost[0].cname_target) : -1;
+    const nonMaster = nodes.filter((n) => !n.is_master);
+    const queued = nonMaster.filter((n) => n.queue_position > 0).sort((a, b) => a.queue_position - b.queue_position);
+    const outOfQueue = nonMaster.filter((n) => !(n.queue_position > 0));
+    const shownQueued = queued.slice(0, 3);
+    const moreNodes = queued.length - shownQueued.length + outOfQueue.length;
+    const domainsHTML = shownActive.map((m, i) => domainItemHTML(m, `topo-d${i}`)).join("") + shownGhost.map((m) => ghostItemHTML(m, "topo-ghost")).join("") + (moreDomains > 0 ? `<div class="topo-more">ещё ${moreDomains} ${plural(moreDomains, "домен", "домена", "доменов")}</div>` : "");
+    const nodesHTML = wired.map(({ node, i, m }) => masterNodeItemHTML(node, `topo-n${i}`, !!m.dead)).join("") + shownQueued.map((n, i) => queuedItemHTML(n, i === 0)).join("") + (moreNodes > 0 ? `<div class="topo-more">ещё ${moreNodes} ${plural(moreNodes, "нода", "ноды", "нод")}${outOfQueue.length ? " · вне очереди: " + outOfQueue.length : ""}</div>` : "");
+    el.innerHTML = `<div class="card glass">
+    <div class="card-head"><h2>Топология пула</h2><span class="hint">домен → мастер → очередь здоровья</span></div>
+    <div class="topo">
+      <div class="topo-gutter" id="topo-gutter"><svg viewBox="0 0 34 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+      <div class="topo-col"><div class="topo-cap">Домены</div>${domainsHTML}</div>
+      <div class="topo-wires" id="topo-wires"><svg viewBox="0 0 92 236" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+      <div class="topo-col"><div class="topo-cap">Ноды пула</div>${nodesHTML}</div>
+    </div>
+  </div>`;
+    drawTopologyLinks(
+      wired.map((w) => w.i),
+      ghostTargetIdx >= 0 ? ghostTargetIdx : null,
+      new Set(wired.filter((w) => w.m.dead).map((w) => w.i))
+    );
+  }
+  function drawTopologyLinks(wiredIdx, ghostTargetIdx, sick = /* @__PURE__ */ new Set()) {
+    const wiresDiv = document.getElementById("topo-wires");
+    const gutterDiv = document.getElementById("topo-gutter");
+    if (!wiresDiv || !gutterDiv) return;
+    const originTop = wiresDiv.getBoundingClientRect().top;
+    const centerY = (elId) => {
+      const e = document.getElementById(elId);
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return r.top - originTop + r.height / 2;
+    };
+    let wiresSvg = "";
+    for (const i of wiredIdx) {
+      const yD = centerY(`topo-d${i}`), yN = centerY(`topo-n${i}`);
+      if (yD == null || yN == null) continue;
+      const col = sick.has(i) ? "var(--warn)" : "var(--ok)";
+      wiresSvg += `<path d="M0,${yD.toFixed(1)} C40,${yD.toFixed(1)} 52,${yN.toFixed(1)} 88,${yN.toFixed(1)}" fill="none" stroke="${col}" stroke-width="1.6" opacity=".85"/><circle cx="3" cy="${yD.toFixed(1)}" r="2.8" fill="${col}"/><circle cx="89" cy="${yN.toFixed(1)}" r="2.8" fill="${col}"/>`;
+    }
+    wiresDiv.querySelector("svg").innerHTML = wiresSvg;
+    let gutterSvg = "";
+    if (ghostTargetIdx != null) {
+      const yG = centerY("topo-ghost"), yT = centerY(`topo-d${ghostTargetIdx}`);
+      if (yG != null && yT != null) {
+        const sign = yT < yG ? -1 : 1;
+        const b1 = (yG + sign * 6).toFixed(1), b2 = (yT - sign * 6).toFixed(1);
+        gutterSvg = `<path d="M34,${yG.toFixed(1)} H14 Q8,${yG.toFixed(1)} 8,${b1} V${b2} Q8,${yT.toFixed(1)} 14,${yT.toFixed(1)} H27" fill="none" stroke="var(--link)" stroke-width="1.3" stroke-dasharray="3.5 4" opacity=".85"/><path d="M23,${(yT - 3.6).toFixed(1)} L29.4,${yT.toFixed(1)} L23,${(yT + 3.6).toFixed(1)} Z" fill="var(--link)" opacity=".85"/><circle cx="34" cy="${yG.toFixed(1)}" r="2.2" fill="var(--link)" opacity=".85"/><text class="cname-label" transform="translate(6,${((yG + yT) / 2).toFixed(1)}) rotate(-90)">CNAME</text>`;
+      }
+    }
+    gutterDiv.querySelector("svg").innerHTML = gutterSvg;
+  }
+  function render(o) {
+    renderKpis(o);
+    renderTopology(o);
+    renderGPStats(o);
+  }
+
+  // ui/pages/panel/views/nodes.ts
+  function chip(flag, okText, noText) {
+    if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
+    return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
+  }
+  function availColor(p) {
+    return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
+  }
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+  };
+  function nodeTypeBadge(t) {
+    const m = NODE_TYPE_META[t];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
+  function quarRowHTML(n) {
+    const age = Math.max(0, Math.round((Date.now() - new Date(n.quarantine.entered_at).getTime()) / 1e3));
+    return `<tr class="clickable" data-id="${esc(n.node_id)}">
+    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+    <td class="mono" data-label="Адрес">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
+    <td class="mono" data-label="В карантине с">${fmtDur(age)} назад</td>
+    <td data-label="Попытка"><span class="badge bad">${n.quarantine.attempt}/${n.quarantine.max}</span></td>
+    <td class="dim wrap" data-label="Решение">${n.quarantine.reverify ? "перепроверка старого ip — ok вернёт в пул, fail — повторный бан" : "ждём вердикт GP — восстановление или бан по IP"}</td>
+  </tr>`;
+  }
+  function nodeRowHTML(n) {
+    var _a, _b, _c;
+    const avail = (_a = n.availability_pct) != null ? _a : 0;
+    const gpTxt = n.gp_checks_total > 0 ? `${chip(n.globalping_ok)} <span class="dim mono" title="последняя верификация · % успешных за всё время">${(n.globalping_ratio * 100).toFixed(0)}% · вериф. ${n.gp_verified_pct.toFixed(0)}%</span>` : chip(n.globalping_ok);
+    const clients = (_b = n.clients_unique_ips) != null ? _b : null;
+    const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${clients}</span>`;
+    const status = n.is_master && n.queue_position === 0 ? `<span style="color:var(--bad)">мастер, но вне очереди!</span>` : n.unhealthy_reason ? `<span style="color:var(--bad)">${esc(n.unhealthy_reason)}</span>` : n.report_error ? `<span style="color:var(--bad)">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`;
+    const mdoms = n.master_domains || [];
+    const role = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info">#${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
+    const typeBadge = nodeTypeBadge(n.node_type);
+    return `<tr class="clickable${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}">
+    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+    <td class="mono" data-label="Адрес">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
+    <td data-label="Роль">${role}</td>
+    <td data-label="TCP">${chip(n.healthy)}</td>
+    <td class="nowrap" data-label="Globalping">${gpTxt}</td>
+    <td data-label="Metrics"><span title="серия падений ${n.metrics_fail_streak || 0} · последний отчёт: ${n.metrics_ok ? "ok" : "FAIL"}">${chip((_c = n.metrics_healthy) != null ? _c : n.metrics_ok, "metrics ok", "metrics fail")}</span></td>
+    <td data-label="Доступность"><div class="meter"><div class="meter-track"><div class="meter-fill ${availColor(avail)}" style="width:${avail}%"></div></div><span class="meter-value">${avail.toFixed(1)}%</span></div></td>
+    <td class="num" data-label="Клиенты">${clientsCell}</td>
+    <td class="mono" data-label="Heartbeat" style="${n.heartbeat_age_sec > 45 ? "color:var(--bad)" : ""}">${fmtDur(n.heartbeat_age_sec)} назад</td>
+    <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
+    <td class="mono" data-label="Мастерство">${n.master_stints > 0 ? fmtDur(n.master_time_sec) + " · ×" + n.master_stints : "—"}</td>
+    <td data-label="Статус / ошибка">${status}${typeBadge ? " " + typeBadge : ""}</td>
+  </tr>`;
+  }
+  function render2(o) {
+    const domMap = (o.masters || []).map((m) => `${m.domain}→${m.ip || "—"}`).join(", ");
+    const all = o.nodes || [];
+    const quar = all.filter((n) => n.quarantine);
+    const main = all.filter((n) => !n.quarantine);
+    $("nodes-hint").textContent = `${o.nodes_total} нод${quar.length ? " · карантин: " + quar.length : ""} · DNS: ${domMap || o.domains.join(", ")}`;
+    $("quar-block").hidden = quar.length === 0;
+    if (quar.length) $("quar-body").innerHTML = quar.map(quarRowHTML).join("");
+    const body = $("nodes-body");
+    if (main.length === 0) {
+      body.innerHTML = `<tr><td colspan="12" class="table-empty">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст — ноды регистрируются через POST /register"}</td></tr>`;
+      return;
+    }
+    body.innerHTML = main.map(nodeRowHTML).join("");
+  }
+  function init() {
+    $("nodes-body").addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
+    });
+    $("quar-body").addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
     });
   }
 
@@ -2139,7 +2624,7 @@
     const opts = Object.entries(EV_META).sort((a, b) => a[1].label.localeCompare(b[1].label, "ru"));
     $("ev-type-filter").innerHTML = `<option value="">Все события (тег)</option>` + opts.map(([code, m]) => `<option value="${esc(code)}" title="${esc(code)}">${esc(m.label)}</option>`).join("");
   }
-  function init3() {
+  function init2() {
     initEvTypeFilter();
     $("ev-filters").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-f]");
@@ -2156,6 +2641,326 @@
       evSearch = e.target.value.trim().toLowerCase();
       renderView();
     });
+  }
+
+  // ui/pages/panel/views/node.ts
+  function chip2(flag, okText, noText) {
+    if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
+    return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
+  }
+  var NODE_TYPE_META2 = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+  };
+  function nodeTypeBadge2(t) {
+    const m = NODE_TYPE_META2[t];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
+  function clientsSparkInteractive(pts) {
+    if (pts.length < 2) {
+      return `<div class="dim" style="padding:6px 0">пока мало данных — накапливается раз в metrics_ms</div>`;
+    }
+    const w = 600, hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+    const step = w / (pts.length - 1);
+    const xy = pts.map((p, i) => [i * step, hgt - 5 - p.v / max * (hgt - 12)]);
+    const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+    return `<div class="sparkwrap" id="clients-sparkwrap">
+    <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
+      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="var(--acc)" opacity=".13"/>
+      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="spark-guide" id="clients-guide"></div>
+    <div class="spark-dot" id="clients-dot"></div>
+    <div class="spark-tip" id="clients-tip"></div>
+  </div>`;
+  }
+  function attachSparkHover(pts) {
+    const wrap = $("clients-sparkwrap"), svg = $("clients-spark");
+    if (!wrap || !svg || pts.length < 2 || !svg.getBoundingClientRect) return;
+    const guide = $("clients-guide"), dot = $("clients-dot"), tip = $("clients-tip");
+    const hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+    wrap.addEventListener("mousemove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      let frac = (e.clientX - rect.left) / rect.width;
+      frac = Math.min(1, Math.max(0, frac));
+      const i = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
+      const xFrac = i / (pts.length - 1);
+      const xPx = xFrac * rect.width;
+      const yUnit = hgt - 5 - pts[i].v / max * (hgt - 12);
+      const yPx = yUnit / hgt * rect.height;
+      guide.style.left = xPx.toFixed(1) + "px";
+      dot.style.left = xPx.toFixed(1) + "px";
+      dot.style.top = yPx.toFixed(1) + "px";
+      tip.textContent = `${fmtClock(pts[i].at)} · ${pts[i].v} подкл.`;
+      tip.style.left = Math.min(Math.max(xPx, 62), rect.width - 62).toFixed(1) + "px";
+      wrap.classList.add("hover");
+    });
+    wrap.addEventListener("mouseleave", () => wrap.classList.remove("hover"));
+  }
+  function renderNodeDetail(d) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+    const n = d.node || {};
+    const mdoms = n.master_domains || [];
+    const clients = (_a = n.clients_unique_ips) != null ? _a : null;
+    const roleChip = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info">очередь #${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
+    const hcFail = d.hc && d.hc.fail_threshold || "?";
+    const mStreak = n.metrics_fail_streak || 0;
+    const mChip = chip2((_b = n.metrics_healthy) != null ? _b : n.metrics_ok, "metrics ok", "metrics fail") + (mStreak > 0 ? ` <span class="dim" style="font-size:11px">серия ${mStreak}/${hcFail}</span>` : "");
+    const chips = [chip2(n.healthy, "TCP ok", "TCP fail"), chip2(n.globalping_ok, "GP ok", "GP fail"), mChip, roleChip, nodeTypeBadge2(n.node_type)].join(" ");
+    const reason = n.unhealthy_reason ? `<div class="nd-reason">${esc(n.unhealthy_reason)}</div>` : "";
+    const statDefs = [
+      {
+        l: "Доступность",
+        v: `${((_c = n.availability_pct) != null ? _c : 0).toFixed(1)}%`,
+        e: `отчётов ok: ${(_d = n.reports_ok) != null ? _d : 0}/${(_e = n.reports_total) != null ? _e : 0}`,
+        cls: ((_f = n.availability_pct) != null ? _f : 0) >= 99 ? "ok" : ((_g = n.availability_pct) != null ? _g : 0) >= 95 ? "warn" : "bad"
+      },
+      {
+        l: "GP верификации",
+        v: `${((_h = n.gp_verified_pct) != null ? _h : 0).toFixed(1)}%`,
+        e: `верификаций всего: ${(_i = n.gp_checks_total) != null ? _i : 0}`,
+        cls: ((_j = n.gp_verified_pct) != null ? _j : 0) >= 99 ? "ok" : ((_k = n.gp_verified_pct) != null ? _k : 0) >= 90 ? "warn" : "bad"
+      },
+      { l: "Клиенты", v: clients === null ? "—" : String(clients), e: clients === null ? "нет данных" : "уникальные активные IP", cls: "" },
+      { l: "Мастерство", v: ((_l = n.master_stints) != null ? _l : 0) > 0 ? fmtDur(n.master_time_sec) : "—", e: `stint'ов: ${(_m = n.master_stints) != null ? _m : 0}`, cls: "" },
+      { l: "Heartbeat", v: `${fmtDur(n.heartbeat_age_sec)} назад`, e: `всего: ${(_n = n.heartbeats_total) != null ? _n : 0}`, cls: n.heartbeat_age_sec > 45 ? "bad" : "" },
+      { l: "Отчёт", v: n.report_age_sec < 0 ? "—" : `${fmtDur(n.report_age_sec)} назад`, e: n.report_error ? `ошибка: ${n.report_error}` : "metrics / globalping", cls: "" }
+    ];
+    const stats = statDefs.map((s) => `<div class="card metric">
+      <div class="metric-label">${esc(s.l)}</div>
+      <div class="metric-value ${s.cls}" style="font-size:20px">${s.v}</div>
+      <div class="metric-foot">${esc(s.e)}</div></div>`).join("");
+    const gp = d.gp_last || null;
+    const gpHist = d.gp_hist || [];
+    let gpSide;
+    if (gp) {
+      gpSide = `<div class="gp-side">
+      <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
+      <div>${chip2(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+      <div class="metric-foot">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
+      <div class="metric-foot">проверено: ${esc(fmtAgo(gp.at))}</div>
+      <div class="dim mono" style="margin-top:9px;font-size:11px;word-break:break-all">measurement ${esc(gp.measurement_id)}</div>
+    </div>`;
+    } else {
+      gpSide = `<div class="gp-side">
+      <div class="table-empty" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
+      <div class="metric-foot">текущий статус: ${chip2(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
+    </div>`;
+    }
+    const probesTbl = gp && (gp.probes || []).length ? `<div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Площадка</th><th>Сеть</th><th>Статус пробы</th><th>HTTP</th><th>Итог</th></tr></thead>
+        <tbody>${gp.probes.map((p) => `<tr>
+          <td class="mono" data-label="Площадка">${esc(p.country || "?")}${p.city ? " · " + esc(p.city) : ""}</td>
+          <td class="mono dim" data-label="Сеть">${esc(p.network || "—")}${p.asn ? " (AS" + p.asn + ")" : ""}</td>
+          <td class="mono" data-label="Статус пробы">${esc(p.status || "—")}</td>
+          <td class="mono" data-label="HTTP">${p.http_code || "—"}</td>
+          <td data-label="Итог">${chip2(p.ok)}</td>
+        </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">строк проб нет${gp ? " (measurement ещё выполнялся, когда его скачали)" : ""}</div>`;
+    const tcpHist = d.tcp_hist || [];
+    const tcpTicks = tcpHist.slice(-96).map((p) => `<div class="tick ${p.ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — ${p.ok ? "ok" : "FAIL"}"></div>`).join("");
+    const gpBars = gpHist.map((p) => {
+      const h = 6 + Math.round((p.ratio || 0) * 50);
+      const cls = p.ok ? "" : p.ratio >= 0.35 ? "mid" : "fail";
+      return `<div class="gbar ${cls}" style="height:${h}px" title="${esc(fmtClock(p.at))} — ratio ${(p.ratio * 100).toFixed(0)}% (${p.probes_ok}/${p.probes_total})"></div>`;
+    }).join("");
+    const repHist = d.report_hist || [];
+    const repTicks = repHist.slice(-96).map((p) => `<div class="tick ${p.metrics_ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — metrics ${p.metrics_ok ? "ok" : "FAIL"}"></div>`).join("");
+    const clientPts = repHist.filter((p) => p.clients >= 0).map((p) => ({ at: p.at, v: p.clients }));
+    const spark = clientsSparkInteractive(clientPts);
+    $("node-detail").innerHTML = `
+    <div class="card nd-head">
+      <div>
+        <div class="nd-id">${esc(n.node_id)}</div>
+        <div class="nd-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        <a class="back-link" style="margin:6px 0 0" href="/statistics/${encodeURIComponent(n.node_id)}" target="_blank" rel="noopener">публичная страница ↗</a>
+      </div>
+      <div class="nd-chips">${chips}</div>
+      ${reason}
+    </div>
+    <div class="metrics">${stats}</div>
+    <section class="card">
+      <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
+      <div class="gp-grid">${gpSide}${probesTbl}</div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>История проверок</h2></div>
+      <div class="card-body">
+        <div class="chart-cap">Globalping — ratio по верификациям <span class="hint">всего ${gpHist.length}</span></div>
+        <div class="bars">${gpBars || '<span class="dim">пока нет верификаций</span>'}</div>
+        <div class="chart-cap">TCP-probe регистратора <span class="hint">последние ${Math.min(tcpHist.length, 96)}</span></div>
+        <div class="ticks">${tcpTicks || '<span class="dim">пока нет данных</span>'}</div>
+        <div class="chart-cap">Отчёты metrics <span class="hint">последние ${Math.min(repHist.length, 96)}</span></div>
+        <div class="ticks">${repTicks || '<span class="dim">пока нет данных</span>'}</div>
+        <div class="chart-cap">Активные клиенты (unique IP)</div>
+        ${spark}
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>События ноды</h2><span class="hint">последние 100</span></div>
+      <ul class="feed" id="nd-events" style="max-height:none"></ul>
+    </section>`;
+    renderInto($("nd-events"), d.events || []);
+    attachSparkHover(clientPts);
+  }
+  async function load(id) {
+    const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
+    if (state.nodeId === id) {
+      state.node = d;
+      renderNodeDetail(d);
+    }
+  }
+  function render3(d) {
+    renderNodeDetail(d);
+  }
+
+  // ui/pages/panel/views/dns.ts
+  var NODE_TYPE_META3 = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+  };
+  function nodeTypeBadge3(t) {
+    const m = NODE_TYPE_META3[t];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
+  function masterRowHTML(m) {
+    if (m.cname_target) {
+      return `<tr>
+      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
+      <td class="mono" data-label="Назначение">CNAME → ${esc(m.cname_target)}${m.clients != null ? " · клиентов: " + m.clients : ""}</td>
+      <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
+      <td data-label="TTL"><span class="dim">—</span></td>
+      <td data-label="Статус"><span class="badge">свёрнут СРМД</span></td>
+    </tr>`;
+    }
+    if (!m.node_id) {
+      return `<tr>
+      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
+      <td data-label="Назначение"><span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span></td>
+      <td class="num" data-label="Клиенты"><span class="dim">—</span></td>
+      <td data-label="TTL"><span class="dim">—</span></td>
+      <td data-label="Статус"><span class="badge bad">нет DNS</span></td>
+    </tr>`;
+    }
+    const dead = !!m.dead;
+    let ttlChip = `<span class="dim">—</span>`;
+    if (m.ttl_sec > 0) {
+      if (m.ttl_remaining_sec < 0) {
+        ttlChip = `<span class="badge bad">TTL истёк</span>`;
+      } else {
+        const usedMin = Math.max(0, Math.round((m.ttl_sec - m.ttl_remaining_sec) / 60));
+        ttlChip = `<span class="badge">${fmtTtlMin(usedMin)} / ${fmtTtlMin(m.ttl_sec / 60)}</span>`;
+      }
+    }
+    return `<tr>
+    <td class="mono" data-label="Домен">${esc(m.domain)}</td>
+    <td class="mono" data-label="Назначение">A → ${esc(m.ip || "?")} · ${esc(m.node_id)} ${nodeTypeBadge3(m.node_type)}</td>
+    <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
+    <td data-label="TTL">${ttlChip}</td>
+    <td data-label="Статус"><span class="badge ${dead ? "bad" : "ok"}">${dead ? "нода нездорова" : "live"}</span></td>
+  </tr>`;
+  }
+  async function dnsPush() {
+    try {
+      const resp = await fetch("/panel/api/dns-push", { method: "POST", headers: { "Authorization": "Bearer " + getToken() } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      showToast(
+        `DNS-push: ${(data.updated || []).join(", ") || "—"}${(data.errors || []).length ? " · ошибки: " + data.errors.join("; ") : ""}`,
+        (data.errors || []).length > 0 && (data.updated || []).length === 0
+      );
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+  function render4(o) {
+    const masters = o.masters || [];
+    const active = masters.filter((m) => !m.cname_target);
+    const folded = masters.length - active.length;
+    const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
+    const ttlNote = (o.master_ttl_sec || 0) > 0 ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60) : " · лимит мастера: выкл";
+    $("dns-hint").textContent = masters.length ? `${aliveMs}/${active.length} живых${folded ? " · свёрнуто СРМД: " + folded : ""}${ttlNote}` : "cloudflare.domains пуст";
+    $("masters-full").innerHTML = masters.length === 0 ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>` : `<div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Домен</th><th>Назначение</th><th class="num">Клиенты</th><th>TTL</th><th>Статус</th></tr></thead>
+        <tbody>${masters.map(masterRowHTML).join("")}</tbody>
+      </table></div>`;
+    $("s-dns-push2").onclick = dnsPush;
+  }
+
+  // ui/pages/panel/views/srmd.ts
+  function renderSRMD(o) {
+    const s = o.srmd;
+    if (!s) return;
+    $("srmd-hint").textContent = `очередь: ${s.queue_size} нод · нужно доменов: ${s.required_domains} · лимит: ${s.max_nodes_per_domain} нод/домен · доменов: ${s.total_domains}${s.folded_domains ? " (свёрнуто: " + s.folded_domains + ")" : ""} · ` + (s.enabled ? "создание доменов разрешено" : "создание доменов выключено");
+    const created = (s.domains || []).filter((d) => d.created).map((d) => d.domain);
+    $("srmd-created-list").textContent = created.length ? created.join(", ") : "нет";
+    const body = $("srmd-body");
+    if (!s.domains || s.domains.length === 0) {
+      body.innerHTML = `<tr><td colspan="5" class="table-empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
+      return;
+    }
+    body.innerHTML = s.domains.map((d) => {
+      const origin = d.base ? `<span class="badge gold" title="основной домен СРМД">основной</span>` : d.created ? `<span class="badge info" title="создан СРМД с инкрементом">СРМД</span>` : `<span class="badge" title="добавлен оператором вручную">ручной</span>`;
+      const rec = d.cname ? `<span class="badge" title="домен свёрнут СРМД">CNAME → ${esc(d.cname)}</span>` : d.ip ? `<span class="mono">A → ${esc(d.ip)}</span>` : `<span class="badge bad">нет записи</span>`;
+      const master = d.cname ? `<span class="dim">— свёрнут</span>` : d.node_id ? `<span class="mono" title="${esc(d.node_id)}">${esc(d.node_id)}</span>` : `<span class="dim">нет мастера</span>`;
+      const clients = d.clients == null ? `<span class="dim">—</span>` : `${d.clients}${d.fresh ? "" : ` <span class="dim" title="последнее известное значение — живой мастер сейчас не присылает метрику">*</span>`}`;
+      const control = d.created ? `<button class="btn sm danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>` : `<button class="btn sm" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
+      return `<tr>
+      <td class="mono" data-label="Домен">${esc(d.domain)} ${origin}</td>
+      <td class="mono num" data-label="Активные клиенты">${clients}</td>
+      <td data-label="DNS-запись">${rec}</td>
+      <td data-label="Мастер">${master}</td>
+      <td data-label="Управление">${control}</td>
+    </tr>`;
+    }).join("");
+  }
+  async function srmdDomainAction(domain, action) {
+    const resp = await fetch("/panel/api/srmd-domain", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + getToken(), "Content-Type": "application/json" },
+      body: JSON.stringify({ domain, action })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 401) throw new Error("unauthorized");
+    if (!resp.ok) throw new Error(data.error || "HTTP " + resp.status);
+    return data;
+  }
+  async function loadSettings() {
+    var _a;
+    const data = await api("/panel/api/config");
+    const s = data.config && data.config.srmd || {};
+    $("s-srmd-base").value = s.base_domain || "";
+    $("s-srmd-base").placeholder = "shared.ddproxy.xyz";
+    $("s-srmd-max").value = (_a = s.max_nodes_per_domain) != null ? _a : 5;
+    $("s-srmd-enabled").checked = !!s.enabled;
+  }
+  function render5(o) {
+    renderSRMD(o);
+  }
+  function init3() {
+    $("srmd-body").addEventListener("click", (e) => {
+      const target = e.target;
+      const take = target.closest("button[data-srmd-take]");
+      const rel = target.closest("button[data-srmd-release]");
+      if (!take && !rel) return;
+      const domain = take ? take.dataset.srmdTake : rel.dataset.srmdRelease;
+      const action = take ? "take" : "release";
+      srmdDomainAction(domain, action).then(() => showToast(take ? `${domain} — под контролем СРМД` : `${domain} — снова в ручном режиме`)).then(() => api("/panel/api/overview")).then((ov) => {
+        state.ov = ov;
+        renderSRMD(ov);
+      }).catch((e2) => showToast(e2.message, true));
+    });
+    $("srmd-reload").onclick = () => loadSettings().then(() => showToast("Настройки СРМД перечитаны")).catch(() => {
+    });
+    $("s-srmd-save").onclick = () => saveSection({ srmd: {
+      enabled: $("s-srmd-enabled").checked,
+      base_domain: $("s-srmd-base").value.trim(),
+      max_nodes_per_domain: Math.max(1, parseInt($("s-srmd-max").value, 10) || 5)
+    } }, "Настройки СРМД сохранены").catch((e) => showToast(e.message, true));
   }
 
   // ui/pages/panel/views/settings.ts
@@ -2335,7 +3140,7 @@
     $("s-static").textContent = `static (требуют рестарта): http=${st.http_addr} state=${st.state_file}
 healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select=${st.selection_interval_ms}мс hb_ttl=${st.heartbeat_ttl_sec}с fail=${st.fail_threshold} recover=${st.recover_threshold} freshness=${st.report_freshness_min}мин prune=${st.prune_unhealthy_min}мин`;
   }
-  async function dnsPush() {
+  async function dnsPush2() {
     try {
       const resp = await fetch("/panel/api/dns-push", { method: "POST", headers: { "Authorization": "Bearer " + getToken() } });
       const data = await resp.json();
@@ -2388,7 +3193,7 @@ healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select
         }
       }, "Cloudflare сохранён").catch((e) => showToast(e.message, true));
     };
-    $("s-dns-push").onclick = dnsPush;
+    $("s-dns-push").onclick = dnsPush2;
     $("s-nd-save").onclick = () => saveSection({
       node_defaults: {
         heartbeat_ms: parseInt($("s-nd-heartbeat").value, 10) || 0,
@@ -2552,8 +3357,8 @@ healthcheck: probe=${st.probe_interval_ms}мс/${st.probe_timeout_ms}мс select
   window.addEventListener("hashchange", route);
   initTheme();
   init4();
-  init2();
   init3();
+  init2();
   init();
   if (!localStorage.getItem(LS_KEY)) showLogin(false);
   route();

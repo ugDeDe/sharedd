@@ -1,0 +1,85 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/badge.css";
+@import "../../components/table.css";
+@import "../../components/misc.css";
+@import "../../components/feed.css";
+@import "../../components/form.css";
+
+/* ═══ Страница публичной статистики ═══════════════════════════════════ */
+.stats-wrap { max-width: 1280px; }
+.page-title { margin: 4px 0 16px; }
+
+/* ── нода детально ────────────────────────────────────────────────── */
+.node-head {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 18px var(--pad); margin-bottom: 16px;
+}
+.node-id { font-family: var(--mono); font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
+.node-ip { font-family: var(--mono); color: var(--fg-3); font-size: 12.5px; margin-top: 2px; }
+.node-chips { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+.node-reason { flex: 0 0 100%; margin-top: 12px; }
+.node-reason .banner { margin-bottom: 0; }
+
+.gp-grid {
+  display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.7fr);
+  gap: 20px; padding: 16px var(--pad) var(--pad); align-items: start;
+}
+.gp-side .extra { color: var(--fg-3); font-size: 12.5px; margin-top: 4px; }
+.gp-side .extra b { color: var(--fg); font-family: var(--mono); }
+.gp-big { font-size: 38px; font-weight: 700; font-family: var(--mono); line-height: 1.1; margin-bottom: 8px; }
+.gp-big.ok { color: var(--ok); }
+.gp-big.bad { color: var(--bad); }
+
+.chart-body { padding: 12px var(--pad) var(--pad); }
+.chart-cap {
+  color: var(--fg-3); font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  margin: 14px 0 8px; display: flex; gap: 8px; align-items: baseline;
+}
+.chart-cap:first-child { margin-top: 2px; }
+.chart-cap .hint { text-transform: none; letter-spacing: 0; }
+.ticks { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+.tick { width: 7px; height: 16px; border-radius: 2.5px; background: var(--ok); opacity: .85; }
+.tick.fail { background: var(--bad); opacity: .9; }
+.bars { display: flex; align-items: flex-end; gap: 3px; min-height: 56px; }
+.bars:empty { display: none; }
+.gbar {
+  flex: 1 1 0; min-width: 4px; max-width: 16px; border-radius: 3px 3px 1px 1px;
+  background: var(--ok); opacity: .85; transition: height .3s ease;
+}
+.gbar.mid { background: var(--warn); }
+.gbar.fail { background: var(--bad); }
+
+/* ── спарклайн клиентов с наведением ──────────────────────────────── */
+.spark { width: 100%; height: 56px; display: block; cursor: crosshair; }
+.sparkwrap { position: relative; }
+.spark-guide {
+  position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-3);
+  pointer-events: none; opacity: 0; transition: opacity .1s ease;
+}
+.spark-dot {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--acc); box-shadow: 0 0 8px var(--acc);
+  transform: translate(-50%, -50%); pointer-events: none;
+  opacity: 0; transition: opacity .1s ease;
+}
+.spark-tip {
+  position: absolute; top: -6px; transform: translate(-50%, -100%);
+  background: var(--surf); border: 1px solid var(--line);
+  border-radius: 9px; padding: 4px 10px; font-family: var(--mono);
+  font-size: 11px; color: var(--fg); white-space: nowrap;
+  pointer-events: none; z-index: 5; box-shadow: var(--sh-pop);
+  opacity: 0; transition: opacity .1s ease;
+}
+.spark-tip b { color: var(--acc); }
+.sparkwrap.hover .spark-guide,
+.sparkwrap.hover .spark-dot,
+.sparkwrap.hover .spark-tip { opacity: 1; }
+
+.feed-domain { color: var(--special); font-family: var(--mono); font-size: 12px; }
+
+@media (max-width: 1080px) { .gp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .node-chips { margin-left: 0; width: 100%; } }

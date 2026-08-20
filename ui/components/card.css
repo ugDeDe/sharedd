@@ -19,7 +19,12 @@
 /* ═══ Метрика ═════════════════════════════════════════════════════════
    Жёсткая колонка: подпись / значение / подвал. Значение и единица —
    разные узлы, поэтому «377 ok / 0 err» не переносится и не рвёт сетку. */
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+/* auto-fit, а не фиксированные 4 колонки: на «Обзоре» метрик шесть, и
+   жёсткая сетка раскладывала их 4+2 с дырой во второй строке. */
+.metrics {
+  display: grid; gap: 12px; margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+}
 .metric { padding: 15px 17px; display: flex; flex-direction: column; min-height: 118px; }
 .metric-label { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 540; color: var(--fg-2); }
 .metric-label svg { color: var(--fg-3); flex: none; }
@@ -35,5 +40,4 @@
 .metric-foot { font-size: 11.5px; color: var(--fg-3); margin-top: auto; }
 .metric-spark { display: block; width: 100%; height: 26px; margin: 2px 0 6px; }
 
-@media (max-width: 1080px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) { .metrics { grid-template-columns: 1fr; } .metric-value { font-size: 28px; } }
