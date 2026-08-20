@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/v1.0.1/sharedd-node-agent"
+# Текущий релиз: повтор той же команды безопасно обновляет агент.
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -84,6 +85,15 @@ TTY=0; { [ -t 0 ] || [ -t 1 ] || [ -t 2 ]; } && TTY=1
 
 # ── регистратор ──────────────────────────────────────────────────────────
 REGISTRY_URL="${REGISTRY_URL:-}"
+# При обновлении без параметров сохраняем уже выбранный URL регистратора,
+# а не возвращаем ноду к демонстрационному значению по умолчанию.
+if [ -z "$REGISTRY_URL" ] && [ -f "$ETC_DIR/node.toml" ]; then
+    EXISTING_REGISTRY_URL="$(grep -E '^[[:space:]]*url[[:space:]]*=' "$ETC_DIR/node.toml" | head -n1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)"
+    if [ -n "$EXISTING_REGISTRY_URL" ]; then
+        REGISTRY_URL="$EXISTING_REGISTRY_URL"
+        say "найдена существующая установка — сохраняю URL регистратора: ${BOLD}${REGISTRY_URL}${NC}"
+    fi
+fi
 if [ -z "$REGISTRY_URL" ]; then
     if [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
         read -r -p "  → URL регистратора [${REGISTRY_URL_DEFAULT}]: " ans </dev/tty || true

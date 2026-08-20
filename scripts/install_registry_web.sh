@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/v1.0.1/sharedd-registry"
+# Всегда берём текущий релиз. Это делает ту же команду пригодной и для
+# обновления: GitHub перенаправит её на asset последнего опубликованного тега.
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-registry"
 INSTALLER_URL="https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_registry.sh"
 
 set -euo pipefail
@@ -36,6 +38,14 @@ dl "$BINARY_URL" "$TMP/sharedd-registry"   || die "скачивание бина
 dl "$INSTALLER_URL" "$TMP/install.sh"      || die "скачивание установщика не удалось"
 head -c 4 "$TMP/sharedd-registry" | grep -q $'\x7fELF' || die "по BINARY_URL не ELF-бинарник (проверьте ссылку)"
 chmod +x "$TMP/sharedd-registry" "$TMP/install.sh"
+
+# Повтор той же команды обновляет только бинарник и перезапускает сервис:
+# существующие registry.toml и Caddyfile не спрашиваются и не переписываются.
+# Для осознанной перенастройки передайте флаги установщику явно.
+if [ "$#" -eq 0 ] && [ -f /etc/sharedd/registry.toml ]; then
+    say "найдена существующая установка — обновляю бинарник, конфиг и Caddy не трогаю"
+    set -- --skip-caddy
+fi
 
 # интерактивные вопросы установщика: stdin может быть пайпом curl — его ask
 # читает с /dev/tty, но гарантировать подадим явно

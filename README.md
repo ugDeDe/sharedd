@@ -17,10 +17,6 @@
 
 <img src="docs/screenshots/hero-panel.png" alt="Панель sharedd — вкладка «Обзор»" width="920">
 
-<!-- 📸 HERO-СКРИНШОТ: панель → «Обзор» (KPI-стрип + статистика пула).
- Сохраните как docs/screenshots/hero-panel.png — картинка подтянется сама.
- Имена и пути всех остальных скриншотов даны в таких же комментариях по тексту. -->
-
 </div>
 
 ---
@@ -191,7 +187,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 1️⃣ Обзор
 
 <img src="docs/screenshots/panel-overview.png" alt="Панель — «Обзор»" width="880">
-<!-- 📸 Снять: панель → «Обзор». docs/screenshots/panel-overview.png -->
 
 - **Баннер тревоги** сверху — если что-то не так, видно сразу;
 - **KPI-стрип**: живые назначения мастеров (N/M), нод в пуле, fully-healthy,
@@ -205,7 +200,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 2️⃣ Ноды
 
 <img src="docs/screenshots/panel-nodes.png" alt="Панель — «Ноды»" width="880">
-<!-- 📸 Снять: панель → «Ноды» (таблица пула). docs/screenshots/panel-nodes.png -->
 
 Таблица пула в реальном времени: чипы TCP / Globalping / Metrics-защёлки,
 доля успешных РФ-проб в последней верификации («посл.%»), исторический
@@ -217,8 +211,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 3️⃣ Страница ноды
 
 <img src="docs/screenshots/panel-node.png" alt="Панель — страница ноды" width="880">
-<!-- 📸 Снять: страницу любой ноды (чипы + GP по площадкам + графики).
- docs/screenshots/panel-node.png -->
 
 - Статус-чипы и роль (мастер доменов / позиция в очереди), агрегаты здоровья;
 - **Последняя Globalping-верификация по площадкам**: страна · город / сеть · AS /
@@ -231,7 +223,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 4️⃣ Мастера и DNS
 
 <img src="docs/screenshots/panel-dns.png" alt="Панель — «Мастера и DNS»" width="880">
-<!-- 📸 Снять: панель → «Мастера и DNS». docs/screenshots/panel-dns.png -->
 
 Все домены с текущими мастерами, чип **«N / 30 мин»** до принудительной ротации
 (или «TTL истёк», если здоровой замены пока нет), время в роли, кнопка ручного
@@ -240,7 +231,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 5️⃣ СРМД
 
 <img src="docs/screenshots/panel-srmd.png" alt="Панель — «Журнал»" width="880">
-<!-- 📸 Снять: панель → «СРМД». docs/screenshots/panel-srmd.png -->
 
 Система распределения и масштабирования доменов. Неоптимально держать все
 ноды под одним доменом: у домена один мастер, остальные ноды очереди
@@ -278,7 +268,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 6️⃣ Журнал
 
 <img src="docs/screenshots/panel-events.png" alt="Панель — «Журнал»" width="880">
-<!-- 📸 Снять: панель → «Журнал». docs/screenshots/panel-events.png -->
 
 Единая лента: `node_registered` / `node_expired` / `node_pruned`,
 `queue_joined` / `queue_left` (с причиной), `master_elected` / `master_lost`
@@ -296,7 +285,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 #### 7️⃣ Настройки (hot-apply, без рестарта)
 
 <img src="docs/screenshots/panel-settings.png" alt="Панель — «Настройки»" width="880">
-<!-- 📸 Снять: панель → «Настройки». docs/screenshots/panel-settings.png -->
 
 Правятся на лету и **атомарно сохраняются обратно в `registry.toml`**
 (предыдущая версия — в `.bak`):
@@ -319,7 +307,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 ### Публичная статистика нод — `/statistics`
 
 <img src="docs/screenshots/statistics-node.png" alt="/statistics — страница ноды" width="880">
-<!-- 📸 Снять: /statistics/<node_id>. docs/screenshots/statistics-node.png -->
 
 Открытая копия страницы подробностей — можно давать пользователям без выдачи
 панельного токена. Чувствительное вырезается **на сервере, до сериализации**:
@@ -339,7 +326,6 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 ### Дашборд блокировок — `/dashboard`
 
 <img src="docs/screenshots/dashboard.png" alt="/dashboard — дашборд блокировок" width="880">
-<!-- 📸 Снять: /dashboard (KPI + графики + таблица). docs/screenshots/dashboard.png -->
 
 Публичная сводка по вечной SQLite-истории банов (не ограничена окном журнала):
 
@@ -416,6 +402,19 @@ curl -fsSL https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install
 пользователя и **токен панели**. Доступы — в `/etc/sharedd/credentials.txt` (0600).
 Если Caddy недоступен — регистратор всё равно поднимается на `0.0.0.0:8080`,
 доставить HTTPS позже: `sudo bash pkg/install_full.sh --only-caddy --domain <fqdn>`.
+
+### Обновление регистратора
+
+Повторите ту же web-команду: она скачает бинарник из последнего GitHub Release,
+заменит `/usr/local/bin/sharedd-registry` и перезапустит сервис. Существующие
+`/etc/sharedd/registry.toml` и Caddyfile при таком обновлении не изменяются.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_registry_web.sh | sudo bash
+```
+
+Для изменения конфигурации используйте панель либо явные параметры локального
+`install_registry.sh`; обновление бинарника их не требует.
 
 ### Нода (одна команда на каждый VPS)
 
