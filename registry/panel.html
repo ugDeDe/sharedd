@@ -2280,20 +2280,22 @@
     return `<span class="badge">${esc(by)}</span>`;
   }
   function renderGPStats(o) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const st = o.stats || {};
     $("stats-hint").textContent = `окно анализа: ${(_a = st.events_window) != null ? _a : 0} событий журнала`;
-    const card = (label, iconPath, value, foot) => `
+    const card = (label, iconPath, value, foot, cls = "") => `
     <div class="card metric">
       <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
-      <div class="metric-value">${value}</div>
+      <div class="metric-value ${cls}">${value}</div>
       <div class="metric-foot">${foot}</div>
     </div>`;
-    $("pool-stats").innerHTML = card(
+    $("pool-stats").innerHTML = // цвет числа банов был и в прежней версии: есть баны — жёлтый, нет — зелёный
+    card(
       "Баны GP",
       ICONS.ban,
       `${(_b = st.gp_bans_total) != null ? _b : 0}`,
-      `активных: ${(_c = st.gp_bans_active) != null ? _c : 0} · уникальных нод: ${(_d = st.gp_bans_nodes) != null ? _d : 0}`
+      `активных: ${(_c = st.gp_bans_active) != null ? _c : 0} · уникальных нод: ${(_d = st.gp_bans_nodes) != null ? _d : 0}`,
+      ((_e = st.gp_bans_total) != null ? _e : 0) > 0 ? "warn" : "ok"
     ) + card(
       "Периодичность банов GP",
       ICONS.clock,

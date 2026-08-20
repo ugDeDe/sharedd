@@ -74,17 +74,19 @@ function renderGPStats(o: any): void {
   const st = o.stats || {};
   $("stats-hint").textContent = `окно анализа: ${st.events_window ?? 0} событий журнала`;
 
-  const card = (label: string, iconPath: string, value: string, foot: string): string => `
+  const card = (label: string, iconPath: string, value: string, foot: string, cls = ""): string => `
     <div class="card metric">
       <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
-      <div class="metric-value">${value}</div>
+      <div class="metric-value ${cls}">${value}</div>
       <div class="metric-foot">${foot}</div>
     </div>`;
 
   $("pool-stats").innerHTML =
+    // цвет числа банов был и в прежней версии: есть баны — жёлтый, нет — зелёный
     card("Баны GP", ICONS.ban,
       `${st.gp_bans_total ?? 0}`,
-      `активных: ${st.gp_bans_active ?? 0} · уникальных нод: ${st.gp_bans_nodes ?? 0}`) +
+      `активных: ${st.gp_bans_active ?? 0} · уникальных нод: ${st.gp_bans_nodes ?? 0}`,
+      (st.gp_bans_total ?? 0) > 0 ? "warn" : "ok") +
     card("Периодичность банов GP", ICONS.clock,
       fmtInterval(st.gp_ban_interval_sec), "средний промежуток между банами") +
     card("Периодичность смен DNS", ICONS.dns,
