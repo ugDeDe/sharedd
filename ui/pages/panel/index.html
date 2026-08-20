@@ -100,30 +100,15 @@
           <h2>Карантин · Globalping</h2>
           <span class="hint">всё зелёное, кроме globalping — бан по IP после исчерпания попыток</span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr><th>Нода</th><th>Адрес</th><th>В карантине с</th><th>Попытка</th><th>Решение</th></tr></thead>
-            <tbody id="quar-body"></tbody>
-          </table>
-        </div>
+        <div class="node-list" id="quar-body"></div>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Ноды пула</h2>
-          <span class="hint" id="nodes-hint"></span>
-          <span class="hint row-hint">клик по строке — статистика ноды</span>
+          <span class="hint" id="nodes-hint" style="margin-left:0"></span>
+          <span class="hint row-hint">клик по строке — подробности, двойной — статистика ноды</span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr>
-              <th>Нода</th><th>Адрес</th><th>Роль</th><th>TCP</th><th>Globalping</th><th>Metrics</th>
-              <th>Доступность</th><th class="num">Клиенты</th><th>Heartbeat</th><th>Отчёт</th>
-              <th>Мастерство</th><th>Статус / ошибка</th>
-            </tr></thead>
-            <tbody id="nodes-body"></tbody>
-          </table>
-        </div>
+        <div class="node-list" id="nodes-body"></div>
       </section>
     </section>
 
@@ -137,8 +122,7 @@
     <section class="view" id="view-dns" hidden>
       <section class="card">
         <div class="card-head">
-          <h2>Назначения доменов</h2>
-          <span class="hint" id="dns-hint"></span>
+          <span class="hint" id="dns-hint" style="margin-left:0"></span>
           <button class="btn sm" style="margin-left:auto" id="s-dns-push2">Перезаписать DNS сейчас</button>
         </div>
         <div id="masters-full"></div>
@@ -149,15 +133,9 @@
     <section class="view" id="view-srmd" hidden>
       <section class="card">
         <div class="card-head">
-          <h2>Домены · активные клиенты</h2>
-          <span class="hint" id="srmd-hint"></span>
+          <span class="hint" id="srmd-hint" style="margin-left:0"></span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr><th>Домен</th><th class="num">Активные клиенты</th><th>DNS-запись</th><th>Мастер</th><th>Управление</th></tr></thead>
-            <tbody id="srmd-body"></tbody>
-          </table>
-        </div>
+        <div id="srmd-body"></div>
         <div class="card-note">Клиенты считаются по общему секрету (только пользователи из <span class="mono">shared_proxy.users</span>).
           Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.
           Ручной домен можно насильно отдать под контроль СРМД (кнопка «под СРМД») — тогда он сможет сворачиваться
@@ -221,6 +199,17 @@
 
   <footer class="page-foot">sharedd Registry · обновление каждые 5 с · <span id="last-upd">ещё не обновлялось</span></footer>
 </div>
+
+<!-- Нижняя панель вкладок: на узких экранах верхняя капсула прячется,
+     и без неё переключать разделы было нечем. -->
+<nav class="mobile-nav glass">
+  <a href="#/overview" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Обзор</span></a>
+  <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Ноды</span></a>
+  <a href="#/dns" data-view="dns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><span>DNS</span></a>
+  <a href="#/srmd" data-view="srmd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>СРМД</span></a>
+  <a href="#/events" data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Журнал</span></a>
+  <a href="#/settings" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Настройки</span></a>
+</nav>
 
 <div id="toast"></div>
 

@@ -292,10 +292,6 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
-    transition: max-width .18s ease;
-  }
-  .wrap.wide {
-    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -553,22 +549,131 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   :root[data-theme=light] .icon-btn .i-moon {
     display: none;
   }
-  @media (max-width: 640px) {
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 50;
+    padding: 6px;
+    border-radius: var(--r-xl);
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
+  }
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 2px;
+    border-radius: var(--r-md);
+    color: var(--fg-3);
+    text-decoration: none;
+    min-width: 0;
+    transition: color .13s ease, background .13s ease;
+  }
+  .mobile-nav a svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+  }
+  .mobile-nav a span {
+    font-size: 9.5px;
+    font-weight: 560;
+    letter-spacing: -.01em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-nav a:hover {
+    color: var(--fg-2);
+    text-decoration: none;
+  }
+  .mobile-nav a.active {
+    color: var(--acc);
+    background: var(--acc-soft);
+  }
+  @media (max-width: 720px) {
     .nav {
       display: none;
+    }
+    .mobile-nav {
+      display: grid;
+    }
+    body {
+      padding-bottom: 74px;
+    }
+    .topbar {
+      padding: 10px 0 8px;
+    }
+    .topbar-inner {
+      padding: 7px 9px;
+      border-radius: var(--r-lg);
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
     }
     .brand-sub {
       display: none;
     }
+    .status-pill {
+      height: 27px;
+      padding: 0 10px;
+      font-size: 11.5px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  @media (max-width: 560px) {
     .topbar-inner {
-      flex-wrap: wrap;
-      row-gap: 8px;
+      gap: 8px;
     }
     .topbar-right {
-      flex: 1 1 auto;
-      min-width: 0;
-      flex-wrap: wrap;
-      justify-content: flex-end;
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 13.5px;
+    }
+    .status-pill span {
+      display: none;
+    }
+    .status-pill {
+      padding: 0 8px;
+    }
+    .topbar-links .icon-btn {
+      width: 26px;
+      height: 26px;
+    }
+    .topbar-sep {
+      margin: 0 2px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mobile-nav {
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 5px;
+    }
+    .mobile-nav a {
+      padding: 6px 1px;
+    }
+    .mobile-nav a svg {
+      width: 17px;
+      height: 17px;
+    }
+    .mobile-nav a span {
+      font-size: 8.5px;
+    }
+    .brand-name {
+      font-size: 13px;
     }
   }
 
@@ -684,10 +789,27 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   }
   @media (max-width: 640px) {
     .metrics {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 12px 13px;
     }
     .metric-value {
-      font-size: 28px;
+      font-size: 24px;
+      margin: 8px 0 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+    }
+    .metric-foot {
+      font-size: 10.5px;
+    }
+  }
+  @media (max-width: 400px) {
+    .metrics {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -770,6 +892,35 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     border-color: var(--acc);
     color: var(--acc-fg);
     font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
+    color: var(--ok);
+  }
+  .check-tag.warn {
+    color: var(--warn);
+  }
+  .check-tag.bad {
+    color: var(--bad);
+  }
+  .check-tag.unknown {
+    color: var(--fg-3);
+    opacity: .55;
   }
 
   /* ui/components/table.css */
@@ -1105,6 +1256,59 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     font-family: var(--mono);
     font-size: 11.5px;
     color: var(--fg);
+  }
+  .feed {
+    position: relative;
+  }
+  .feed-day {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px var(--pad) 8px 44px;
+    background:
+      linear-gradient(
+        180deg,
+        var(--surf) 62%,
+        transparent);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .feed-day span {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    border: 1px solid var(--line-2);
+  }
+  .feed-item {
+    position: relative;
+    padding-left: 44px;
+  }
+  .feed-item::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  .feed-item:last-child::before {
+    bottom: 50%;
+  }
+  .feed-dot {
+    position: absolute;
+    left: 17px;
+    top: 15px;
+    margin: 0;
+    z-index: 1;
+    box-shadow: 0 0 0 3px var(--surf);
+  }
+  .feed-item:hover .feed-dot {
+    box-shadow: 0 0 0 3px var(--surf-2);
   }
 
   /* ui/components/form.css */
@@ -1691,6 +1895,15 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     }
     return resp.json();
   }
+  function checksHTML(n) {
+    const st = (flag) => flag === null || flag === void 0 ? "unknown" : flag ? "ok" : "bad";
+    const tag = (label, state, title) => `<span class="check-tag ${state}" title="${esc(title)}">${label}</span>`;
+    return `<span class="checks">
+    ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
+    ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
+    ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
+  </span>`;
+  }
   function listRowHTML(n) {
     var _a, _b;
     const avail = (_a = n.availability_pct) != null ? _a : 0;
@@ -1701,9 +1914,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
     <td data-label="Роль">${role}${ttlRem}</td>
-    <td data-label="TCP">${chip(n.healthy)}</td>
-    <td data-label="GP">${chip(n.globalping_ok)}</td>
-    <td data-label="Metrics"><span title="защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов">${chip(n.metrics_healthy, "metrics ok", "metrics fail")}</span></td>
+    <td data-label="Проверки">${checksHTML(n)}</td>
     <td data-label="Доступность"><div class="meter"><div class="meter-track"><span class="meter-fill ${availClass(avail)}" style="width:${avail}%"></span></div><span class="meter-value mono">${avail.toFixed(1)}%</span></div></td>
     <td class="mono num" data-label="Клиенты">${clients === null ? "—" : clients}</td>
     <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
@@ -1719,7 +1930,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
       <div class="table-wrap"><table class="table-cards">
-        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>TCP</th><th>GP</th><th>Metrics</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
+        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>Проверки</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
         <tbody id="pub-nodes-body">${rows || `<tr><td colspan="10" class="table-empty">пул пуст</td></tr>`}</tbody>
       </table></div>
     </section>`;

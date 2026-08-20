@@ -59,12 +59,7 @@ a:hover { text-decoration: underline; }
 .spacer { flex: 1 1 auto; }
 .num { font-variant-numeric: tabular-nums; }
 
-.wrap { max-width: 1280px; margin: 0 auto; padding: 0 20px 44px; transition: max-width .18s ease; }
-/* Экраны с широкими таблицами занимают весь монитор: таблица нод на
-   12 колонок в 1280 px не помещается и уезжает в горизонтальный скролл.
-   Текстовые экраны остаются читаемой колонкой — длинные строки шире
-   1280 px читать тяжело. */
-.wrap.wide { max-width: 1760px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 20px 44px; }
 .page-foot { padding: 22px 4px 30px; text-align: center; color: var(--fg-3); font-size: 12px; }
 
 @media (max-width: 640px) { .wrap { padding: 0 12px 30px; } }

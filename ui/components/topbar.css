@@ -71,14 +71,63 @@
 :root[data-theme="light"] .icon-btn .i-sun { display: block; }
 :root[data-theme="light"] .icon-btn .i-moon { display: none; }
 
-@media (max-width: 640px) {
+/* ═══ Нижняя панель вкладок ════════════════════════════════════════════
+   На узких экранах верхняя капсула не помещается, и раньше она просто
+   пряталась — переключать разделы становилось нечем. Панель закреплена
+   снизу: до неё дотягивается большой палец. */
+.mobile-nav {
+  display: none;
+  position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 50;
+  padding: 6px; border-radius: var(--r-xl);
+  grid-template-columns: repeat(6, 1fr); gap: 2px;
+}
+.mobile-nav a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 7px 2px; border-radius: var(--r-md);
+  color: var(--fg-3); text-decoration: none; min-width: 0;
+  transition: color .13s ease, background .13s ease;
+}
+.mobile-nav a svg { width: 19px; height: 19px; flex: none; }
+.mobile-nav a span {
+  font-size: 9.5px; font-weight: 560; letter-spacing: -.01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mobile-nav a:hover { color: var(--fg-2); text-decoration: none; }
+.mobile-nav a.active { color: var(--acc); background: var(--acc-soft); }
+
+/* ═══ Точки перелома ═══════════════════════════════════════════════════
+   Ниже 720 px верхняя капсула уступает место нижней панели. */
+@media (max-width: 720px) {
   .nav { display: none; }
+  .mobile-nav { display: grid; }
+  /* контент не должен уезжать под закреплённую панель */
+  body { padding-bottom: 74px; }
+  .topbar { padding: 10px 0 8px; }
+  .topbar-inner { padding: 7px 9px; border-radius: var(--r-lg); }
+  .brand-mark { width: 32px; height: 32px; font-size: 12px; }
   .brand-sub { display: none; }
-  /* На публичных страницах в шапке ещё и перекрёстные ссылки — в одну
-     строку они не влезают и обрезались. Разрешаем перенос — но только
-     при нехватке места: где всё помещается, шапка остаётся однострочной. */
-  .topbar-inner { flex-wrap: wrap; row-gap: 8px; }
-  /* flex:none из базового правила мешает переносу внутри группы —
-     на узком экране разрешаем ей ужиматься и переносить содержимое */
-  .topbar-right { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .status-pill { height: 27px; padding: 0 10px; font-size: 11.5px; }
+  .icon-btn { width: 28px; height: 28px; }
+}
+
+/* Телефон: шапка обязана остаться однострочной — на трёхэтажную уходило
+   пол-экрана. Прячем подписи ссылок, оставляем иконки. */
+@media (max-width: 560px) {
+  .topbar-inner { gap: 8px; }
+  .topbar-right { gap: 4px; }
+  .brand-name { font-size: 13.5px; }
+  .status-pill span { display: none; }
+  .status-pill { padding: 0 8px; }
+  .topbar-links .icon-btn { width: 26px; height: 26px; }
+  .topbar-sep { margin: 0 2px; }
+}
+
+/* Узкий телефон: подписи вкладок мельчают, но остаются — иконки без слов
+   в этом наборе неразличимы. */
+@media (max-width: 400px) {
+  .mobile-nav { left: 6px; right: 6px; bottom: 6px; padding: 5px; }
+  .mobile-nav a { padding: 6px 1px; }
+  .mobile-nav a svg { width: 17px; height: 17px; }
+  .mobile-nav a span { font-size: 8.5px; }
+  .brand-name { font-size: 13px; }
 }

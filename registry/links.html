@@ -291,10 +291,6 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
-    transition: max-width .18s ease;
-  }
-  .wrap.wide {
-    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -552,22 +548,131 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   :root[data-theme=light] .icon-btn .i-moon {
     display: none;
   }
-  @media (max-width: 640px) {
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 50;
+    padding: 6px;
+    border-radius: var(--r-xl);
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
+  }
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 2px;
+    border-radius: var(--r-md);
+    color: var(--fg-3);
+    text-decoration: none;
+    min-width: 0;
+    transition: color .13s ease, background .13s ease;
+  }
+  .mobile-nav a svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+  }
+  .mobile-nav a span {
+    font-size: 9.5px;
+    font-weight: 560;
+    letter-spacing: -.01em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-nav a:hover {
+    color: var(--fg-2);
+    text-decoration: none;
+  }
+  .mobile-nav a.active {
+    color: var(--acc);
+    background: var(--acc-soft);
+  }
+  @media (max-width: 720px) {
     .nav {
       display: none;
+    }
+    .mobile-nav {
+      display: grid;
+    }
+    body {
+      padding-bottom: 74px;
+    }
+    .topbar {
+      padding: 10px 0 8px;
+    }
+    .topbar-inner {
+      padding: 7px 9px;
+      border-radius: var(--r-lg);
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
     }
     .brand-sub {
       display: none;
     }
+    .status-pill {
+      height: 27px;
+      padding: 0 10px;
+      font-size: 11.5px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  @media (max-width: 560px) {
     .topbar-inner {
-      flex-wrap: wrap;
-      row-gap: 8px;
+      gap: 8px;
     }
     .topbar-right {
-      flex: 1 1 auto;
-      min-width: 0;
-      flex-wrap: wrap;
-      justify-content: flex-end;
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 13.5px;
+    }
+    .status-pill span {
+      display: none;
+    }
+    .status-pill {
+      padding: 0 8px;
+    }
+    .topbar-links .icon-btn {
+      width: 26px;
+      height: 26px;
+    }
+    .topbar-sep {
+      margin: 0 2px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mobile-nav {
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 5px;
+    }
+    .mobile-nav a {
+      padding: 6px 1px;
+    }
+    .mobile-nav a svg {
+      width: 17px;
+      height: 17px;
+    }
+    .mobile-nav a span {
+      font-size: 8.5px;
+    }
+    .brand-name {
+      font-size: 13px;
     }
   }
 
@@ -683,10 +788,27 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   }
   @media (max-width: 640px) {
     .metrics {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 12px 13px;
     }
     .metric-value {
-      font-size: 28px;
+      font-size: 24px;
+      margin: 8px 0 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+    }
+    .metric-foot {
+      font-size: 10.5px;
+    }
+  }
+  @media (max-width: 400px) {
+    .metrics {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -769,6 +891,35 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     border-color: var(--acc);
     color: var(--acc-fg);
     font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
+    color: var(--ok);
+  }
+  .check-tag.warn {
+    color: var(--warn);
+  }
+  .check-tag.bad {
+    color: var(--bad);
+  }
+  .check-tag.unknown {
+    color: var(--fg-3);
+    opacity: .55;
   }
 
   /* ui/components/form.css */
@@ -1267,6 +1418,8 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
         </div>
       </div>
       <div class="topbar-right">
+        <a class="btn ghost sm" href="/statistics">Статистика нод →</a>
+        <a class="btn ghost sm" href="/dashboard">Дашборд блокировок →</a>
         <span class="status-pill" id="live-pill"><i></i><span id="live-text">загрузка…</span></span>
         <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
           <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>

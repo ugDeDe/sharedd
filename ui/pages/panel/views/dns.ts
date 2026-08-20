@@ -2,8 +2,8 @@
 
    Вычисления (что считается «живым» назначением, чип TTL, текст при
    отсутствии мастера) перенесены из прежней версии ДОСЛОВНО —
-   renderMastersInto/masterRowHTML/fmtTtlMin. Разметка строк — таблица
-   вместо самодельных .mrow-блоков, но данные и формулировки те же.
+   renderMastersInto/masterRowHTML/fmtTtlMin. Изменено только представление:
+   вместо таблицы — связанные пары «домен ↔ мастер», как в топологии.
 
    Кнопка «Перезаписать DNS сейчас» — тот же POST /panel/api/dns-push,
    что и в «Настройках»; обработчик навешивается в render() (вызывается
@@ -25,58 +25,77 @@ function nodeTypeBadge(t: string): string {
   return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
 }
 
-function masterRowHTML(m: any): string {
-  // домен, свёрнутый СРМД в CNAME — мастера нет по определению
-  if (m.cname_target) {
-    return `<tr>
-      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-      <td class="mono" data-label="Назначение">CNAME → ${esc(m.cname_target)}${m.clients != null ? " · клиентов: " + m.clients : ""}</td>
-      <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
-      <td data-label="TTL"><span class="dim">—</span></td>
-      <td data-label="Статус"><span class="badge">свёрнут СРМД</span></td>
-    </tr>`;
-  }
-  if (!m.node_id) {
-    return `<tr>
-      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-      <td data-label="Назначение"><span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span></td>
-      <td class="num" data-label="Клиенты"><span class="dim">—</span></td>
-      <td data-label="TTL"><span class="dim">—</span></td>
-      <td data-label="Статус"><span class="badge bad">нет DNS</span></td>
-    </tr>`;
-  }
-  const dead = !!m.dead;
-  // чип принудительной ротации по лимиту времени мастерства
-  let ttlChip = `<span class="dim">—</span>`;
-  if (m.ttl_sec > 0) {
-    if (m.ttl_remaining_sec < 0) {
-      ttlChip = `<span class="badge bad">TTL истёк</span>`;
-    } else {
-      const usedMin = Math.max(0, Math.round((m.ttl_sec - m.ttl_remaining_sec) / 60));
-      ttlChip = `<span class="badge">${fmtTtlMin(usedMin)} / ${fmtTtlMin(m.ttl_sec / 60)}</span>`;
-    }
-  }
-  return `<tr>
-    <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-    <td class="mono" data-label="Назначение">A → ${esc(m.ip || "?")} · ${esc(m.node_id)} ${nodeTypeBadge(m.node_type)}</td>
-    <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
-    <td data-label="TTL">${ttlChip}</td>
-    <td data-label="Статус"><span class="badge ${dead ? "bad" : "ok"}">${dead ? "нода нездорова" : "live"}</span></td>
-  </tr>`;
+/* Кольцо обратного отсчёта мастерства: наглядно, сколько домен ещё
+   пробудет на этой ноде. Раньше это была строка «21м / 30м». */
+function ttlRing(m: any): string {
+  if (!(m.ttl_sec > 0)) return `<span class="pair-dot"></span>`;
+  const expired = m.ttl_remaining_sec < 0;
+  const left = Math.max(0, m.ttl_remaining_sec);
+  const frac = expired ? 0 : Math.min(1, left / m.ttl_sec);
+  const r = 15, c = 2 * Math.PI * r;
+  const label = expired ? "!" : fmtTtlMin(Math.round(left / 60));
+  const cls = expired ? "bad" : frac < 0.2 ? "warn" : "ok";
+  return `<span class="ttl-ring ${cls}" title="осталось мастерства: ${expired ? "лимит истёк" : label} из ${fmtTtlMin(m.ttl_sec / 60)}">
+    <svg width="36" height="36" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--surf-3)" stroke-width="2.5"/>
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" transform="rotate(-90 18 18)"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(1)}"/>
+    </svg>
+    <b>${esc(label)}</b>
+  </span>`;
 }
 
-async function dnsPush(): Promise<void> {
-  try {
-    const resp = await fetch("/panel/api/dns-push", { method: "POST", headers: { "Authorization": "Bearer " + getToken() } });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    showToast(
-      `DNS-push: ${(data.updated || []).join(", ") || "—"}${(data.errors || []).length ? " · ошибки: " + data.errors.join("; ") : ""}`,
-      (data.errors || []).length > 0 && (data.updated || []).length === 0,
-    );
-  } catch (e) {
-    showToast((e as Error).message, true);
+/* Пара «домен ↔ его мастер» — тот же язык, что в топологии на «Обзоре».
+   Раньше это была таблица из пяти колонок. */
+function pairHTML(m: any): string {
+  // свёрнутый СРМД домен: мастера нет по определению, показываем приёмник
+  if (m.cname_target) {
+    return `<div class="pair-card ghost">
+      <div class="pair-domain">
+        <div class="pair-name mono dim">${esc(m.domain)}</div>
+        <div class="pair-sub">свёрнут СРМД${m.clients != null ? " · клиентов: " + m.clients : ""}</div>
+      </div>
+      <div class="pair-link"><span class="pair-cname">CNAME →</span></div>
+      <div class="pair-node">
+        <div class="pair-name mono">${esc(m.cname_target)}</div>
+        <div class="pair-sub">домен-приёмник</div>
+      </div>
+      <div class="pair-meta"><span class="badge">свёрнут</span></div>
+    </div>`;
   }
+
+  if (!m.node_id) {
+    return `<div class="pair-card nodns">
+      <div class="pair-domain">
+        <div class="pair-name mono">${esc(m.domain)}</div>
+        <div class="pair-sub" style="color:var(--bad)">A-записи нет</div>
+      </div>
+      <div class="pair-link"><span class="pair-broken">✕</span></div>
+      <div class="pair-node">
+        <div class="pair-name dim">мастер не назначен</div>
+        <div class="pair-sub">ждёт здоровую ноду из очереди</div>
+      </div>
+      <div class="pair-meta"><span class="badge bad">нет DNS</span></div>
+    </div>`;
+  }
+
+  const dead = !!m.dead;
+  return `<div class="pair-card ${dead ? "sick" : "live"}">
+    <div class="pair-domain">
+      <div class="pair-name mono">${esc(m.domain)}</div>
+      <div class="pair-sub mono">A → ${esc(m.ip || "?")}</div>
+    </div>
+    <div class="pair-link">${ttlRing(m)}</div>
+    <div class="pair-node">
+      <div class="pair-name mono">${esc(m.node_id)}</div>
+      <div class="pair-sub">${nodeTypeBadge(m.node_type)}</div>
+    </div>
+    <div class="pair-meta">
+      <div class="pair-clients"><b>${m.clients != null ? m.clients : "—"}</b><span>клиентов</span></div>
+      <span class="badge ${dead ? "warn" : "ok"}">${dead ? "нода нездорова" : "live"}</span>
+    </div>
+  </div>`;
 }
 
 export function render(o: any): void {
@@ -95,10 +114,7 @@ export function render(o: any): void {
 
   $("masters-full").innerHTML = masters.length === 0
     ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>`
-    : `<div class="table-wrap"><table class="table-cards">
-        <thead><tr><th>Домен</th><th>Назначение</th><th class="num">Клиенты</th><th>TTL</th><th>Статус</th></tr></thead>
-        <tbody>${masters.map(masterRowHTML).join("")}</tbody>
-      </table></div>`;
+    : `<div class="pair-list">${masters.map(pairHTML).join("")}</div>`;
 
   $("s-dns-push2").onclick = dnsPush;
 }

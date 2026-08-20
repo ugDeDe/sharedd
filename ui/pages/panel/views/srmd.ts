@@ -8,6 +8,72 @@
 import { $, esc } from "../../../lib/dom";
 import { api, state, getToken, showToast, saveSection, refreshAll } from "../state";
 
+/* Полоса вместимости: сколько нод в очереди против того, сколько их
+   вмещают домены. Именно по этой разнице СРМД и решает — создать новый
+   домен или свернуть лишний. Раньше эти числа лежали строкой в подписи,
+   и логика решения из них не читалась. */
+function capacityHTML(s: any): string {
+  const perDomain = Math.max(1, s.max_nodes_per_domain || 1);
+  const activeDomains = Math.max(0, (s.total_domains || 0) - (s.folded_domains || 0));
+  const capacity = activeDomains * perDomain;
+  const used = s.queue_size || 0;
+  const pct = capacity > 0 ? Math.min(100, (used / capacity) * 100) : 0;
+  const over = capacity > 0 && used > capacity;
+  const need = Math.max(0, (s.required_domains || 0) - activeDomains);
+
+  const verdict = over || need > 0
+    ? `<span class="cap-verdict warn">не хватает доменов: ${need || 1} — ${
+        s.enabled ? "СРМД создаст недостающие" : "создание выключено, нужно включить"}</span>`
+    : (activeDomains > (s.required_domains || 0)
+      ? `<span class="cap-verdict">доменов больше, чем нужно — лишние будут свёрнуты в CNAME</span>`
+      : `<span class="cap-verdict ok">вместимости хватает, менять ничего не нужно</span>`);
+
+  return `<div class="capacity">
+    <div class="cap-head">
+      <span class="cap-title">Вместимость пула</span>
+      <span class="cap-nums"><b>${used}</b> нод в очереди из <b>${capacity}</b>
+        <span class="dim">(${activeDomains} × ${perDomain} на домен)</span></span>
+    </div>
+    <div class="cap-bar"><div class="cap-fill ${over ? "over" : pct > 80 ? "warn" : "ok"}" style="width:${pct.toFixed(1)}%"></div></div>
+    <div class="cap-foot">
+      ${verdict}
+      <span class="cap-state ${s.enabled ? "on" : "off"}">${s.enabled ? "создание разрешено" : "создание выключено"}</span>
+    </div>
+  </div>`;
+}
+
+function domainCardHTML(d: any): string {
+  const origin = d.base
+    ? `<span class="badge gold" title="основной домен СРМД">основной</span>`
+    : (d.created ? `<span class="badge info" title="создан СРМД с инкрементом">СРМД</span>`
+                 : `<span class="badge" title="добавлен оператором вручную">ручной</span>`);
+  const rec = d.cname
+    ? `<span class="mono dim">CNAME → ${esc(d.cname)}</span>`
+    : (d.ip ? `<span class="mono dim">A → ${esc(d.ip)}</span>` : `<span class="badge bad">нет записи</span>`);
+  const master = d.cname
+    ? `<span class="dim">свёрнут</span>`
+    : (d.node_id ? `<span class="mono dim" title="${esc(d.node_id)}">${esc(d.node_id)}</span>`
+                 : `<span style="color:var(--bad)">нет мастера</span>`);
+  const stale = d.clients != null && !d.fresh;
+  const clients = d.clients == null ? "—" : String(d.clients);
+  // ручной ⇄ СРМД: ручной домен можно насильно отдать СРМД (тогда он сможет
+  // сворачиваться в CNAME), домен СРМД — вернуть в ручной режим
+  const control = d.created
+    ? `<button class="btn sm danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>`
+    : `<button class="btn sm" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
+
+  return `<div class="srmd-card${d.cname ? " folded" : ""}">
+    <div class="srmd-main">
+      <div class="srmd-top"><span class="mono srmd-name">${esc(d.domain)}</span>${origin}</div>
+      <div class="srmd-sub">${rec}<span class="dim">·</span>${master}</div>
+    </div>
+    <div class="srmd-clients" title="${stale ? "последнее известное значение — живой мастер сейчас не присылает метрику" : "активные клиенты по общему секрету"}">
+      <b>${clients}${stale ? "<i>*</i>" : ""}</b><span>клиентов</span>
+    </div>
+    <div class="srmd-ctl">${control}</div>
+  </div>`;
+}
+
 function renderSRMD(o: any): void {
   const s = o.srmd;
   if (!s) return;
@@ -20,35 +86,12 @@ function renderSRMD(o: any): void {
 
   const body = $("srmd-body");
   if (!s.domains || s.domains.length === 0) {
-    body.innerHTML = `<tr><td colspan="5" class="table-empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
+    body.innerHTML = capacityHTML(s) +
+      `<div class="empty-state"><span class="t">Домены не настроены</span>` +
+      `<span class="s">Задайте их в «Настройки → Cloudflare DNS».</span></div>`;
     return;
   }
-  body.innerHTML = s.domains.map((d: any) => {
-    const origin = d.base
-      ? `<span class="badge gold" title="основной домен СРМД">основной</span>`
-      : (d.created ? `<span class="badge info" title="создан СРМД с инкрементом">СРМД</span>`
-                   : `<span class="badge" title="добавлен оператором вручную">ручной</span>`);
-    const rec = d.cname
-      ? `<span class="badge" title="домен свёрнут СРМД">CNAME → ${esc(d.cname)}</span>`
-      : (d.ip ? `<span class="mono">A → ${esc(d.ip)}</span>` : `<span class="badge bad">нет записи</span>`);
-    const master = d.cname
-      ? `<span class="dim">— свёрнут</span>`
-      : (d.node_id ? `<span class="mono" title="${esc(d.node_id)}">${esc(d.node_id)}</span>` : `<span class="dim">нет мастера</span>`);
-    const clients = d.clients == null ? `<span class="dim">—</span>`
-      : `${d.clients}${d.fresh ? "" : ` <span class="dim" title="последнее известное значение — живой мастер сейчас не присылает метрику">*</span>`}`;
-    // ручной ⇄ СРМД: ручной домен можно насильно отдать СРМД (тогда он сможет
-    // сворачиваться в CNAME), домен СРМД — вернуть в ручной режим
-    const control = d.created
-      ? `<button class="btn sm danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>`
-      : `<button class="btn sm" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
-    return `<tr>
-      <td class="mono" data-label="Домен">${esc(d.domain)} ${origin}</td>
-      <td class="mono num" data-label="Активные клиенты">${clients}</td>
-      <td data-label="DNS-запись">${rec}</td>
-      <td data-label="Мастер">${master}</td>
-      <td data-label="Управление">${control}</td>
-    </tr>`;
-  }).join("");
+  body.innerHTML = capacityHTML(s) + `<div class="srmd-list">${s.domains.map(domainCardHTML).join("")}</div>`;
 }
 
 // перевод домена ручной ⇄ под контролем СРМД

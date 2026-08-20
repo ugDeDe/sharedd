@@ -23,3 +23,18 @@
 }
 .chip:hover { color: var(--fg); border-color: var(--fg-3); }
 .chip.active { background: var(--acc); border-color: var(--acc); color: var(--acc-fg); font-weight: 600; }
+
+/* ═══ Компактные проверки ═════════════════════════════════════════════
+   TCP / GP / METRICS одной группой вместо трёх колонок таблицы: подпись
+   плюс подчёркивание цветом состояния. Занимает место одной ячейки и
+   читается одним взглядом. */
+.checks { display: inline-flex; align-items: center; gap: 9px; }
+.check-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--fg-3); border-bottom: 2px solid currentColor; padding-bottom: 2px;
+  white-space: nowrap; cursor: default;
+}
+.check-tag.ok { color: var(--ok); }
+.check-tag.warn { color: var(--warn); }
+.check-tag.bad { color: var(--bad); }
+.check-tag.unknown { color: var(--fg-3); opacity: .55; }

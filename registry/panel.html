@@ -290,10 +290,6 @@
     max-width: 1280px;
     margin: 0 auto;
     padding: 0 20px 44px;
-    transition: max-width .18s ease;
-  }
-  .wrap.wide {
-    max-width: 1760px;
   }
   .page-foot {
     padding: 22px 4px 30px;
@@ -551,22 +547,131 @@
   :root[data-theme=light] .icon-btn .i-moon {
     display: none;
   }
-  @media (max-width: 640px) {
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 50;
+    padding: 6px;
+    border-radius: var(--r-xl);
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
+  }
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 2px;
+    border-radius: var(--r-md);
+    color: var(--fg-3);
+    text-decoration: none;
+    min-width: 0;
+    transition: color .13s ease, background .13s ease;
+  }
+  .mobile-nav a svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+  }
+  .mobile-nav a span {
+    font-size: 9.5px;
+    font-weight: 560;
+    letter-spacing: -.01em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-nav a:hover {
+    color: var(--fg-2);
+    text-decoration: none;
+  }
+  .mobile-nav a.active {
+    color: var(--acc);
+    background: var(--acc-soft);
+  }
+  @media (max-width: 720px) {
     .nav {
       display: none;
+    }
+    .mobile-nav {
+      display: grid;
+    }
+    body {
+      padding-bottom: 74px;
+    }
+    .topbar {
+      padding: 10px 0 8px;
+    }
+    .topbar-inner {
+      padding: 7px 9px;
+      border-radius: var(--r-lg);
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
     }
     .brand-sub {
       display: none;
     }
+    .status-pill {
+      height: 27px;
+      padding: 0 10px;
+      font-size: 11.5px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  @media (max-width: 560px) {
     .topbar-inner {
-      flex-wrap: wrap;
-      row-gap: 8px;
+      gap: 8px;
     }
     .topbar-right {
-      flex: 1 1 auto;
-      min-width: 0;
-      flex-wrap: wrap;
-      justify-content: flex-end;
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 13.5px;
+    }
+    .status-pill span {
+      display: none;
+    }
+    .status-pill {
+      padding: 0 8px;
+    }
+    .topbar-links .icon-btn {
+      width: 26px;
+      height: 26px;
+    }
+    .topbar-sep {
+      margin: 0 2px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mobile-nav {
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 5px;
+    }
+    .mobile-nav a {
+      padding: 6px 1px;
+    }
+    .mobile-nav a svg {
+      width: 17px;
+      height: 17px;
+    }
+    .mobile-nav a span {
+      font-size: 8.5px;
+    }
+    .brand-name {
+      font-size: 13px;
     }
   }
 
@@ -682,10 +787,27 @@
   }
   @media (max-width: 640px) {
     .metrics {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 12px 13px;
     }
     .metric-value {
-      font-size: 28px;
+      font-size: 24px;
+      margin: 8px 0 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+    }
+    .metric-foot {
+      font-size: 10.5px;
+    }
+  }
+  @media (max-width: 400px) {
+    .metrics {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -896,6 +1018,35 @@
     border-color: var(--acc);
     color: var(--acc-fg);
     font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
+    color: var(--ok);
+  }
+  .check-tag.warn {
+    color: var(--warn);
+  }
+  .check-tag.bad {
+    color: var(--bad);
+  }
+  .check-tag.unknown {
+    color: var(--fg-3);
+    opacity: .55;
   }
 
   /* ui/components/form.css */
@@ -1199,6 +1350,59 @@
     font-size: 11.5px;
     color: var(--fg);
   }
+  .feed {
+    position: relative;
+  }
+  .feed-day {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px var(--pad) 8px 44px;
+    background:
+      linear-gradient(
+        180deg,
+        var(--surf) 62%,
+        transparent);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .feed-day span {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    border: 1px solid var(--line-2);
+  }
+  .feed-item {
+    position: relative;
+    padding-left: 44px;
+  }
+  .feed-item::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  .feed-item:last-child::before {
+    bottom: 50%;
+  }
+  .feed-dot {
+    position: absolute;
+    left: 17px;
+    top: 15px;
+    margin: 0;
+    z-index: 1;
+    box-shadow: 0 0 0 3px var(--surf);
+  }
+  .feed-item:hover .feed-dot {
+    box-shadow: 0 0 0 3px var(--surf-2);
+  }
 
   /* ui/components/topology.css */
   .topo {
@@ -1409,6 +1613,190 @@
     font-size: 10.5px;
     color: var(--fg-3);
     margin-top: 2px;
+  }
+  .pair-list {
+    display: block;
+  }
+  .pair-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    transition: background .12s ease;
+  }
+  .pair-card:last-child {
+    border-bottom: 0;
+  }
+  .pair-card:hover {
+    background: var(--surf-2);
+  }
+  .pair-card.live {
+    box-shadow: inset 3px 0 0 var(--ok);
+  }
+  .pair-card.sick {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  .pair-card.nodns {
+    box-shadow: inset 3px 0 0 var(--bad);
+  }
+  .pair-card.ghost {
+    opacity: .72;
+  }
+  .pair-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pair-sub {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pair-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .pair-link::before,
+  .pair-link::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    height: 1.5px;
+    background: var(--line-strong);
+  }
+  .pair-link::before {
+    left: 0;
+    right: 58%;
+  }
+  .pair-link::after {
+    left: 58%;
+    right: 0;
+  }
+  .pair-card.live .pair-link::before,
+  .pair-card.live .pair-link::after {
+    background: var(--ok);
+    opacity: .7;
+  }
+  .pair-card.sick .pair-link::before,
+  .pair-card.sick .pair-link::after {
+    background: var(--warn);
+    opacity: .7;
+  }
+  .pair-card.ghost .pair-link::before,
+  .pair-card.ghost .pair-link::after {
+    display: none;
+  }
+  .pair-card.nodns .pair-link::after {
+    display: none;
+  }
+  .pair-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    position: relative;
+    z-index: 1;
+  }
+  .pair-cname {
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .06em;
+    color: var(--info);
+    background: var(--surf);
+    padding: 0 4px;
+    position: relative;
+    z-index: 1;
+    white-space: nowrap;
+  }
+  .pair-broken {
+    color: var(--bad);
+    font-size: 13px;
+    background: var(--surf);
+    padding: 0 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .ttl-ring {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    z-index: 1;
+    background: var(--surf);
+    border-radius: 50%;
+  }
+  .ttl-ring.ok {
+    color: var(--ok);
+  }
+  .ttl-ring.warn {
+    color: var(--warn);
+  }
+  .ttl-ring.bad {
+    color: var(--bad);
+  }
+  .ttl-ring b {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--fg-2);
+    letter-spacing: -.02em;
+  }
+  .pair-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: none;
+  }
+  .pair-clients {
+    text-align: right;
+  }
+  .pair-clients b {
+    display: block;
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  .pair-clients span {
+    font-size: 10.5px;
+    color: var(--fg-3);
+  }
+  @media (max-width: 820px) {
+    .pair-card {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 12px;
+    }
+    .pair-link {
+      grid-row: 1 / 3;
+      grid-column: 2;
+    }
+    .pair-link::before,
+    .pair-link::after {
+      display: none;
+    }
+    .pair-node {
+      grid-column: 1;
+    }
+    .pair-meta {
+      grid-column: 1 / -1;
+      justify-content: space-between;
+    }
+    .pair-card {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
   }
 
   /* ui/components/misc.css */
@@ -2076,6 +2464,311 @@
       animation: none;
     }
   }
+  .node-list {
+    display: block;
+  }
+  .node-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px var(--pad) 8px;
+    background: var(--surf-2);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .node-group .dim {
+    letter-spacing: .02em;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .node-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    cursor: pointer;
+    transition: background .12s ease;
+  }
+  .node-card:last-child {
+    border-bottom: 0;
+  }
+  .node-card:hover {
+    background: var(--surf-2);
+  }
+  .node-card.master {
+    background: color-mix(in srgb, var(--gold) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  .node-card.master:hover {
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .node-card.master {
+      background: var(--gold-soft);
+    }
+  }
+  .node-main {
+    min-width: 0;
+  }
+  .node-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .node-id {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .node-sub {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .node-problem {
+    color: var(--bad);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .node-side {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: none;
+  }
+  .node-clients {
+    text-align: right;
+  }
+  .node-clients-v {
+    display: block;
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  .node-clients-l {
+    font-size: 10.5px;
+    color: var(--fg-3);
+  }
+  .node-meter {
+    min-width: 140px;
+  }
+  .node-more {
+    grid-column: 1 / -1;
+    display: none;
+    gap: 10px 26px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .node-card.open .node-more {
+    display: flex;
+  }
+  .node-more .kv-v.late {
+    color: var(--bad);
+  }
+  .node-more .node-open {
+    margin-left: auto;
+  }
+  .node-card.quar {
+    cursor: pointer;
+  }
+  .node-card.quar .node-sub {
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .node-card {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .node-side {
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .node-meter {
+      min-width: 0;
+      flex: 1;
+    }
+    .node-problem {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .node-group,
+    .node-card {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .node-more .node-open {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+  .capacity {
+    padding: 16px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .cap-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .cap-title {
+    font-size: 12.5px;
+    font-weight: 620;
+  }
+  .cap-nums {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--fg-2);
+  }
+  .cap-nums b {
+    color: var(--fg);
+    font-weight: 640;
+    font-size: 13px;
+  }
+  .cap-bar {
+    height: 10px;
+    border-radius: var(--r-pill);
+    background: var(--surf-3);
+    overflow: hidden;
+  }
+  .cap-fill {
+    height: 100%;
+    border-radius: inherit;
+    transition: width .3s ease;
+    background: var(--ok);
+  }
+  .cap-fill.warn {
+    background: var(--warn);
+  }
+  .cap-fill.over {
+    background: var(--bad);
+  }
+  .cap-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 11.5px;
+  }
+  .cap-verdict {
+    color: var(--fg-2);
+  }
+  .cap-verdict.ok {
+    color: var(--ok);
+  }
+  .cap-verdict.warn {
+    color: var(--warn);
+  }
+  .cap-state {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    font-size: 10.5px;
+    font-weight: 640;
+  }
+  .cap-state.on {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .cap-state.off {
+    background: var(--surf-2);
+    color: var(--fg-3);
+  }
+  .srmd-list {
+    display: block;
+  }
+  .srmd-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 13px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .srmd-card:last-child {
+    border-bottom: 0;
+  }
+  .srmd-card:hover {
+    background: var(--surf-2);
+  }
+  .srmd-card.folded {
+    opacity: .68;
+  }
+  .srmd-top {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .srmd-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .srmd-sub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
+  .srmd-clients {
+    text-align: right;
+  }
+  .srmd-clients b {
+    display: block;
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  .srmd-clients b i {
+    font-style: normal;
+    color: var(--fg-3);
+  }
+  .srmd-clients span {
+    font-size: 10.5px;
+    color: var(--fg-3);
+  }
+  @media (max-width: 720px) {
+    .capacity,
+    .srmd-card {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .srmd-card {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .srmd-ctl {
+      grid-column: 1 / -1;
+    }
+    .srmd-ctl .btn {
+      width: 100%;
+    }
+    .cap-nums {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
 </style>
 </head>
 <body>
@@ -2167,30 +2860,15 @@
           <h2>Карантин · Globalping</h2>
           <span class="hint">всё зелёное, кроме globalping — бан по IP после исчерпания попыток</span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr><th>Нода</th><th>Адрес</th><th>В карантине с</th><th>Попытка</th><th>Решение</th></tr></thead>
-            <tbody id="quar-body"></tbody>
-          </table>
-        </div>
+        <div class="node-list" id="quar-body"></div>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Ноды пула</h2>
-          <span class="hint" id="nodes-hint"></span>
-          <span class="hint row-hint">клик по строке — статистика ноды</span>
+          <span class="hint" id="nodes-hint" style="margin-left:0"></span>
+          <span class="hint row-hint">клик по строке — подробности, двойной — статистика ноды</span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr>
-              <th>Нода</th><th>Адрес</th><th>Роль</th><th>TCP</th><th>Globalping</th><th>Metrics</th>
-              <th>Доступность</th><th class="num">Клиенты</th><th>Heartbeat</th><th>Отчёт</th>
-              <th>Мастерство</th><th>Статус / ошибка</th>
-            </tr></thead>
-            <tbody id="nodes-body"></tbody>
-          </table>
-        </div>
+        <div class="node-list" id="nodes-body"></div>
       </section>
     </section>
 
@@ -2204,8 +2882,7 @@
     <section class="view" id="view-dns" hidden>
       <section class="card">
         <div class="card-head">
-          <h2>Назначения доменов</h2>
-          <span class="hint" id="dns-hint"></span>
+          <span class="hint" id="dns-hint" style="margin-left:0"></span>
           <button class="btn sm" style="margin-left:auto" id="s-dns-push2">Перезаписать DNS сейчас</button>
         </div>
         <div id="masters-full"></div>
@@ -2216,15 +2893,9 @@
     <section class="view" id="view-srmd" hidden>
       <section class="card">
         <div class="card-head">
-          <h2>Домены · активные клиенты</h2>
-          <span class="hint" id="srmd-hint"></span>
+          <span class="hint" id="srmd-hint" style="margin-left:0"></span>
         </div>
-        <div class="table-wrap">
-          <table class="table-cards">
-            <thead><tr><th>Домен</th><th class="num">Активные клиенты</th><th>DNS-запись</th><th>Мастер</th><th>Управление</th></tr></thead>
-            <tbody id="srmd-body"></tbody>
-          </table>
-        </div>
+        <div id="srmd-body"></div>
         <div class="card-note">Клиенты считаются по общему секрету (только пользователи из <span class="mono">shared_proxy.users</span>).
           Звёздочкой помечены последние известные значения: живой мастер домена сейчас не присылает метрику.
           Ручной домен можно насильно отдать под контроль СРМД (кнопка «под СРМД») — тогда он сможет сворачиваться
@@ -2288,6 +2959,17 @@
 
   <footer class="page-foot">sharedd Registry · обновление каждые 5 с · <span id="last-upd">ещё не обновлялось</span></footer>
 </div>
+
+<!-- Нижняя панель вкладок: на узких экранах верхняя капсула прячется,
+     и без неё переключать разделы было нечем. -->
+<nav class="mobile-nav glass">
+  <a href="#/overview" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Обзор</span></a>
+  <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Ноды</span></a>
+  <a href="#/dns" data-view="dns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><span>DNS</span></a>
+  <a href="#/srmd" data-view="srmd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>СРМД</span></a>
+  <a href="#/events" data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Журнал</span></a>
+  <a href="#/settings" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Настройки</span></a>
+</nav>
 
 <div id="toast"></div>
 
@@ -2475,18 +3157,45 @@
   }
 
   // ui/pages/panel/views/overview.ts
+  var CLIENTS_HISTORY_MAX = 72;
+  var clientsHistory = [];
+  function pushClients(v) {
+    if (v === null || v === void 0) return;
+    clientsHistory.push(v);
+    if (clientsHistory.length > CLIENTS_HISTORY_MAX) clientsHistory.shift();
+  }
+  function sparkArea(values) {
+    if (values.length < 2) return "";
+    const w = 140, h = 26;
+    const min = Math.min(...values), max = Math.max(...values), span = max - min;
+    const step = w / (values.length - 1);
+    const y = (v) => span === 0 ? h / 2 : h - 4 - (v - min) / span * (h - 8);
+    const pts = values.map((v, i) => `${(i * step).toFixed(1)},${y(v).toFixed(1)}`);
+    const last = pts[pts.length - 1].split(",");
+    return `<svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="mSpark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--acc)" stop-opacity=".34"/>
+      <stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="0,${h} ${pts.join(" ")} ${w},${h}" fill="url(#mSpark)"/>
+    <polyline points="${pts.join(" ")}" fill="none" stroke="var(--acc)" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="2.2" fill="var(--acc)" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+  }
   function renderKpis(o) {
     var _a, _b, _c, _d, _e, _f, _g;
+    pushClients(o.clients_unique_ips_total);
     const c = o.counters || {};
     const masters = o.masters || [];
     const active = masters.filter((m) => !m.cname_target);
     const folded = masters.length - active.length;
     const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
     const dnsErr = (_a = c.dns_errors_total) != null ? _a : 0;
-    const card = (label, iconPath, valueHtml, valueCls, foot) => `
+    const card = (label, iconPath, valueHtml, valueCls, foot, chart = "") => `
     <div class="card metric">
       <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
       <div class="metric-value ${valueCls}">${valueHtml}</div>
+      ${chart}
       <div class="metric-foot">${foot}</div>
     </div>`;
     $("cards").innerHTML = card(
@@ -2512,7 +3221,8 @@
       ICONS.users,
       `${fmtNum(o.clients_unique_ips_total)}`,
       "",
-      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${(_b = o.writers_active_total) != null ? _b : 0}`
+      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${(_b = o.writers_active_total) != null ? _b : 0}`,
+      sparkArea(clientsHistory)
     ) + card(
       "Смен мастера",
       ICONS.swap,
@@ -2743,10 +3453,6 @@
   }
 
   // ui/pages/panel/views/nodes.ts
-  function chip(flag, okText, noText) {
-    if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
-    return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
-  }
   function availColor(p) {
     return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
   }
@@ -2755,46 +3461,118 @@
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
     meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
   };
-  function nodeTypeBadge(t) {
+  function nodeTypeLabel(t) {
     const m = NODE_TYPE_META[t];
-    if (!m) return "";
-    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+    return m ? m.label : "";
   }
-  function quarRowHTML(n) {
-    const age = Math.max(0, Math.round((Date.now() - new Date(n.quarantine.entered_at).getTime()) / 1e3));
-    return `<tr class="clickable" data-id="${esc(n.node_id)}">
-    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
-    <td class="mono" data-label="Адрес">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
-    <td class="mono" data-label="В карантине с">${fmtDur(age)} назад</td>
-    <td data-label="Попытка"><span class="badge bad">${n.quarantine.attempt}/${n.quarantine.max}</span></td>
-    <td class="dim wrap" data-label="Решение">${n.quarantine.reverify ? "перепроверка старого ip — ok вернёт в пул, fail — повторный бан" : "ждём вердикт GP — восстановление или бан по IP"}</td>
-  </tr>`;
+  function checksHTML(n) {
+    var _a;
+    const tag = (label, state3, title) => `<span class="check-tag ${state3}" title="${esc(title)}">${label}</span>`;
+    const st = (flag) => flag === null || flag === void 0 ? "unknown" : flag ? "ok" : "bad";
+    const gpTitle = n.gp_checks_total > 0 ? `последняя верификация ${(n.globalping_ratio * 100).toFixed(0)}% · успешных за всё время ${n.gp_verified_pct.toFixed(0)}%` : "верификаций ещё не было";
+    const mStreak = n.metrics_fail_streak || 0;
+    const mTitle = `серия падений ${mStreak} · последний отчёт: ${n.metrics_ok ? "ok" : "FAIL"}`;
+    return `<span class="checks">
+    ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
+    ${tag("GP", st(n.globalping_ok), gpTitle)}
+    ${tag("METRICS", st((_a = n.metrics_healthy) != null ? _a : n.metrics_ok), mTitle)}
+  </span>`;
   }
-  function nodeRowHTML(n) {
-    var _a, _b, _c;
-    const avail = (_a = n.availability_pct) != null ? _a : 0;
-    const gpTxt = n.gp_checks_total > 0 ? `${chip(n.globalping_ok)} <span class="dim mono" title="последняя верификация · % успешных за всё время">${(n.globalping_ratio * 100).toFixed(0)}% · вериф. ${n.gp_verified_pct.toFixed(0)}%</span>` : chip(n.globalping_ok);
-    const clients = (_b = n.clients_unique_ips) != null ? _b : null;
-    const clientsCell = clients === null ? `<span class="dim">—</span>` : `<span class="num">${fmtNum(clients)}</span>`;
-    const status = n.is_master && n.queue_position === 0 ? `<span style="color:var(--bad)">мастер, но вне очереди!</span>` : n.unhealthy_reason ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.unhealthy_reason)}">${esc(n.unhealthy_reason)}</span>` : n.report_error ? `<span class="node-status" style="color:var(--bad)" title="${esc(n.report_error)}">${esc(n.report_error)}</span>` : `<span class="dim">—</span>`;
+  function roleHTML(n) {
     const mdoms = n.master_domains || [];
-    const role = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info">#${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
-    const typeBadge = nodeTypeBadge(n.node_type);
-    return `<tr class="clickable${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}">
-    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
-    <td class="mono" data-label="Адрес">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
-    <td data-label="Роль">${role}</td>
-    <td data-label="TCP">${chip(n.healthy)}</td>
-    <td class="nowrap" data-label="Globalping">${gpTxt}</td>
-    <td data-label="Metrics"><span title="серия падений ${n.metrics_fail_streak || 0} · последний отчёт: ${n.metrics_ok ? "ok" : "FAIL"}">${chip((_c = n.metrics_healthy) != null ? _c : n.metrics_ok, "metrics ok", "metrics fail")}</span></td>
-    <td data-label="Доступность"><div class="meter"><div class="meter-track"><div class="meter-fill ${availColor(avail)}" style="width:${avail}%"></div></div><span class="meter-value">${avail.toFixed(1)}%</span></div></td>
-    <td class="num" data-label="Клиенты">${clientsCell}</td>
-    <td class="mono" data-label="Heartbeat" style="${n.heartbeat_age_sec > 45 ? "color:var(--bad)" : ""}">${fmtDur(n.heartbeat_age_sec)} назад</td>
-    <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
-    <td class="mono" data-label="Мастерство">${n.master_stints > 0 ? fmtDur(n.master_time_sec) + " · ×" + n.master_stints : "—"}</td>
-    <td data-label="Статус / ошибка">${status}${typeBadge ? " " + typeBadge : ""}</td>
-  </tr>`;
+    if (n.is_master) {
+      return `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>`;
+    }
+    return n.queue_position > 0 ? `<span class="badge info">#${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
   }
+  function problemHTML(n) {
+    if (n.is_master && n.queue_position === 0) {
+      return `<span class="node-problem">мастер, но вне очереди!</span>`;
+    }
+    const text = n.unhealthy_reason || n.report_error || "";
+    return text ? `<span class="node-problem" title="${esc(text)}">${esc(text)}</span>` : "";
+  }
+  function nodeCardHTML(n) {
+    var _a, _b, _c, _d, _e;
+    const avail = (_a = n.availability_pct) != null ? _a : 0;
+    const clients = (_b = n.clients_unique_ips) != null ? _b : null;
+    const type = nodeTypeLabel(n.node_type);
+    const hbLate = n.heartbeat_age_sec > 45;
+    return `<div class="node-card${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}">
+    <div class="node-main">
+      <div class="node-top">
+        <span class="node-id mono" title="${esc(n.node_id)}">${esc(n.node_id)}</span>
+        ${roleHTML(n)}
+      </div>
+      <div class="node-sub">
+        <span class="mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span>
+        ${type ? `<span class="dim">${esc(type)}</span>` : ""}
+        ${checksHTML(n)}
+        ${problemHTML(n)}
+      </div>
+    </div>
+
+    <div class="node-side">
+      <div class="node-clients">
+        <span class="node-clients-v">${clients === null ? "—" : fmtNum(clients)}</span>
+        <span class="node-clients-l">клиентов</span>
+      </div>
+      <div class="meter node-meter">
+        <div class="meter-track"><div class="meter-fill ${availColor(avail)}" style="width:${avail}%"></div></div>
+        <span class="meter-value">${avail.toFixed(1)}%</span>
+      </div>
+    </div>
+
+    <div class="node-more">
+      <div class="kv"><span class="kv-k">Мастерство</span><span class="kv-v">${n.master_stints > 0 ? fmtDur(n.master_time_sec) + " · ×" + n.master_stints : "—"}</span></div>
+      <div class="kv"><span class="kv-k">Heartbeat</span><span class="kv-v${hbLate ? " late" : ""}">${fmtDur(n.heartbeat_age_sec)} назад</span></div>
+      <div class="kv"><span class="kv-k">Отчёт</span><span class="kv-v">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</span></div>
+      <div class="kv"><span class="kv-k">Отчётов ok</span><span class="kv-v">${fmtNum((_c = n.reports_ok) != null ? _c : 0)} / ${fmtNum((_d = n.reports_total) != null ? _d : 0)}</span></div>
+      <div class="kv"><span class="kv-k">Верификаций GP</span><span class="kv-v">${(_e = n.gp_checks_total) != null ? _e : 0}${n.gp_checks_total ? ` · успешных ${n.gp_verified_pct.toFixed(0)}%` : ""}</span></div>
+      <div class="kv"><span class="kv-k">Зарегистрирована</span><span class="kv-v">${esc(n.registered_at ? String(n.registered_at).slice(0, 16).replace("T", " ") : "—")}</span></div>
+      <a class="btn sm node-open" href="#/nodes/${encodeURIComponent(n.node_id)}">Статистика ноды →</a>
+    </div>
+  </div>`;
+  }
+  function quarCardHTML(n) {
+    const age = Math.max(0, Math.round((Date.now() - new Date(n.quarantine.entered_at).getTime()) / 1e3));
+    const verdict = n.quarantine.reverify ? "перепроверка старого ip — ok вернёт в пул, fail — повторный бан" : "ждём вердикт GP — восстановление или бан по IP";
+    return `<div class="node-card quar" data-id="${esc(n.node_id)}">
+    <div class="node-main">
+      <div class="node-top">
+        <span class="node-id mono" title="${esc(n.node_id)}">${esc(n.node_id)}</span>
+        <span class="badge bad">попытка ${n.quarantine.attempt}/${n.quarantine.max}</span>
+      </div>
+      <div class="node-sub">
+        <span class="mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span>
+        <span class="dim">в карантине ${fmtDur(age)}</span>
+        <span class="dim">${verdict}</span>
+      </div>
+    </div>
+  </div>`;
+  }
+  function init() {
+    const onClick = (e) => {
+      const t = e.target;
+      if (t.closest("a")) return;
+      const card = t.closest(".node-card[data-id]");
+      if (!card) return;
+      const id = card.dataset.id;
+      if (card.classList.contains("quar")) {
+        location.hash = "#/nodes/" + encodeURIComponent(id);
+        return;
+      }
+      card.classList.toggle("open");
+      openIds.has(id) ? openIds.delete(id) : openIds.add(id);
+    };
+    $("nodes-body").addEventListener("click", onClick);
+    $("quar-body").addEventListener("click", onClick);
+    $("nodes-body").addEventListener("dblclick", (e) => {
+      const card = e.target.closest(".node-card[data-id]");
+      if (card) location.hash = "#/nodes/" + encodeURIComponent(card.dataset.id);
+    });
+  }
+  var openIds = /* @__PURE__ */ new Set();
   function render2(o) {
     const domMap = (o.masters || []).map((m) => `${m.domain}→${m.ip || "—"}`).join(", ");
     const all = o.nodes || [];
@@ -2802,39 +3580,33 @@
     const main = all.filter((n) => !n.quarantine);
     $("nodes-hint").textContent = `${o.nodes_total} нод${quar.length ? " · карантин: " + quar.length : ""} · DNS: ${domMap || o.domains.join(", ")}`;
     $("quar-block").hidden = quar.length === 0;
-    if (quar.length) $("quar-body").innerHTML = quar.map(quarRowHTML).join("");
+    if (quar.length) $("quar-body").innerHTML = quar.map(quarCardHTML).join("");
     const body = $("nodes-body");
     if (main.length === 0) {
-      body.innerHTML = `<tr><td colspan="12" class="table-empty">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст — ноды регистрируются через POST /register"}</td></tr>`;
+      body.innerHTML = `<div class="empty-state"><span class="t">${quar.length ? "Активных нод нет — все в карантине" : "Пул пуст"}</span><span class="s">${quar.length ? "" : "Ноды регистрируются через POST /register."}</span></div>`;
       return;
     }
     const masters = main.filter((n) => n.is_master);
     const queued = main.filter((n) => !n.is_master && n.queue_position > 0).sort((a, b) => a.queue_position - b.queue_position);
     const rest = main.filter((n) => !n.is_master && !(n.queue_position > 0));
-    const group = (title, note) => `<tr class="group-row"><td colspan="12"><span>${title}</span><span class="dim">${note}</span></td></tr>`;
+    const group = (title, note) => `<div class="node-group"><span>${title}</span><span class="dim">${note}</span></div>`;
     let html = "";
     if (masters.length) {
       html += group("Мастера доменов", `${masters.length} · держат A-записи`);
-      html += masters.map(nodeRowHTML).join("");
+      html += masters.map(nodeCardHTML).join("");
     }
     if (queued.length) {
       html += group("Очередь здоровья", `${queued.length} · следующие кандидаты в мастера`);
-      html += queued.map(nodeRowHTML).join("");
+      html += queued.map(nodeCardHTML).join("");
     }
     if (rest.length) {
       html += group("Вне очереди", `${rest.length} · не участвуют в выборе мастера`);
-      html += rest.map(nodeRowHTML).join("");
+      html += rest.map(nodeCardHTML).join("");
     }
     body.innerHTML = html;
-  }
-  function init() {
-    $("nodes-body").addEventListener("click", (e) => {
-      const tr = e.target.closest("tr[data-id]");
-      if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
-    });
-    $("quar-body").addEventListener("click", (e) => {
-      const tr = e.target.closest("tr[data-id]");
-      if (tr) location.hash = "#/nodes/" + encodeURIComponent(tr.dataset.id);
+    openIds.forEach((id) => {
+      const el = body.querySelector(`.node-card[data-id="${CSS.escape(id)}"]`);
+      if (el) el.classList.add("open");
     });
   }
 
@@ -2903,12 +3675,32 @@
     </div>
   </li>`;
   }
+  function dayLabel(iso) {
+    const d = new Date(iso);
+    const today = /* @__PURE__ */ new Date();
+    const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    if (same(d, today)) return "Сегодня";
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    if (same(d, y)) return "Вчера";
+    return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" });
+  }
   function renderInto(el, list) {
     if (!list || list.length === 0) {
-      el.innerHTML = `<li class="table-empty">Событий пока нет</li>`;
+      el.innerHTML = `<li class="empty-state"><span class="t">Событий пока нет</span></li>`;
       return;
     }
-    el.innerHTML = list.map(renderEventRow).join("");
+    let html = "";
+    let day = "";
+    for (const ev of list) {
+      const d = dayLabel(ev.at);
+      if (d !== day) {
+        day = d;
+        html += `<li class="feed-day"><span>${esc(day)}</span></li>`;
+      }
+      html += renderEventRow(ev);
+    }
+    el.innerHTML = html;
   }
   function eventMatchesSearch(ev, q) {
     if (!q) return true;
@@ -2956,7 +3748,7 @@
   }
 
   // ui/pages/panel/views/node.ts
-  function chip2(flag, okText, noText) {
+  function chip(flag, okText, noText) {
     if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
     return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
   }
@@ -2965,7 +3757,7 @@
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
     meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
   };
-  function nodeTypeBadge2(t) {
+  function nodeTypeBadge(t) {
     const m = NODE_TYPE_META2[t];
     if (!m) return "";
     return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
@@ -3027,8 +3819,8 @@
     const roleChip = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info">очередь #${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
     const hcFail = d.hc && d.hc.fail_threshold || "?";
     const mStreak = n.metrics_fail_streak || 0;
-    const mChip = chip2((_b = n.metrics_healthy) != null ? _b : n.metrics_ok, "metrics ok", "metrics fail") + (mStreak > 0 ? ` <span class="dim" style="font-size:11px">серия ${mStreak}/${hcFail}</span>` : "");
-    const chips = [chip2(n.healthy, "TCP ok", "TCP fail"), chip2(n.globalping_ok, "GP ok", "GP fail"), mChip, roleChip, nodeTypeBadge2(n.node_type)].join(" ");
+    const mChip = chip((_b = n.metrics_healthy) != null ? _b : n.metrics_ok, "metrics ok", "metrics fail") + (mStreak > 0 ? ` <span class="dim" style="font-size:11px">серия ${mStreak}/${hcFail}</span>` : "");
+    const chips = [chip(n.healthy, "TCP ok", "TCP fail"), chip(n.globalping_ok, "GP ok", "GP fail"), mChip, roleChip, nodeTypeBadge(n.node_type)].join(" ");
     const reason = n.unhealthy_reason ? `<div class="nd-reason">${esc(n.unhealthy_reason)}</div>` : "";
     const statDefs = [
       {
@@ -3059,7 +3851,7 @@
       gpSide = `<div class="gp-summary">
       <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
       <div class="gp-facts">
-        <div>${chip2(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
         <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
         <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
         <div class="kv"><span class="kv-k">measurement</span><span class="kv-v mono">${esc(gp.measurement_id)}</span></div>
@@ -3068,7 +3860,7 @@
     } else {
       gpSide = `<div class="gp-summary">
       <div class="gp-facts">
-        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip2(n.globalping_ok)}</span></div>
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip(n.globalping_ok)}</span></div>
         ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
         <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
       </div>
@@ -3081,7 +3873,7 @@
           <td class="mono dim" data-label="Сеть">${esc(p.network || "—")}${p.asn ? " (AS" + p.asn + ")" : ""}</td>
           <td class="mono" data-label="Статус пробы">${esc(p.status || "—")}</td>
           <td class="mono" data-label="HTTP">${p.http_code || "—"}</td>
-          <td data-label="Итог">${chip2(p.ok)}</td>
+          <td data-label="Итог">${chip(p.ok)}</td>
         </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">строк проб нет${gp ? " (measurement ещё выполнялся, когда его скачали)" : ""}</div>`;
     const tcpHist = d.tcp_hist || [];
     const tcpTicks = tcpHist.slice(-96).map((p) => `<div class="tick ${p.ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — ${p.ok ? "ok" : "FAIL"}"></div>`).join("");
@@ -3146,60 +3938,74 @@
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
     meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
   };
-  function nodeTypeBadge3(t) {
+  function nodeTypeBadge2(t) {
     const m = NODE_TYPE_META3[t];
     if (!m) return "";
     return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
   }
-  function masterRowHTML(m) {
+  function ttlRing(m) {
+    if (!(m.ttl_sec > 0)) return `<span class="pair-dot"></span>`;
+    const expired = m.ttl_remaining_sec < 0;
+    const left = Math.max(0, m.ttl_remaining_sec);
+    const frac = expired ? 0 : Math.min(1, left / m.ttl_sec);
+    const r = 15, c = 2 * Math.PI * r;
+    const label = expired ? "!" : fmtTtlMin(Math.round(left / 60));
+    const cls = expired ? "bad" : frac < 0.2 ? "warn" : "ok";
+    return `<span class="ttl-ring ${cls}" title="осталось мастерства: ${expired ? "лимит истёк" : label} из ${fmtTtlMin(m.ttl_sec / 60)}">
+    <svg width="36" height="36" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--surf-3)" stroke-width="2.5"/>
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" transform="rotate(-90 18 18)"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(1)}"/>
+    </svg>
+    <b>${esc(label)}</b>
+  </span>`;
+  }
+  function pairHTML(m) {
     if (m.cname_target) {
-      return `<tr>
-      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-      <td class="mono" data-label="Назначение">CNAME → ${esc(m.cname_target)}${m.clients != null ? " · клиентов: " + m.clients : ""}</td>
-      <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
-      <td data-label="TTL"><span class="dim">—</span></td>
-      <td data-label="Статус"><span class="badge">свёрнут СРМД</span></td>
-    </tr>`;
+      return `<div class="pair-card ghost">
+      <div class="pair-domain">
+        <div class="pair-name mono dim">${esc(m.domain)}</div>
+        <div class="pair-sub">свёрнут СРМД${m.clients != null ? " · клиентов: " + m.clients : ""}</div>
+      </div>
+      <div class="pair-link"><span class="pair-cname">CNAME →</span></div>
+      <div class="pair-node">
+        <div class="pair-name mono">${esc(m.cname_target)}</div>
+        <div class="pair-sub">домен-приёмник</div>
+      </div>
+      <div class="pair-meta"><span class="badge">свёрнут</span></div>
+    </div>`;
     }
     if (!m.node_id) {
-      return `<tr>
-      <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-      <td data-label="Назначение"><span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span></td>
-      <td class="num" data-label="Клиенты"><span class="dim">—</span></td>
-      <td data-label="TTL"><span class="dim">—</span></td>
-      <td data-label="Статус"><span class="badge bad">нет DNS</span></td>
-    </tr>`;
+      return `<div class="pair-card nodns">
+      <div class="pair-domain">
+        <div class="pair-name mono">${esc(m.domain)}</div>
+        <div class="pair-sub" style="color:var(--bad)">A-записи нет</div>
+      </div>
+      <div class="pair-link"><span class="pair-broken">✕</span></div>
+      <div class="pair-node">
+        <div class="pair-name dim">мастер не назначен</div>
+        <div class="pair-sub">ждёт здоровую ноду из очереди</div>
+      </div>
+      <div class="pair-meta"><span class="badge bad">нет DNS</span></div>
+    </div>`;
     }
     const dead = !!m.dead;
-    let ttlChip = `<span class="dim">—</span>`;
-    if (m.ttl_sec > 0) {
-      if (m.ttl_remaining_sec < 0) {
-        ttlChip = `<span class="badge bad">TTL истёк</span>`;
-      } else {
-        const usedMin = Math.max(0, Math.round((m.ttl_sec - m.ttl_remaining_sec) / 60));
-        ttlChip = `<span class="badge">${fmtTtlMin(usedMin)} / ${fmtTtlMin(m.ttl_sec / 60)}</span>`;
-      }
-    }
-    return `<tr>
-    <td class="mono" data-label="Домен">${esc(m.domain)}</td>
-    <td class="mono" data-label="Назначение">A → ${esc(m.ip || "?")} · ${esc(m.node_id)} ${nodeTypeBadge3(m.node_type)}</td>
-    <td class="num" data-label="Клиенты">${m.clients != null ? m.clients : "—"}</td>
-    <td data-label="TTL">${ttlChip}</td>
-    <td data-label="Статус"><span class="badge ${dead ? "bad" : "ok"}">${dead ? "нода нездорова" : "live"}</span></td>
-  </tr>`;
-  }
-  async function dnsPush() {
-    try {
-      const resp = await fetch("/panel/api/dns-push", { method: "POST", headers: { "Authorization": "Bearer " + getToken() } });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      showToast(
-        `DNS-push: ${(data.updated || []).join(", ") || "—"}${(data.errors || []).length ? " · ошибки: " + data.errors.join("; ") : ""}`,
-        (data.errors || []).length > 0 && (data.updated || []).length === 0
-      );
-    } catch (e) {
-      showToast(e.message, true);
-    }
+    return `<div class="pair-card ${dead ? "sick" : "live"}">
+    <div class="pair-domain">
+      <div class="pair-name mono">${esc(m.domain)}</div>
+      <div class="pair-sub mono">A → ${esc(m.ip || "?")}</div>
+    </div>
+    <div class="pair-link">${ttlRing(m)}</div>
+    <div class="pair-node">
+      <div class="pair-name mono">${esc(m.node_id)}</div>
+      <div class="pair-sub">${nodeTypeBadge2(m.node_type)}</div>
+    </div>
+    <div class="pair-meta">
+      <div class="pair-clients"><b>${m.clients != null ? m.clients : "—"}</b><span>клиентов</span></div>
+      <span class="badge ${dead ? "warn" : "ok"}">${dead ? "нода нездорова" : "live"}</span>
+    </div>
+  </div>`;
   }
   function render4(o) {
     const masters = o.masters || [];
@@ -3208,14 +4014,51 @@
     const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
     const ttlNote = (o.master_ttl_sec || 0) > 0 ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60) : " · лимит мастера: выкл";
     $("dns-hint").textContent = masters.length ? `${aliveMs}/${active.length} живых${folded ? " · свёрнуто СРМД: " + folded : ""}${ttlNote}` : "cloudflare.domains пуст";
-    $("masters-full").innerHTML = masters.length === 0 ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>` : `<div class="table-wrap"><table class="table-cards">
-        <thead><tr><th>Домен</th><th>Назначение</th><th class="num">Клиенты</th><th>TTL</th><th>Статус</th></tr></thead>
-        <tbody>${masters.map(masterRowHTML).join("")}</tbody>
-      </table></div>`;
+    $("masters-full").innerHTML = masters.length === 0 ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>` : `<div class="pair-list">${masters.map(pairHTML).join("")}</div>`;
     $("s-dns-push2").onclick = dnsPush;
   }
 
   // ui/pages/panel/views/srmd.ts
+  function capacityHTML(s) {
+    const perDomain = Math.max(1, s.max_nodes_per_domain || 1);
+    const activeDomains = Math.max(0, (s.total_domains || 0) - (s.folded_domains || 0));
+    const capacity = activeDomains * perDomain;
+    const used = s.queue_size || 0;
+    const pct = capacity > 0 ? Math.min(100, used / capacity * 100) : 0;
+    const over = capacity > 0 && used > capacity;
+    const need = Math.max(0, (s.required_domains || 0) - activeDomains);
+    const verdict = over || need > 0 ? `<span class="cap-verdict warn">не хватает доменов: ${need || 1} — ${s.enabled ? "СРМД создаст недостающие" : "создание выключено, нужно включить"}</span>` : activeDomains > (s.required_domains || 0) ? `<span class="cap-verdict">доменов больше, чем нужно — лишние будут свёрнуты в CNAME</span>` : `<span class="cap-verdict ok">вместимости хватает, менять ничего не нужно</span>`;
+    return `<div class="capacity">
+    <div class="cap-head">
+      <span class="cap-title">Вместимость пула</span>
+      <span class="cap-nums"><b>${used}</b> нод в очереди из <b>${capacity}</b>
+        <span class="dim">(${activeDomains} × ${perDomain} на домен)</span></span>
+    </div>
+    <div class="cap-bar"><div class="cap-fill ${over ? "over" : pct > 80 ? "warn" : "ok"}" style="width:${pct.toFixed(1)}%"></div></div>
+    <div class="cap-foot">
+      ${verdict}
+      <span class="cap-state ${s.enabled ? "on" : "off"}">${s.enabled ? "создание разрешено" : "создание выключено"}</span>
+    </div>
+  </div>`;
+  }
+  function domainCardHTML(d) {
+    const origin = d.base ? `<span class="badge gold" title="основной домен СРМД">основной</span>` : d.created ? `<span class="badge info" title="создан СРМД с инкрементом">СРМД</span>` : `<span class="badge" title="добавлен оператором вручную">ручной</span>`;
+    const rec = d.cname ? `<span class="mono dim">CNAME → ${esc(d.cname)}</span>` : d.ip ? `<span class="mono dim">A → ${esc(d.ip)}</span>` : `<span class="badge bad">нет записи</span>`;
+    const master = d.cname ? `<span class="dim">свёрнут</span>` : d.node_id ? `<span class="mono dim" title="${esc(d.node_id)}">${esc(d.node_id)}</span>` : `<span style="color:var(--bad)">нет мастера</span>`;
+    const stale = d.clients != null && !d.fresh;
+    const clients = d.clients == null ? "—" : String(d.clients);
+    const control = d.created ? `<button class="btn sm danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>` : `<button class="btn sm" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
+    return `<div class="srmd-card${d.cname ? " folded" : ""}">
+    <div class="srmd-main">
+      <div class="srmd-top"><span class="mono srmd-name">${esc(d.domain)}</span>${origin}</div>
+      <div class="srmd-sub">${rec}<span class="dim">·</span>${master}</div>
+    </div>
+    <div class="srmd-clients" title="${stale ? "последнее известное значение — живой мастер сейчас не присылает метрику" : "активные клиенты по общему секрету"}">
+      <b>${clients}${stale ? "<i>*</i>" : ""}</b><span>клиентов</span>
+    </div>
+    <div class="srmd-ctl">${control}</div>
+  </div>`;
+  }
   function renderSRMD(o) {
     const s = o.srmd;
     if (!s) return;
@@ -3224,23 +4067,10 @@
     $("srmd-created-list").textContent = created.length ? created.join(", ") : "нет";
     const body = $("srmd-body");
     if (!s.domains || s.domains.length === 0) {
-      body.innerHTML = `<tr><td colspan="5" class="table-empty">Домены не настроены — задайте в «Настройки → Cloudflare DNS»</td></tr>`;
+      body.innerHTML = capacityHTML(s) + `<div class="empty-state"><span class="t">Домены не настроены</span><span class="s">Задайте их в «Настройки → Cloudflare DNS».</span></div>`;
       return;
     }
-    body.innerHTML = s.domains.map((d) => {
-      const origin = d.base ? `<span class="badge gold" title="основной домен СРМД">основной</span>` : d.created ? `<span class="badge info" title="создан СРМД с инкрементом">СРМД</span>` : `<span class="badge" title="добавлен оператором вручную">ручной</span>`;
-      const rec = d.cname ? `<span class="badge" title="домен свёрнут СРМД">CNAME → ${esc(d.cname)}</span>` : d.ip ? `<span class="mono">A → ${esc(d.ip)}</span>` : `<span class="badge bad">нет записи</span>`;
-      const master = d.cname ? `<span class="dim">— свёрнут</span>` : d.node_id ? `<span class="mono" title="${esc(d.node_id)}">${esc(d.node_id)}</span>` : `<span class="dim">нет мастера</span>`;
-      const clients = d.clients == null ? `<span class="dim">—</span>` : `${d.clients}${d.fresh ? "" : ` <span class="dim" title="последнее известное значение — живой мастер сейчас не присылает метрику">*</span>`}`;
-      const control = d.created ? `<button class="btn sm danger" data-srmd-release="${esc(d.domain)}" title="СРМД перестанет сворачивать этот домен${d.cname ? "; домен будет развёрнут" : ""}">в ручной</button>` : `<button class="btn sm" data-srmd-take="${esc(d.domain)}" title="Отдать домен под контроль СРМД: сможет сворачиваться в CNAME при сжатии пула">под СРМД</button>`;
-      return `<tr>
-      <td class="mono" data-label="Домен">${esc(d.domain)} ${origin}</td>
-      <td class="mono num" data-label="Активные клиенты">${clients}</td>
-      <td data-label="DNS-запись">${rec}</td>
-      <td data-label="Мастер">${master}</td>
-      <td data-label="Управление">${control}</td>
-    </tr>`;
-    }).join("");
+    body.innerHTML = capacityHTML(s) + `<div class="srmd-list">${s.domains.map(domainCardHTML).join("")}</div>`;
   }
   async function srmdDomainAction(domain, action) {
     const resp = await fetch("/panel/api/srmd-domain", {
@@ -3546,7 +4376,6 @@
     events: { title: "Журнал событий" },
     settings: { title: "Настройки" }
   };
-  var WIDE_VIEWS = /* @__PURE__ */ new Set(["nodes", "events", "srmd"]);
   function currentRoute() {
     const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
     if (parts[0] === "nodes" && parts[1]) return { view: "node", id: decodeURIComponent(parts[1]) };
@@ -3557,9 +4386,8 @@
     document.querySelectorAll(".view").forEach((v) => {
       v.hidden = v.id !== "view-" + r.view;
     });
-    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === (r.view === "node" ? "nodes" : r.view)));
+    document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === (r.view === "node" ? "nodes" : r.view)));
     $("view-title").textContent = r.view === "node" ? "Нода · " + r.id : VIEW_META[r.view].title;
-    $("app").classList.toggle("wide", WIDE_VIEWS.has(r.view));
     if (r.view === "node") {
       if (state.nodeId !== r.id) {
         state.nodeId = r.id;

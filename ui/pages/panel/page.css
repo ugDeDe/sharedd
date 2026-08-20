@@ -241,3 +241,123 @@ tbody tr.clickable:hover td:last-child::after {
 @media (prefers-reduced-motion: reduce) {
   #cards:empty, #pool-stats:empty, #topology:empty, #masters-full:empty { animation: none; }
 }
+
+/* ═══ Карточка-строка ноды ═════════════════════════════════════════════
+   Таблица на двенадцать колонок не помещалась в экран и читалась как
+   простыня. Здесь каждая нода — объект: сверху кто и какая роль, снизу
+   адрес, тип и три проверки, справа клиенты и доступность. Редкое
+   (мастерство, heartbeat, отчёты) раскрывается по клику. */
+.node-list { display: block; }
+.node-group {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 12px var(--pad) 8px; background: var(--surf-2);
+  border-bottom: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-2);
+}
+.node-group .dim { letter-spacing: .02em; text-transform: none; font-weight: 500; }
+
+.node-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 6px 18px;
+  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
+  cursor: pointer; transition: background .12s ease;
+}
+.node-card:last-child { border-bottom: 0; }
+.node-card:hover { background: var(--surf-2); }
+.node-card.master {
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.node-card.master:hover { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .node-card.master { background: var(--gold-soft); }
+}
+
+.node-main { min-width: 0; }
+.node-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.node-id { font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.node-sub {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 5px; font-size: 11.5px; color: var(--fg-3);
+}
+.node-problem {
+  color: var(--bad); max-width: 320px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.node-side { display: flex; align-items: center; gap: 20px; flex: none; }
+.node-clients { text-align: right; }
+.node-clients-v { display: block; font-size: 15px; font-weight: 640; letter-spacing: -.02em; }
+.node-clients-l { font-size: 10.5px; color: var(--fg-3); }
+.node-meter { min-width: 140px; }
+
+/* раскрытие */
+.node-more {
+  grid-column: 1 / -1; display: none;
+  gap: 10px 26px; flex-wrap: wrap; align-items: center;
+  margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.node-card.open .node-more { display: flex; }
+.node-more .kv-v.late { color: var(--bad); }
+.node-more .node-open { margin-left: auto; }
+
+.node-card.quar { cursor: pointer; }
+.node-card.quar .node-sub { gap: 12px; }
+
+@media (max-width: 720px) {
+  .node-card { grid-template-columns: minmax(0, 1fr); }
+  .node-side { justify-content: space-between; gap: 12px; margin-top: 8px; }
+  .node-meter { min-width: 0; flex: 1; }
+  .node-problem { max-width: 100%; white-space: normal; }
+  .node-group, .node-card { padding-left: 12px; padding-right: 12px; }
+  .node-more .node-open { margin-left: 0; width: 100%; }
+}
+
+/* ═══ СРМД: вместимость и домены ═══════════════════════════════════════
+   Из таблицы не читалось, ПОЧЕМУ система решает создать или свернуть
+   домен. Полоса показывает главное соотношение: сколько нод в очереди
+   против того, сколько их вмещают домены. */
+.capacity { padding: 16px var(--pad); border-bottom: 1px solid var(--line-2); }
+.cap-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.cap-title { font-size: 12.5px; font-weight: 620; }
+.cap-nums { margin-left: auto; font-size: 12px; color: var(--fg-2); }
+.cap-nums b { color: var(--fg); font-weight: 640; font-size: 13px; }
+.cap-bar { height: 10px; border-radius: var(--r-pill); background: var(--surf-3); overflow: hidden; }
+.cap-fill { height: 100%; border-radius: inherit; transition: width .3s ease; background: var(--ok); }
+.cap-fill.warn { background: var(--warn); }
+.cap-fill.over { background: var(--bad); }
+.cap-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11.5px; }
+.cap-verdict { color: var(--fg-2); }
+.cap-verdict.ok { color: var(--ok); }
+.cap-verdict.warn { color: var(--warn); }
+.cap-state { margin-left: auto; padding: 2px 8px; border-radius: var(--r-pill);
+  font-size: 10.5px; font-weight: 640; }
+.cap-state.on { background: var(--ok-soft); color: var(--ok); }
+.cap-state.off { background: var(--surf-2); color: var(--fg-3); }
+
+.srmd-list { display: block; }
+.srmd-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: 16px;
+  padding: 13px var(--pad); border-bottom: 1px solid var(--line-2);
+}
+.srmd-card:last-child { border-bottom: 0; }
+.srmd-card:hover { background: var(--surf-2); }
+.srmd-card.folded { opacity: .68; }
+.srmd-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.srmd-name { font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.srmd-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 4px; font-size: 11.5px; }
+.srmd-clients { text-align: right; }
+.srmd-clients b { display: block; font-size: 15px; font-weight: 640; letter-spacing: -.02em; }
+.srmd-clients b i { font-style: normal; color: var(--fg-3); }
+.srmd-clients span { font-size: 10.5px; color: var(--fg-3); }
+
+@media (max-width: 720px) {
+  .capacity, .srmd-card { padding-left: 12px; padding-right: 12px; }
+  .srmd-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .srmd-ctl { grid-column: 1 / -1; }
+  .srmd-ctl .btn { width: 100%; }
+  .cap-nums { margin-left: 0; width: 100%; }
+}

@@ -78,12 +78,37 @@ function renderEventRow(ev: any): string {
   </li>`;
 }
 
+/* Разделитель дня: «Сегодня» / «Вчера» / дата. */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const same = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (same(d, today)) return "Сегодня";
+  const y = new Date(today); y.setDate(y.getDate() - 1);
+  if (same(d, y)) return "Вчера";
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" });
+}
+
+/* Плоский список превратился в ленту с осью времени: события одного дня
+   собраны под липким разделителем, слева вертикальная линия с точками по
+   семантике события. Данные и порядок прежние. */
 export function renderInto(el: HTMLElement, list: any[]): void {
   if (!list || list.length === 0) {
-    el.innerHTML = `<li class="table-empty">Событий пока нет</li>`;
+    el.innerHTML = `<li class="empty-state"><span class="t">Событий пока нет</span></li>`;
     return;
   }
-  el.innerHTML = list.map(renderEventRow).join("");
+  let html = "";
+  let day = "";
+  for (const ev of list) {
+    const d = dayLabel(ev.at);
+    if (d !== day) {
+      day = d;
+      html += `<li class="feed-day"><span>${esc(day)}</span></li>`;
+    }
+    html += renderEventRow(ev);
+  }
+  el.innerHTML = html;
 }
 
 /* поиск по ключевым словам: каждое слово (через пробел) должно встретиться

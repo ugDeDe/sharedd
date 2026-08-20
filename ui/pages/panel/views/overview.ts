@@ -18,7 +18,55 @@ import { fmtDur, fmtClock, fmtInterval, fmtTtlMin, plural, fmtNum } from "../../
 
 /* ── KPI-стрип ─────────────────────────────────────────────────────── */
 
+/* В /panel/api/overview истории клиентов нет — только текущее значение.
+   Копим её на клиенте между опросами (раз в 5 с), максимум 72 точки ≈ 6 мин.
+   Новых запросов не появляется, при перезагрузке буфер просто пуст. */
+const CLIENTS_HISTORY_MAX = 72;
+const clientsHistory: number[] = [];
+function pushClients(v: number | null | undefined): void {
+  if (v === null || v === undefined) return;
+  clientsHistory.push(v);
+  if (clientsHistory.length > CLIENTS_HISTORY_MAX) clientsHistory.shift();
+}
+
+/* Мини-график в плитке метрики. Берёт историю из того же снимка, новых
+   запросов нет: клиенты — из report_hist всех нод, баны — из статистики. */
+function sparkArea(values: number[]): string {
+  if (values.length < 2) return "";
+  // Шкала по размаху, а не от нуля: у счётчика клиентов колебания малы
+  // относительно самого числа, и от нуля график вырождался в полосу.
+  const w = 140, h = 26;
+  const min = Math.min(...values), max = Math.max(...values), span = max - min;
+  const step = w / (values.length - 1);
+  const y = (v: number) => span === 0 ? h / 2 : h - 4 - ((v - min) / span) * (h - 8);
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${y(v).toFixed(1)}`);
+  const last = pts[pts.length - 1].split(",");
+  return `<svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="mSpark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--acc)" stop-opacity=".34"/>
+      <stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="0,${h} ${pts.join(" ")} ${w},${h}" fill="url(#mSpark)"/>
+    <polyline points="${pts.join(" ")}" fill="none" stroke="var(--acc)" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="2.2" fill="var(--acc)" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function sparkBars(values: number[]): string {
+  if (!values.length) return "";
+  const w = 140, h = 26, max = Math.max(...values, 1), bw = Math.max(3, w / values.length - 3);
+  const step = w / values.length;
+  return `<svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${values.map((v, i) => {
+      const bh = Math.max(2, (v / max) * (h - 4));
+      return `<rect x="${(i * step).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}"
+        height="${bh.toFixed(1)}" rx="1.5" fill="var(--bad)" opacity=".8"/>`;
+    }).join("")}
+  </svg>`;
+}
+
 function renderKpis(o: any): void {
+  pushClients(o.clients_unique_ips_total);
   const c = o.counters || {};
   const masters = o.masters || [];
   // свёрнутые СРМД в CNAME домены мастера не требуют — в «живых назначениях»
@@ -28,10 +76,12 @@ function renderKpis(o: any): void {
   const aliveMs = active.filter((m: any) => m.node_id && !m.dead).length;
   const dnsErr = c.dns_errors_total ?? 0;
 
-  const card = (label: string, iconPath: string, valueHtml: string, valueCls: string, foot: string): string => `
+  const card = (label: string, iconPath: string, valueHtml: string, valueCls: string,
+                foot: string, chart = ""): string => `
     <div class="card metric">
       <div class="metric-label">${icon(iconPath)}<span>${label}</span></div>
       <div class="metric-value ${valueCls}">${valueHtml}</div>
+      ${chart}
       <div class="metric-foot">${foot}</div>
     </div>`;
 
@@ -48,7 +98,8 @@ function renderKpis(o: any): void {
       `из ${o.nodes_total} нод`) +
     card("Активные клиенты", ICONS.users,
       `${fmtNum(o.clients_unique_ips_total)}`, "",
-      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${o.writers_active_total ?? 0}`) +
+      o.clients_unique_ips_total == null ? "нет данных" : `me_writers: ${o.writers_active_total ?? 0}`,
+      sparkArea(clientsHistory)) +
     card("Смен мастера", ICONS.swap,
       `${fmtNum(c.master_switches_total ?? 0)}`, "",
       `блокировок GP: ${c.gp_blocked_total ?? 0}`) +

@@ -54,6 +54,21 @@ async function pubApi(path: string): Promise<any> {
 
 /* ---------------- список нод (/statistics) ---------------- */
 
+/* Три проверки одной группой вместо трёх колонок: подпись плюс
+   подчёркивание цветом состояния. Значения не теряются — процент и
+   защёлка metrics уезжают в подсказку. */
+function checksHTML(n: any): string {
+  const st = (flag: boolean | null | undefined) =>
+    flag === null || flag === undefined ? "unknown" : flag ? "ok" : "bad";
+  const tag = (label: string, state: string, title: string) =>
+    `<span class="check-tag ${state}" title="${esc(title)}">${label}</span>`;
+  return `<span class="checks">
+    ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
+    ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
+    ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
+  </span>`;
+}
+
 function listRowHTML(n: any): string {
   const avail = n.availability_pct ?? 0;
   const role = n.is_master
@@ -69,9 +84,7 @@ function listRowHTML(n: any): string {
     <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
     <td data-label="Роль">${role}${ttlRem}</td>
-    <td data-label="TCP">${chip(n.healthy)}</td>
-    <td data-label="GP">${chip(n.globalping_ok)}</td>
-    <td data-label="Metrics"><span title="защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов">${chip(n.metrics_healthy, "metrics ok", "metrics fail")}</span></td>
+    <td data-label="Проверки">${checksHTML(n)}</td>
     <td data-label="Доступность"><div class="meter"><div class="meter-track"><span class="meter-fill ${availClass(avail)}" style="width:${avail}%"></span></div><span class="meter-value mono">${avail.toFixed(1)}%</span></div></td>
     <td class="mono num" data-label="Клиенты">${clients === null ? "—" : clients}</td>
     <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
@@ -88,7 +101,7 @@ async function renderListView(): Promise<void> {
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
       <div class="table-wrap"><table class="table-cards">
-        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>TCP</th><th>GP</th><th>Metrics</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
+        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>Проверки</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
         <tbody id="pub-nodes-body">${rows || `<tr><td colspan="10" class="table-empty">пул пуст</td></tr>`}</tbody>
       </table></div>
     </section>`;
