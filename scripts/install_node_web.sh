@@ -224,8 +224,8 @@ else
     die "нужен curl или wget (apt install curl)"
 fi
 [ -s "$file" ] || die "скачался пустой файл — проверьте BINARY_URL"
-IDENTITY="$("$file" --version 2>/dev/null || true)"
-[ "$IDENTITY" = "sharedd-node-agent" ] || die "release asset sharedd-node-agent содержит неверный или устаревший бинарник (identity: ${IDENTITY:-не определён})"
+install -m 0755 "$file" "$BIN_DEST"
+ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
 
 # ── конфиг telemt: автоопределение ───────────────────────────────────────
 superexpert_active() {  # флаг в настройках + файл на месте (семантика MTProxyL)
@@ -296,44 +296,6 @@ if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ]; then
 fi
 [ -f "$TELEMT_CONFIG" ] || die "конфиг telemt не найден: $TELEMT_CONFIG — сначала поставьте telemt/MTProxyL"
 say "конфиг telemt: ${BOLD}${TELEMT_CONFIG}${NC}"
-
-# Registry is the source of truth for the shared proxy port. Validate before
-# replacing the installed agent or touching systemd.
-if command -v curl &>/dev/null; then
-    SHARED_JSON="$(curl -fsSL --connect-timeout 15 -H "Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config")" \
-        || die "не удалось получить /config регистратора для проверки общего порта"
-else
-    SHARED_JSON="$(wget -qO- --header="Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config")" \
-        || die "не удалось получить /config регистратора для проверки общего порта"
-fi
-REGISTRY_PROXY_PORT="$(printf '%s' "$SHARED_JSON" | grep -oE '"proxy_port"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -n1 || true)"
-[ -n "$REGISTRY_PROXY_PORT" ] && [ "$REGISTRY_PROXY_PORT" -ge 1 ] && [ "$REGISTRY_PROXY_PORT" -le 65535 ] \
-    || die "регистратор вернул некорректный proxy_port"
-LOCAL_PROXY_PORT="$("$file" --telemt-port="$TELEMT_CONFIG" 2>>"$INSTALL_LOG")" \
-    || die "не удалось прочитать порт из $TELEMT_CONFIG — см. $INSTALL_LOG"
-printf '%s' "$LOCAL_PROXY_PORT" | grep -qE '^[0-9]+$' || die "агент вернул некорректный локальный порт: $LOCAL_PROXY_PORT"
-[ "$LOCAL_PROXY_PORT" = "$REGISTRY_PROXY_PORT" ] \
-    || die "порт прокси $LOCAL_PROXY_PORT не совпадает с общим портом регистратора $REGISTRY_PROXY_PORT"
-ok "общий порт прокси подтверждён регистратором: ${BOLD}${REGISTRY_PROXY_PORT}${NC}"
-
-if ! command -v ipset >/dev/null 2>&1 || ! command -v iptables >/dev/null 2>&1; then
-    say "устанавливаю зависимости antiscan (ipset, iptables)..."
-    if command -v apt-get >/dev/null 2>&1; then
-        DEBIAN_FRONTEND=noninteractive apt-get update -qq >>"$INSTALL_LOG" 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ipset iptables >>"$INSTALL_LOG" 2>&1
-    elif command -v dnf >/dev/null 2>&1; then
-        dnf install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
-    elif command -v yum >/dev/null 2>&1; then
-        yum install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
-    else
-        die "для antiscan нужны ipset и iptables; пакетный менеджер не найден"
-    fi
-fi
-command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1 \
-    || die "не удалось установить ipset/iptables — см. $INSTALL_LOG"
-
-install -m 0755 "$file" "$BIN_DEST"
-ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
 
 # ── конфиг ноды + systemd ────────────────────────────────────────────────
 install -d -m 0750 -o root -g root "$ETC_DIR"
