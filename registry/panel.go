@@ -25,9 +25,16 @@ const writersMetric = "telemt_me_writers_active_current"
 // метрики, т.е. [general.telemetry] user_enabled=true).
 const uniqueIPsMetric = "telemt_user_unique_ips_current"
 
+const (
+	trafficIngressMetric = "sharedd_traffic_ingress_bytes_total"
+	trafficEgressMetric  = "sharedd_traffic_egress_bytes_total"
+	trafficUsersMetric   = "sharedd_traffic_users_fingerprint"
+)
+
 // panelAuthorized — общая проверка для API панели и /status.
-// Пустой токен в конфиге = dev-режим без авторизации (warning при старте).
-// Токен читается под cfgMu — панель может сменить его на лету.
+// Токен читается под cfgMu — панель может сменить его на лету. Production
+// config validation требует непустой токен; пустая ветка нужна только небольшим
+// unit-тестам, которые создают Registry напрямую без loadRegistryConfig.
 func (r *Registry) panelAuthorized(req *http.Request) bool {
 	r.cfgMu.RLock()
 	tok := r.cfg.Panel.Token
@@ -399,7 +406,29 @@ type panelOverview struct {
 	Nodes []panelNode `json:"nodes"`
 	// SRMD: система распределения и масштабирования доменов —
 	// таблица «домен | активные пользователи» + её настройки/алерт.
-	SRMD *panelSRMD `json:"srmd,omitempty"`
+	SRMD *panelSRMD      `json:"srmd,omitempty"`
+	DNS  panelDNSSummary `json:"dns"`
+}
+
+type panelDNSSummary struct {
+	Operations  int                 `json:"operations"`
+	Drifted     int                 `json:"drifted"`
+	Failed      int                 `json:"failed"`
+	NextAttempt time.Time           `json:"next_attempt,omitempty"`
+	Items       []panelDNSOperation `json:"items"`
+}
+
+type panelDNSOperation struct {
+	Domain        string    `json:"domain"`
+	DesiredType   string    `json:"desired_type,omitempty"`
+	DesiredTarget string    `json:"desired_target,omitempty"`
+	AppliedType   string    `json:"applied_type,omitempty"`
+	AppliedTarget string    `json:"applied_target,omitempty"`
+	Drifted       bool      `json:"drifted"`
+	Attempts      int       `json:"attempts"`
+	NextAttempt   time.Time `json:"next_attempt,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
+	LastSuccess   time.Time `json:"last_success,omitempty"`
 }
 
 // buildOverview собирает снимок состояния пула для панели (под RLock).
@@ -427,6 +456,35 @@ func (r *Registry) buildOverview() panelOverview {
 		Nodes:        make([]panelNode, 0, len(r.state.Candidates)),
 		Counters:     r.state.Counters,
 		MasterTTLSec: int64(ttl.Seconds()),
+		DNS:          panelDNSSummary{Items: make([]panelDNSOperation, 0, len(r.state.DNSOperations))},
+	}
+	dnsDomains := make([]string, 0, len(r.state.DNSOperations))
+	for domain := range r.state.DNSOperations {
+		dnsDomains = append(dnsDomains, domain)
+	}
+	sort.Strings(dnsDomains)
+	for _, domain := range dnsDomains {
+		op := r.state.DNSOperations[domain]
+		if op == nil {
+			continue
+		}
+		ov.DNS.Operations++
+		drifted := op.drifted()
+		if drifted {
+			ov.DNS.Drifted++
+		}
+		if op.LastError != "" {
+			ov.DNS.Failed++
+		}
+		if !op.NextAttempt.IsZero() && (ov.DNS.NextAttempt.IsZero() || op.NextAttempt.Before(ov.DNS.NextAttempt)) {
+			ov.DNS.NextAttempt = op.NextAttempt
+		}
+		ov.DNS.Items = append(ov.DNS.Items, panelDNSOperation{
+			Domain: domain, DesiredType: op.DesiredType, DesiredTarget: op.DesiredTarget,
+			AppliedType: op.AppliedType, AppliedTarget: op.AppliedTarget, Drifted: drifted,
+			Attempts: op.Attempts, NextAttempt: op.NextAttempt, LastError: op.LastError,
+			LastSuccess: op.LastSuccess,
+		})
 	}
 
 	// очередь мастерства: тот же порядок, что и у evaluateAssignments
@@ -549,6 +607,10 @@ func (r *Registry) buildOverview() panelOverview {
 // buildPanelNodeLocked собирает panelNode по кандидату — общий конструктор для
 // overview и страницы ноды. Вызывать под r.mu (минимум RLock).
 func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomains []string, now time.Time) panelNode {
+	r.cfgMu.RLock()
+	freshnessTTL := r.cfg.ReportFreshnessTTL
+	quarantineAttempts := r.cfg.QuarantineAttempts
+	r.cfgMu.RUnlock()
 	n := panelNode{
 		NodeID:            c.NodeID,
 		IP:                c.IP,
@@ -557,7 +619,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		MasterDomains:     masterDomains,
 		QueuePosition:     queuePos,
 		Healthy:           c.Healthy,
-		FullyHealthy:      c.IsFullyHealthy(r.cfg.ReportFreshnessTTL),
+		FullyHealthy:      c.IsFullyHealthy(freshnessTTL),
 		GlobalpingOK:      c.GlobalpingOK,
 		MetricsOK:         c.MetricsOK,
 		MetricsHealthy:    c.MetricsHealthy,
@@ -579,7 +641,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 	}
 	if c.Quarantine != nil { //
 		n.Quarantine = &panelQuarantine{
-			Attempt: c.Quarantine.Attempts, Max: r.cfg.QuarantineAttempts,
+			Attempt: c.Quarantine.Attempts, Max: quarantineAttempts,
 			EnteredAt: c.Quarantine.EnteredAt, Reverify: c.Quarantine.Reverify,
 		}
 	}
@@ -587,7 +649,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		n.ReportAgeSec = int64(now.Sub(c.LastReportAt).Seconds())
 	}
 	if n.QueuePosition == 0 {
-		n.UnhealthyReason = c.unhealthyReason(r.cfg.ReportFreshnessTTL)
+		n.UnhealthyReason = c.unhealthyReason(freshnessTTL)
 	}
 	if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
 		vv := v

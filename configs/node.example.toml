@@ -4,10 +4,13 @@
 # - тайминги heartbeat/globalping/metrics/sync: приезжают с регистратора в /config
 # - URL метрик: из telemt.toml (metrics_listen > metrics_port > 127.0.0.1:9090)
 # - fake-SNI/секреты: из /config регистратора
+# - общий proxy port: из /config; antiscan включается только при совпадении
 
 [registry]
 # базовый регистратор проекта
 url = "https://registrar.ddproxy.xyz"
+# Общий bearer token node API; должен совпадать с security.node_token регистратора.
+token = "PASTE_THE_REGISTRY_NODE_API_TOKEN"
 
 [telemt]
 # install_node.sh определяет путь автоматически:

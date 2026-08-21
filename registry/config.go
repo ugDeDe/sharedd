@@ -3,7 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -35,6 +38,10 @@ func dirOf(p string) string {
 }
 
 type RegistryConfig struct {
+	Security struct {
+		NodeToken string `toml:"node_token"`
+	} `toml:"security"`
+
 	HTTP struct {
 		Addr string `toml:"addr"`
 	} `toml:"http"`
@@ -44,13 +51,14 @@ type RegistryConfig struct {
 	} `toml:"state"`
 
 	Healthcheck struct {
-		ProbeIntervalMs     int `toml:"probe_interval_ms"`
-		ProbeTimeoutMs      int `toml:"probe_timeout_ms"`
-		SelectionIntervalMs int `toml:"selection_interval_ms"`
-		HeartbeatTTLSec     int `toml:"heartbeat_ttl_sec"`
-		FailThreshold       int `toml:"fail_threshold"`
-		RecoverThreshold    int `toml:"recover_threshold"`
-		ReportFreshnessMin  int `toml:"report_freshness_min"`
+		ProbeIntervalMs       int `toml:"probe_interval_ms"`
+		ProbeTimeoutMs        int `toml:"probe_timeout_ms"`
+		SelectionIntervalMs   int `toml:"selection_interval_ms"`
+		HeartbeatTTLSec       int `toml:"heartbeat_ttl_sec"`
+		FailThreshold         int `toml:"fail_threshold"`
+		RecoverThreshold      int `toml:"recover_threshold"`
+		ReportFreshnessMin    int `toml:"report_freshness_min"`
+		GlobalpingValidityMin int `toml:"globalping_validity_min"`
 		// PruneUnhealthyMin — через сколько минут НЕПРЕРЫВНО
 		// нездоровая нода (вне очереди мастерства) удаляется из пула.
 		// *int как у master_ttl_minutes: ключ отсутствует = дефолт 60,
@@ -126,29 +134,33 @@ type RegistryConfig struct {
 
 	SharedProxy struct {
 		TLSDomain string            `toml:"tls_domain"`
+		Port      int               `toml:"port"`
 		Users     map[string]string `toml:"users"`
 	} `toml:"shared_proxy"`
 
 	// Panel — встроенная веб-панель мониторинга (ноды, доступность, журнал
 	// событий). Enabled: nil (не задано) = включена. Token защищает API
-	// панели и /status (Bearer); пустой токен = без авторизации (dev-режим,
-	// предупреждение в логе). EventsMax — размер кольцевого буфера журнала.
+	// панели и /status (Bearer) и обязателен при включенной панели.
 	Panel struct {
 		Enabled   *bool  `toml:"enabled"`
 		Token     string `toml:"token"`
 		EventsMax int    `toml:"events_max"`
+		// PublicURL задаётся установщиком и является доверенным origin для
+		// onboarding-команды. Host запроса для этого намеренно не используется.
+		PublicURL string `toml:"public_url"`
 	} `toml:"panel"`
 }
 
 type resolvedRegistryConfig struct {
 	RegistryConfig
-	ProbeInterval      time.Duration
-	ProbeTimeout       time.Duration
-	SelectionInterval  time.Duration
-	HeartbeatTTL       time.Duration
-	ReportFreshnessTTL time.Duration
-	PruneUnhealthyTTL  time.Duration // 0 = рипер выключен
-	PanelEnabled       bool
+	ProbeInterval         time.Duration
+	ProbeTimeout          time.Duration
+	SelectionInterval     time.Duration
+	HeartbeatTTL          time.Duration
+	ReportFreshnessTTL    time.Duration
+	GlobalpingValidityTTL time.Duration
+	PruneUnhealthyTTL     time.Duration // 0 = рипер выключен
+	PanelEnabled          bool
 	// Терминальные классы и история.
 	TerminateDeadTTL   time.Duration // 0 = dead-класс выключен
 	QuarantineAttempts int           // ≥1
@@ -186,30 +198,131 @@ func loadRegistryConfig() (*resolvedRegistryConfig, error) {
 	}
 
 	applyRegistryDefaults(&cfg)
-
-	if cfg.Cloudflare.APIToken == "" || cfg.Cloudflare.ZoneID == "" || len(cfg.Cloudflare.Domains) == 0 {
-		return nil, fmt.Errorf("cloudflare.api_token, cloudflare.zone_id and cloudflare.domains are required in %s", path)
-	}
-	if cfg.SharedProxy.TLSDomain == "" || len(cfg.SharedProxy.Users) == 0 {
-		return nil, fmt.Errorf("shared_proxy.tls_domain and shared_proxy.users are required in %s", path)
+	if err := validateRegistryConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config %s: %w", path, err)
 	}
 
 	resolved := &resolvedRegistryConfig{
-		RegistryConfig:     cfg,
-		ProbeInterval:      time.Duration(cfg.Healthcheck.ProbeIntervalMs) * time.Millisecond,
-		ProbeTimeout:       time.Duration(cfg.Healthcheck.ProbeTimeoutMs) * time.Millisecond,
-		SelectionInterval:  time.Duration(cfg.Healthcheck.SelectionIntervalMs) * time.Millisecond,
-		HeartbeatTTL:       time.Duration(cfg.Healthcheck.HeartbeatTTLSec) * time.Second,
-		ReportFreshnessTTL: time.Duration(cfg.Healthcheck.ReportFreshnessMin) * time.Minute,
-		PruneUnhealthyTTL:  time.Duration(resolvePruneUnhealthyMinutes(cfg.Healthcheck.PruneUnhealthyMin)) * time.Minute,
-		PanelEnabled:       cfg.Panel.Enabled == nil || *cfg.Panel.Enabled,
-		TerminateDeadTTL:   time.Duration(resolveIntDefault(cfg.Healthcheck.TerminateDeadMin, defaultTerminateDeadMinutes)) * time.Minute,
-		QuarantineAttempts: max(1, cfg.Healthcheck.QuarantineAttempts), // дефолт 3 проставлен в applyRegistryDefaults
-		EventsRetention:    time.Duration(cfg.Database.EventsRetentionDays) * 24 * time.Hour,
-		DBEnabled:          cfg.Database.Enabled == nil || *cfg.Database.Enabled,
-		configPath:         path,
+		RegistryConfig:        cfg,
+		ProbeInterval:         time.Duration(cfg.Healthcheck.ProbeIntervalMs) * time.Millisecond,
+		ProbeTimeout:          time.Duration(cfg.Healthcheck.ProbeTimeoutMs) * time.Millisecond,
+		SelectionInterval:     time.Duration(cfg.Healthcheck.SelectionIntervalMs) * time.Millisecond,
+		HeartbeatTTL:          time.Duration(cfg.Healthcheck.HeartbeatTTLSec) * time.Second,
+		ReportFreshnessTTL:    time.Duration(cfg.Healthcheck.ReportFreshnessMin) * time.Minute,
+		GlobalpingValidityTTL: time.Duration(cfg.Healthcheck.GlobalpingValidityMin) * time.Minute,
+		PruneUnhealthyTTL:     time.Duration(resolvePruneUnhealthyMinutes(cfg.Healthcheck.PruneUnhealthyMin)) * time.Minute,
+		PanelEnabled:          cfg.Panel.Enabled == nil || *cfg.Panel.Enabled,
+		TerminateDeadTTL:      time.Duration(resolveIntDefault(cfg.Healthcheck.TerminateDeadMin, defaultTerminateDeadMinutes)) * time.Minute,
+		QuarantineAttempts:    max(1, cfg.Healthcheck.QuarantineAttempts), // дефолт 3 проставлен в applyRegistryDefaults
+		EventsRetention:       time.Duration(cfg.Database.EventsRetentionDays) * 24 * time.Hour,
+		DBEnabled:             cfg.Database.Enabled == nil || *cfg.Database.Enabled,
+		configPath:            path,
 	}
 	return resolved, nil
+}
+
+func validateRegistryConfig(cfg *RegistryConfig) error {
+	if strings.TrimSpace(cfg.Security.NodeToken) == "" {
+		return fmt.Errorf("security.node_token is required")
+	}
+	if (cfg.Panel.Enabled == nil || *cfg.Panel.Enabled) && strings.TrimSpace(cfg.Panel.Token) == "" {
+		return fmt.Errorf("panel.token is required when panel is enabled")
+	}
+	if cfg.Panel.PublicURL != "" {
+		u, err := url.Parse(cfg.Panel.PublicURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return fmt.Errorf("panel.public_url must be an http(s) origin without path, query, or credentials")
+		}
+		cfg.Panel.PublicURL = strings.TrimSuffix(cfg.Panel.PublicURL, "/")
+	}
+	if _, err := net.ResolveTCPAddr("tcp", cfg.HTTP.Addr); err != nil {
+		return fmt.Errorf("http.addr: %w", err)
+	}
+	positive := []struct {
+		name    string
+		v, maxV int
+	}{
+		{"healthcheck.probe_interval_ms", cfg.Healthcheck.ProbeIntervalMs, 3600000},
+		{"healthcheck.probe_timeout_ms", cfg.Healthcheck.ProbeTimeoutMs, 3600000},
+		{"healthcheck.selection_interval_ms", cfg.Healthcheck.SelectionIntervalMs, 3600000},
+		{"healthcheck.heartbeat_ttl_sec", cfg.Healthcheck.HeartbeatTTLSec, 86400},
+		{"healthcheck.fail_threshold", cfg.Healthcheck.FailThreshold, 1000},
+		{"healthcheck.recover_threshold", cfg.Healthcheck.RecoverThreshold, 1000},
+		{"healthcheck.report_freshness_min", cfg.Healthcheck.ReportFreshnessMin, 525600},
+		{"healthcheck.globalping_validity_min", cfg.Healthcheck.GlobalpingValidityMin, 525600},
+		{"node_defaults.heartbeat_ms", cfg.NodeDefaults.HeartbeatMs, 120000},
+		{"node_defaults.globalping_ms", cfg.NodeDefaults.GlobalpingMs, 7200000},
+		{"node_defaults.metrics_ms", cfg.NodeDefaults.MetricsMs, 600000},
+		{"node_defaults.sync_ms", cfg.NodeDefaults.SyncMs, 600000},
+		{"panel.events_max", cfg.Panel.EventsMax, 10000},
+		{"database.events_retention_days", cfg.Database.EventsRetentionDays, 36500},
+	}
+	for _, x := range positive {
+		if x.v <= 0 || x.v > x.maxV {
+			return fmt.Errorf("%s must be between 1 and %d", x.name, x.maxV)
+		}
+	}
+	if cfg.NodeDefaults.HeartbeatMs < 3000 || cfg.NodeDefaults.GlobalpingMs < 60000 || cfg.NodeDefaults.MetricsMs < 5000 || cfg.NodeDefaults.SyncMs < 5000 {
+		return fmt.Errorf("node_defaults intervals are below their safe minimum")
+	}
+	if time.Duration(cfg.Healthcheck.GlobalpingValidityMin)*time.Minute <= time.Duration(cfg.NodeDefaults.GlobalpingMs)*time.Millisecond {
+		return fmt.Errorf("healthcheck.globalping_validity_min must be greater than node_defaults.globalping_ms")
+	}
+	for name, value := range map[string]*int{
+		"healthcheck.prune_unhealthy_min": cfg.Healthcheck.PruneUnhealthyMin,
+		"healthcheck.terminate_dead_min":  cfg.Healthcheck.TerminateDeadMin,
+	} {
+		if value != nil && (*value < 0 || *value > 525600) {
+			return fmt.Errorf("%s must be 0..525600", name)
+		}
+	}
+	if cfg.Rotation.MasterTTLMinutes != nil && (*cfg.Rotation.MasterTTLMinutes < 0 || *cfg.Rotation.MasterTTLMinutes > maxMasterTTLMinutes) {
+		return fmt.Errorf("rotation.master_ttl_minutes must be 0..%d", maxMasterTTLMinutes)
+	}
+	if cfg.Healthcheck.QuarantineAttempts < 1 || cfg.Healthcheck.QuarantineAttempts > 20 {
+		return fmt.Errorf("healthcheck.quarantine_attempts must be 1..20")
+	}
+	if strings.TrimSpace(cfg.Cloudflare.APIToken) == "" || strings.TrimSpace(cfg.Cloudflare.ZoneID) == "" {
+		return fmt.Errorf("cloudflare.api_token and cloudflare.zone_id are required")
+	}
+	if len(cfg.Cloudflare.Domains) == 0 {
+		return fmt.Errorf("cloudflare.domains is required")
+	}
+	for _, domain := range cfg.Cloudflare.Domains {
+		if !validHostname(strings.TrimSpace(domain)) {
+			return fmt.Errorf("cloudflare.domains: %q is not a domain name", domain)
+		}
+	}
+	if cfg.Cloudflare.DNSTTL != 1 && (cfg.Cloudflare.DNSTTL < 60 || cfg.Cloudflare.DNSTTL > 86400) {
+		return fmt.Errorf("cloudflare.dns_ttl must be 1 or 60..86400")
+	}
+	if !validHostname(strings.TrimSpace(cfg.SharedProxy.TLSDomain)) {
+		return fmt.Errorf("shared_proxy.tls_domain is not a domain name")
+	}
+	if cfg.SharedProxy.Port < 1 || cfg.SharedProxy.Port > 65535 {
+		return fmt.Errorf("shared_proxy.port must be 1..65535")
+	}
+	if len(cfg.SharedProxy.Users) == 0 {
+		return fmt.Errorf("shared_proxy.users is required")
+	}
+	for name, secret := range cfg.SharedProxy.Users {
+		if !usernameRe.MatchString(name) || !secretRe.MatchString(secret) {
+			return fmt.Errorf("shared_proxy.users[%q] must have a valid username and 32-hex secret", name)
+		}
+	}
+	if base := strings.TrimSpace(cfg.SRMD.BaseDomain); base != "" && !validHostname(base) {
+		return fmt.Errorf("srmd.base_domain is not a domain name")
+	}
+	if cfg.SRMD.MaxNodesPerDomain < 1 || cfg.SRMD.MaxNodesPerDomain > 1000 {
+		return fmt.Errorf("srmd.max_nodes_per_domain must be 1..1000")
+	}
+	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase} {
+		u, err := url.ParseRequestURI(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("%s must be an absolute http(s) URL", name)
+		}
+	}
+	return nil
 }
 
 // resolveIntDefault — семантика *int-полей: nil → дефолт, явное значение → оно
@@ -222,6 +335,9 @@ func resolveIntDefault(p *int, def int) int {
 }
 
 func applyRegistryDefaults(cfg *RegistryConfig) {
+	if cfg.SharedProxy.Port == 0 {
+		cfg.SharedProxy.Port = 443
+	}
 	if cfg.HTTP.Addr == "" {
 		cfg.HTTP.Addr = ":8080"
 	}
@@ -248,6 +364,9 @@ func applyRegistryDefaults(cfg *RegistryConfig) {
 	}
 	if cfg.Healthcheck.ReportFreshnessMin == 0 {
 		cfg.Healthcheck.ReportFreshnessMin = 15
+	}
+	if cfg.Healthcheck.GlobalpingValidityMin == 0 {
+		cfg.Healthcheck.GlobalpingValidityMin = 15
 	}
 	if cfg.NodeDefaults.HeartbeatMs == 0 {
 		cfg.NodeDefaults.HeartbeatMs = 15000

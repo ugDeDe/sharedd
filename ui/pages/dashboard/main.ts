@@ -1,0 +1,312 @@
+/* Дашборд блокировок. Математика графика (бакеты, метрики bans/gap/life,
+   диапазоны day/week/month), наведение/тултип и расчёты KPI перенесены из
+   прежней версии дословно. Меняется разметка, стили и то, что цвета берутся
+   из токенов темы вместо чисел — с перерисовкой при смене темы. */
+
+import { $ } from "../../lib/dom";
+import { initTheme, token } from "../../lib/theme";
+
+interface Bucket { start_ts: number; bans: number; avg_gap_sec: number | null; avg_lifetime_sec: number | null; traffic_total_bytes: number; }
+interface DashData {
+  buckets: Bucket[];
+  kpi: { bans: number; avg_gap_sec: number | null; avg_lifetime_sec: number | null; traffic_ingress_bytes: number; traffic_egress_bytes: number; traffic_total_bytes: number };
+  history_ok: boolean;
+  by_reason?: Record<string, number>;
+  recent?: any[];
+}
+
+type Metric = "bans" | "gap" | "life" | "traffic";
+type Range = "day" | "week" | "month";
+
+const state: { range: Range; metric: Metric; data: DashData | null } = { range: "day", metric: "bans", data: null };
+const RANGE_LABEL: Record<Range, string> = { day: "за сегодня", week: "за 7 дней", month: "за 30 дней" };
+const METRIC_TITLE: Record<Metric, string> = {
+  bans: "Баны GP",
+  gap: "Периодичность банов (интервал между блокировками)",
+  life: "Среднее время жизни ноды",
+  traffic: "Общий трафик пула",
+};
+
+/* Локальный компактный fmtDur — НЕ путать с lib/format.fmtDur (тот
+   разбивает на д/ч/м/с). Этот выбирает одну старшую единицу — так было
+   в прежней версии дашборда для осей графика и KPI, оставляем как есть. */
+function fmtDur(sec: number | null | undefined): string {
+  if (sec == null || sec < 0) return "—";
+  if (sec >= 86400) return (sec / 86400).toFixed(1) + " дн";
+  if (sec >= 3600) return (sec / 3600).toFixed(1) + " ч";
+  if (sec >= 60) return Math.round(sec / 60) + " мин";
+  return Math.round(sec) + " с";
+}
+function fmtDurLong(sec: number | null | undefined): string {
+  if (sec == null || sec < 0) return "—";
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + " дн " + h + " ч";
+  if (h > 0) return h + " ч " + m + " мин";
+  if (m > 0) return m + " мин";
+  return Math.round(sec) + " с";
+}
+function fmtBytes(v: number | null | undefined): string {
+  if (v == null || v < 0) return "—";
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ", "ПБ"];
+  let n = v, i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(i === 0 ? 0 : n >= 100 ? 0 : n >= 10 ? 1 : 2)} ${units[i]}`;
+}
+function fmtTs(sec: number, range: Range): string {
+  const d = new Date(sec * 1000);
+  const p = (v: number) => (v < 10 ? "0" : "") + v;
+  const hm = p(d.getHours()) + ":" + p(d.getMinutes());
+  if (range === "day") return hm;
+  return p(d.getDate()) + "." + p(d.getMonth() + 1) + (range === "month" ? "" : " " + hm);
+}
+function bucketVal(b: Bucket, m: Metric): number | null {
+  if (m === "bans") return b.bans;
+  if (m === "gap") return b.avg_gap_sec != null ? b.avg_gap_sec : null;
+  if (m === "life") return b.avg_lifetime_sec != null ? b.avg_lifetime_sec : null;
+  return b.traffic_total_bytes || 0;
+}
+
+const NS = "http://www.w3.org/2000/svg";
+function el(name: string, attrs: Record<string, string | number>): SVGElement {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, String(attrs[k]));
+  return e;
+}
+
+function metricColor(m: Metric): { stroke: string; soft: string } {
+  if (m === "bans") return { stroke: token("--bad"), soft: token("--bad-soft") };
+  if (m === "gap") return { stroke: token("--info"), soft: token("--info-soft") };
+  if (m === "traffic") return { stroke: token("--ok"), soft: token("--ok-soft") };
+  return { stroke: token("--warn"), soft: token("--warn-soft") };
+}
+
+function renderChart(): void {
+  const svg = $("chart"), tip = $("tip");
+  svg.replaceChildren();
+  const d = state.data;
+  if (!d) return;
+  const W = 860, H = 280, padL = 46, padR = 12, padT = 14, padB = 30;
+  const cw = W - padL - padR, ch = H - padT - padB;
+  const buckets = d.buckets, m = state.metric;
+  const vals = buckets.map((b) => bucketVal(b, m));
+  let maxV = 0;
+  for (const v of vals) if (v != null && v > maxV) maxV = v;
+  if (m === "bans") maxV = Math.max(maxV, 2);
+  const lineColor = token("--line"), fg3 = token("--fg-3"), surf = token("--surf");
+  if (maxV === 0) {
+	$("chart-note").textContent = d.history_ok ? (m === "traffic" ? "За период трафика нет." : "За период банов нет.") : "История недоступна (БД не открыта).";
+    const em = el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: fg3, "font-size": 13 });
+	 em.textContent = d.history_ok ? "нет данных за период" : "история недоступна";
+    svg.appendChild(em);
+    return;
+  }
+  maxV = maxV * 1.15;
+  const n = buckets.length;
+  const stepX = cw / n;
+  const y = (v: number) => padT + ch - (v / maxV) * ch;
+
+  // сетка + подписи Y — подпись не рисуем, если она совпала с предыдущей
+  // (на малых значениях соседние деления иначе дают одинаковую цифру: "3, 3")
+  const ticks = 4;
+  let prevLbl: string | null = null;
+  for (let i = 0; i <= ticks; i++) {
+    const v = maxV * i / ticks, yy = y(v);
+    svg.appendChild(el("line", { x1: padL, y1: yy, x2: W - padR, y2: yy, stroke: lineColor, "stroke-width": 1 }));
+    const text = m === "bans" ? String(Math.round(v)) : m === "traffic" ? fmtBytes(v) : fmtDur(v);
+    if (text !== prevLbl) {
+      const lbl = el("text", { x: padL - 8, y: yy + 4, "text-anchor": "end", fill: fg3, "font-size": 10 });
+      lbl.textContent = text;
+      svg.appendChild(lbl);
+      prevLbl = text;
+    }
+  }
+  // подписи X (редкие)
+  const labEvery = Math.max(1, Math.ceil(n / 8));
+  for (let i = 0; i < n; i += labEvery) {
+    const lx = padL + i * stepX + stepX / 2;
+    const lt = el("text", { x: lx, y: H - 10, "text-anchor": "middle", fill: fg3, "font-size": 10 });
+    lt.textContent = fmtTs(buckets[i].start_ts, state.range);
+    svg.appendChild(lt);
+  }
+
+  const { stroke: color, soft: color2 } = metricColor(m);
+
+  // Градиент под столбцы: сверху цвет метрики, книзу гаснет. Полые рамки
+  // читались как «пустые» и терялись на тёмном фоне.
+  const defs = el("defs", {});
+  const grad = el("linearGradient", { id: "barGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
+  const st1 = el("stop", { offset: "0", "stop-color": color, "stop-opacity": ".95" });
+  const st2 = el("stop", { offset: "1", "stop-color": color, "stop-opacity": ".28" });
+  grad.appendChild(st1); grad.appendChild(st2); defs.appendChild(grad);
+  svg.appendChild(defs);
+  const pts: ({ x: number; y: number; v: number; ts: number } | null)[] = [];
+  const bars: (SVGElement | null)[] = [];
+  if (m === "bans") {
+    const bw = Math.max(4, Math.min(26, stepX * 0.62));
+    for (let i = 0; i < n; i++) {
+      const v = vals[i];
+      if (v == null || v === 0) { pts.push(null); bars.push(null); continue; }
+      const x = padL + i * stepX + (stepX - bw) / 2;
+      const bar = el("rect", {
+        x, y: y(v), width: bw, height: padT + ch - y(v),
+        rx: Math.min(4, bw / 2), fill: "url(#barGrad)", class: "bar",
+      });
+      svg.appendChild(bar);
+      bars.push(bar);
+      pts.push({ x: x + bw / 2, y: y(v), v, ts: buckets[i].start_ts });
+    }
+  } else {
+    // график цельный: точки соединяются и через пустые бакеты («нет данных»
+    // за час/сутки); разрыв остаётся только в тултипе.
+    let pathD = "", areaD = "";
+    for (let i = 0; i < n; i++) {
+      const v = vals[i];
+      if (v == null) { pts.push(null); continue; }
+      const px = padL + i * stepX + stepX / 2, py = y(v);
+      pathD += (pathD ? " L" : "M") + px.toFixed(1) + " " + py.toFixed(1);
+      areaD += (areaD ? " L" : "M" + px.toFixed(1) + " " + (padT + ch) + " L") + px.toFixed(1) + " " + py.toFixed(1);
+      pts.push({ x: px, y: py, v, ts: buckets[i].start_ts });
+    }
+    if (pathD) {
+      let lastX = 0;
+      for (let i = n - 1; i >= 0; i--) { const p = pts[i]; if (p) { lastX = p.x; break; } }
+      let firstX = 0;
+      for (let i = 0; i < n; i++) { const p = pts[i]; if (p) { firstX = p.x; break; } }
+      const area = el("path", { d: areaD + " L" + lastX.toFixed(1) + " " + (padT + ch) + " L" + firstX.toFixed(1) + " " + (padT + ch) + " Z", fill: color2, stroke: "none" });
+      svg.appendChild(area);
+      svg.appendChild(el("path", { d: pathD, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        if (p && p.v != null) svg.appendChild(el("circle", { cx: p.x, cy: p.y, r: 3, fill: surf, stroke: color, "stroke-width": 1.6 }));
+      }
+    }
+  }
+
+  // hover: зоны наведения + перекрестие + тултип
+  const cur = el("line", { x1: 0, y1: padT, x2: 0, y2: padT + ch, stroke: fg3, "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
+  svg.appendChild(cur);
+  const hov = el("circle", { r: 4.5, fill: color, visibility: "hidden" });
+  svg.appendChild(hov);
+  const hotBar = (i: number | null) => {
+    bars.forEach((b, k) => b && b.classList.toggle("hot", k === i));
+  };
+
+  const showTip = (i: number, clientX: number, clientY: number) => {
+    hotBar(i);
+    const b = buckets[i], v = vals[i];
+    const midX = padL + i * stepX + stepX / 2;
+    cur.setAttribute("x1", String(midX)); cur.setAttribute("x2", String(midX));
+    cur.setAttribute("visibility", "visible");
+    const p = pts[i];
+    if (p) { hov.setAttribute("cx", String(p.x)); hov.setAttribute("cy", String(p.y)); hov.setAttribute("visibility", "visible"); }
+    else hov.setAttribute("visibility", "hidden");
+    let t1 = fmtTs(b.start_ts, state.range);
+    if (state.range !== "day") t1 = new Date(b.start_ts * 1000).toLocaleDateString("ru-RU");
+    tip.querySelector(".t1")!.textContent = t1;
+    tip.querySelector(".t2")!.textContent = v == null ? "нет данных" : (m === "bans" ? (v + " бан" + (v === 1 ? "" : "ов")) : m === "traffic" ? fmtBytes(v) : fmtDurLong(v));
+    const box = $("chart-box").getBoundingClientRect();
+    let x = clientX - box.left + 14; const yy = clientY - box.top - 10;
+    tip.style.display = "block";
+    if (x + tip.offsetWidth > box.width - 8) x = clientX - box.left - tip.offsetWidth - 14;
+    tip.style.left = x + "px"; tip.style.top = Math.max(0, yy) + "px";
+  };
+  for (let i = 0; i < n; i++) {
+    const zone = el("rect", { x: padL + i * stepX, y: padT, width: stepX, height: ch, fill: "transparent" });
+    zone.addEventListener("mousemove", (ev) => showTip(i, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
+    zone.addEventListener("mouseleave", () => {
+      hotBar(null);
+      cur.setAttribute("visibility", "hidden"); hov.setAttribute("visibility", "hidden"); tip.style.display = "none";
+    });
+    svg.appendChild(zone);
+  }
+  const t1 = document.createElement("div"), t2 = document.createElement("div");
+  t1.className = "t1"; t2.className = "t2";
+  tip.replaceChildren(t1, t2);
+}
+
+function renderKPI(): void {
+  const d = state.data; if (!d) return;
+  // «за сегодня» — единица измерения рядом с числом, а не мелкий текст
+  // впритык: у .unit есть отступ и своя высота строки.
+  const unit = document.createElement("span");
+  unit.className = "unit"; unit.textContent = RANGE_LABEL[state.range];
+  $("k1").replaceChildren(document.createTextNode(String(d.kpi.bans)), unit);
+  $("k2").textContent = d.kpi.avg_gap_sec != null ? fmtDur(d.kpi.avg_gap_sec) : "—";
+  $("k3").textContent = d.kpi.avg_lifetime_sec != null ? fmtDur(d.kpi.avg_lifetime_sec) : "—";
+  $("k4").textContent = fmtBytes(d.kpi.traffic_total_bytes);
+  $("k5").textContent = fmtBytes(d.kpi.traffic_ingress_bytes);
+  $("k6").textContent = fmtBytes(d.kpi.traffic_egress_bytes);
+  $("k1-cap").textContent = d.history_ok ? "Баны GP (без восстановления)" : "Баны GP — история недоступна (БД не открыта)";
+  const dead = (d.by_reason && d.by_reason.dead) ? d.by_reason.dead : 0;
+  $("chart-note").textContent = dead > 0
+    ? "За период также терминально завершено по dead (порт/метрики не отвечали): " + dead + " — в метриках банов GP не участвуют."
+    : "";
+}
+
+function renderRecent(): void {
+  const d = state.data; if (!d) return;
+  const tb = $("recent");
+  if (!d.recent || d.recent.length === 0) {
+    const row = document.createElement("tr"), cell = document.createElement("td");
+    cell.colSpan = 5; cell.className = "dim"; cell.textContent = "за период банов нет";
+    row.appendChild(cell); tb.replaceChildren(row);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const b of d.recent) {
+    const row = document.createElement("tr");
+    const values = [new Date(b.ts).toLocaleString("ru-RU"), b.node_id, b.ip_masked || "—",
+      b.lifetime_sec >= 0 ? fmtDurLong(b.lifetime_sec) : "—",
+      b.gap_sec >= 0 ? fmtDurLong(b.gap_sec) : "—"];
+    const labels = ["Время", "Нода", "IP", "Время жизни", "Интервал с прошлого"];
+    for (let j = 0; j < values.length; j++) {
+      const cell = document.createElement("td");
+      cell.dataset.label = labels[j];
+      if (j === 0 || j === 2) cell.classList.add("dim");
+      if (j === 1 || j === 2) cell.classList.add("mono");
+      cell.textContent = values[j];
+      row.appendChild(cell);
+    }
+    fragment.appendChild(row);
+  }
+  tb.replaceChildren(fragment);
+}
+
+function load(): void {
+  fetch("/dashboard/api?range=" + state.range, { cache: "no-store" })
+    .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .then((d: DashData) => {
+      state.data = d;
+      $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
+      renderKPI(); renderChart(); renderRecent();
+      const now = new Date();
+      $("live-text").textContent = "обновлено " + now.toLocaleTimeString("ru-RU");
+      $("live-pill").className = "status-pill live";
+    })
+    .catch(() => {
+      $("live-text").textContent = "нет связи";
+      $("live-pill").className = "status-pill off";
+    });
+}
+
+$("range-seg").addEventListener("click", (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button"); if (!b) return;
+  state.range = b.dataset.r as Range;
+  $("range-seg").querySelectorAll("button").forEach((x) => { x.className = x === b ? "active" : ""; });
+  load();
+});
+$("metric-seg").addEventListener("click", (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button"); if (!b) return;
+  state.metric = b.dataset.m as Metric;
+  $("metric-seg").querySelectorAll("button").forEach((x) => { x.className = x === b ? "active" : ""; });
+  if (state.data) {
+    $("chart-title").textContent = METRIC_TITLE[state.metric] + " · " + RANGE_LABEL[state.range];
+    renderChart();
+  }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+document.addEventListener("themechange", () => renderChart());
+
+initTheme();
+setInterval(load, 60000);
+load();

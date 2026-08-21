@@ -77,18 +77,11 @@ type SRMDState struct {
 	Created []string `json:"created,omitempty"`
 }
 
-// srmdDNSRetryDelay — пауза между повторами неудавшейся CNAME-записи СРМД:
-// Cloudflare может долго отвечать отказом (плохой токен/зона), долбить его
-// каждый тик селекции и спамить журнал dns_error не нужно.
-const srmdDNSRetryDelay = time.Minute
-
-// srmdDNSAction — отложенная DNS-запись СРМД (CNAME при сворачивании).
-// Копится под r.mu, пишется в selectionLoop вне локов; сбой — retry с
-// бэкоффом NextAttempt.
+// srmdDNSAction preserves the immediate flush between SRMD selection and the
+// durable DNS reconciler. Retry state itself is stored in State.DNSOperations.
 type srmdDNSAction struct {
-	Domain      string
-	Target      string    // цель CNAME
-	NextAttempt time.Time // раньше этого момента не ретраить
+	Domain string
+	Target string
 }
 
 // resolveSRMDMaxNodes — эффективный лимит нод на домен (0/мусор → дефолт).
@@ -451,6 +444,7 @@ func (r *Registry) srmdFoldLocked(now time.Time, active []string, required int) 
 		clients := r.state.SRMD.DomainClients[d]
 		load[target] += clients
 		r.state.SRMD.CNames[d] = target
+		r.enqueueDNSDesiredLocked(d, "CNAME", target, "")
 		r.state.SRMD.DomainClients[target] = load[target]
 		// домен выходит из ротации: мастер сдаёт назначение
 		if holderID := r.state.Assignments[d]; holderID != "" {
@@ -472,43 +466,17 @@ func (r *Registry) srmdFoldLocked(now time.Time, active []string, required int) 
 	return changed
 }
 
-// flushSRMDDNS — пишет накопленные СРМД CNAME (вне локов: Cloudflare —
-// сеть). Сбой вернёт действие в очередь с бэкоффом srmdDNSRetryDelay —
-// retry не чаще раза в минуту, журнал не спамится.
+// flushSRMDDNS hands newly folded domains to the durable reconciler and asks
+// for an immediate pass. Cloudflare calls still happen outside r.mu.
 func (r *Registry) flushSRMDDNS() {
-	now := time.Now()
 	r.mu.Lock()
-	if len(r.srmdPending) == 0 {
-		r.mu.Unlock()
-		return
-	}
-	var due []srmdDNSAction
-	rest := make([]srmdDNSAction, 0, len(r.srmdPending))
 	for _, a := range r.srmdPending {
-		if now.Before(a.NextAttempt) {
-			rest = append(rest, a) // бэкофф ещё не вышел
-		} else {
-			due = append(due, a)
-		}
+		r.enqueueDNSDesiredLocked(a.Domain, "CNAME", a.Target, "")
 	}
-	r.srmdPending = rest
+	r.srmdPending = nil
+	r.persistStateLocked()
 	r.mu.Unlock()
-
-	for _, a := range due {
-		err := r.upsertCNAMERecord(a.Domain, a.Target)
-		r.mu.Lock()
-		if err != nil {
-			r.state.Counters.DNSErrors++
-			r.addEventLocked(Event{Type: EventDNSError, Domain: a.Domain, Detail: "srmd cname: " + err.Error()})
-			a.NextAttempt = time.Now().Add(srmdDNSRetryDelay)
-			r.srmdPending = append(r.srmdPending, a)
-		} else {
-			r.state.Counters.DNSUpdates++
-			r.addEventLocked(Event{Type: EventDNSUpdated, Domain: a.Domain, Detail: "CNAME -> " + a.Target + " (СРМД)"})
-		}
-		r.persistStateLocked()
-		r.mu.Unlock()
-	}
+	r.reconcileDNSDue()
 }
 
 // ── панель: вкладка «СРМД» ─────────────────────────────────────
@@ -688,6 +656,9 @@ func (r *Registry) handleSRMDDomain(w http.ResponseWriter, req *http.Request) {
 		// свёрнутый домен разворачиваем: ручной не живёт CNAME'ом
 		if target, folded := r.state.SRMD.CNames[canonical]; folded {
 			delete(r.state.SRMD.CNames, canonical)
+			if op := r.state.DNSOperations[canonical]; op != nil && op.DesiredType == "CNAME" {
+				delete(r.state.DNSOperations, canonical)
+			}
 			// отменяем отложенную CNAME-запись этого домена, если есть
 			pend := r.srmdPending[:0]
 			for _, a := range r.srmdPending {

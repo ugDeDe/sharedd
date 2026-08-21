@@ -5,7 +5,7 @@ package main
 // (historyDB). Публичный, как /statistics: IP нод маскируются тем же
 // maskPublicIP, id нод — непрозрачные хеши.
 //
-// Три метрики (ТЗ, все — ТОЛЬКО по банам GP = reason ip_ban — «без
+// Три метрики блокировок (все — ТОЛЬКО по банам GP = reason ip_ban — «без
 // восстановления»; терминальность гарантирует terminate.go):
 // 1. Баны GP — число терминальных блокировок по IP за окно.
 // 2. Периодичность банов — средний интервал между соседними блокировками
@@ -21,6 +21,8 @@ package main
 // Интервалы < gapClusterMin (2 мин) в среднюю периодичность НЕ
 // идут — это всплеск одного инцидента (флап серии нод подряд), а не
 // периодичность блокировок.
+// Дополнительно те же бакеты содержат ingress/egress/total traffic по
+// пользователям shared_proxy.users; в SQLite лежат дельты счётчиков нод.
 
 import (
 	"encoding/json"
@@ -43,6 +45,9 @@ type dashKPI struct {
 	Bans           int      `json:"bans"`
 	AvgLifetimeSec *float64 `json:"avg_lifetime_sec,omitempty"`
 	AvgGapSec      *float64 `json:"avg_gap_sec,omitempty"`
+	TrafficIngress int64    `json:"traffic_ingress_bytes"`
+	TrafficEgress  int64    `json:"traffic_egress_bytes"`
+	TrafficTotal   int64    `json:"traffic_total_bytes"`
 }
 
 type dashBucket struct {
@@ -50,6 +55,9 @@ type dashBucket struct {
 	Bans           int      `json:"bans"`
 	AvgLifetimeSec *float64 `json:"avg_lifetime_sec,omitempty"`
 	AvgGapSec      *float64 `json:"avg_gap_sec,omitempty"`
+	TrafficIngress int64    `json:"traffic_ingress_bytes"`
+	TrafficEgress  int64    `json:"traffic_egress_bytes"`
+	TrafficTotal   int64    `json:"traffic_total_bytes"`
 }
 
 type dashBan struct {
@@ -102,12 +110,28 @@ func (r *Registry) buildDashboard(name string, now time.Time) dashResponse {
 	if r.db == nil {
 		return resp // HistoryOK=false — страница покажет «история недоступна»
 	}
-	resp.HistoryOK = true
-
 	// окно снапшотим под коротким db-запросом (sql.DB сам сериализует)
 	all, err := r.db.bansSince(from, "")
 	if err != nil {
 		return resp
+	}
+	resp.HistoryOK = true
+	traffic, err := r.db.trafficSince(from)
+	if err != nil {
+		resp.HistoryOK = false
+		return resp
+	}
+	for _, tr := range traffic {
+		bi := int(tr.TS.Sub(from) / step)
+		if bi < 0 || bi >= nB {
+			continue
+		}
+		resp.Buckets[bi].TrafficIngress += tr.Ingress
+		resp.Buckets[bi].TrafficEgress += tr.Egress
+		resp.Buckets[bi].TrafficTotal += tr.Ingress + tr.Egress
+		resp.KPI.TrafficIngress += tr.Ingress
+		resp.KPI.TrafficEgress += tr.Egress
+		resp.KPI.TrafficTotal += tr.Ingress + tr.Egress
 	}
 	gp := make([]banRow, 0, len(all))
 	for _, b := range all {
@@ -189,8 +213,7 @@ func (r *Registry) mountDashboard(mux *http.ServeMux) {
 		return
 	}
 	serveDash := func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
+		setPublicHTMLHeaders(w)
 		w.Write(dashboardHTML)
 	}
 	mux.HandleFunc("GET /dashboard", serveDash)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -28,10 +29,23 @@ type globalpingProbeMeasurement struct {
 	Result globalpingProbeResult `json:"result"`
 }
 
+type globalpingHTTPRequest struct {
+	Host string `json:"host"`
+}
+
+type globalpingMeasurementOptions struct {
+	Protocol string                `json:"protocol"`
+	Port     int                   `json:"port"`
+	Request  globalpingHTTPRequest `json:"request"`
+}
+
 type globalpingMeasurement struct {
-	ID      string                       `json:"id"`
-	Status  string                       `json:"status"`
-	Results []globalpingProbeMeasurement `json:"results"`
+	ID                 string                       `json:"id"`
+	Type               string                       `json:"type"`
+	Target             string                       `json:"target"`
+	MeasurementOptions globalpingMeasurementOptions `json:"measurementOptions"`
+	Status             string                       `json:"status"`
+	Results            []globalpingProbeMeasurement `json:"results"`
 }
 
 type GlobalpingChecker struct {
@@ -118,4 +132,34 @@ func evaluateSuccessRatio(m *globalpingMeasurement) float64 {
 		}
 	}
 	return float64(success) / float64(len(m.Results))
+}
+
+func validateMeasurementBinding(m *globalpingMeasurement, requestedID, candidateIP, reportIP string, reportPort int, reportSNI, expectedSNI string) error {
+	if m == nil {
+		return fmt.Errorf("missing measurement")
+	}
+	if m.ID != "" && m.ID != requestedID {
+		return fmt.Errorf("measurement id %q does not match requested id %q", m.ID, requestedID)
+	}
+	if m.Type != "http" {
+		return fmt.Errorf("measurement type %q is not http", m.Type)
+	}
+	if m.Target == "" || m.Target != candidateIP || m.Target != reportIP {
+		return fmt.Errorf("measurement target %q does not match candidate/report ip %q/%q", m.Target, candidateIP, reportIP)
+	}
+	// GET /measurements omits protocol for HTTP measurements even when the
+	// creation request used HTTPS. If present, still enforce the binding.
+	if m.MeasurementOptions.Protocol != "" && !strings.EqualFold(m.MeasurementOptions.Protocol, "HTTPS") {
+		return fmt.Errorf("measurement protocol %q is not HTTPS", m.MeasurementOptions.Protocol)
+	}
+	if m.MeasurementOptions.Port != reportPort {
+		return fmt.Errorf("measurement port %d does not match report port %d", m.MeasurementOptions.Port, reportPort)
+	}
+	if m.MeasurementOptions.Request.Host == "" || m.MeasurementOptions.Request.Host != reportSNI || m.MeasurementOptions.Request.Host != expectedSNI {
+		return fmt.Errorf("measurement host %q does not match report/config sni %q/%q", m.MeasurementOptions.Request.Host, reportSNI, expectedSNI)
+	}
+	if len(m.Results) == 0 {
+		return fmt.Errorf("measurement results are empty")
+	}
+	return nil
 }

@@ -148,7 +148,11 @@ func TestBlockedEventOnHealthReport(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"id": "m-x", "status": "finished",
+			"id": "m-x", "type": "http", "target": "1.2.3.4", "status": "finished",
+			"measurementOptions": map[string]any{
+				"protocol": "HTTPS", "port": 443,
+				"request": map[string]any{"host": "front.example.com"},
+			},
 			"results": []map[string]any{
 				{"result": map[string]any{"status": "failed", "statusCode": 0}},
 				{"result": map[string]any{"status": "failed", "statusCode": 0}},
@@ -167,7 +171,7 @@ func TestBlockedEventOnHealthReport(t *testing.T) {
 	r.mu.Unlock()
 
 	payload := HealthReportPayload{
-		NodeID: "n1", IP: "1.2.3.4", Port: 443,
+		NodeID: "n1", IP: "1.2.3.4", Port: 443, FakeSNI: "front.example.com",
 		GlobalpingOK: true, GlobalpingMeasurementID: "m-x", MetricsOK: true,
 	}
 	body, _ := json.Marshal(payload)
@@ -205,6 +209,12 @@ func TestPanelEndpoints(t *testing.T) {
 	c.LastReportAt = time.Now()
 	r.mu.Unlock()
 	r.evaluateAssignments(time.Now())
+	r.mu.Lock()
+	r.state.DNSOperations["drift.example.com"] = &DNSOperation{
+		DesiredType: "A", DesiredTarget: "1.1.1.1", AppliedType: "A", AppliedTarget: "2.2.2.2",
+		Attempts: 2, NextAttempt: time.Now().Add(time.Minute), LastError: "temporary",
+	}
+	r.mu.Unlock()
 
 	mux := http.NewServeMux()
 	r.mountPanel(mux)
@@ -220,6 +230,16 @@ func TestPanelEndpoints(t *testing.T) {
 	resp.Body.Close()
 	if !strings.Contains(string(htmlBody), "sharedd") {
 		t.Fatal("panel HTML must contain title")
+	}
+	for _, marker := range []string{"Обзор", "Ноды", "Мастера и DNS", "СРМД", "Журнал", "Настройки", "Подключить ноду", "noc-node-command", "noc-node-token", "mobile-nav", "--acc:"} {
+		if !strings.Contains(string(htmlBody), marker) {
+			t.Fatalf("panel HTML must contain operational IA marker %q", marker)
+		}
+	}
+	for _, marker := range []string{`id="login-overlay" hidden`, `data-settings-tab="connect"`, `data-settings-tab="globalping"`, `data-settings-group="system"`} {
+		if !strings.Contains(string(htmlBody), marker) {
+			t.Fatalf("panel HTML must contain UI state marker %q", marker)
+		}
 	}
 
 	// API без токена -> 401
@@ -252,6 +272,18 @@ func TestPanelEndpoints(t *testing.T) {
 	}
 	if len(ov.Nodes[0].MasterDomains) != 1 || ov.Nodes[0].MasterDomains[0] != "d1.example.com" {
 		t.Fatalf("master_domains wrong: %+v", ov.Nodes[0].MasterDomains)
+	}
+	if ov.DNS.Items == nil {
+		t.Fatal("overview DNS operations must be encoded as an array")
+	}
+	foundDNSDrift := false
+	for _, op := range ov.DNS.Items {
+		if op.Domain == "drift.example.com" {
+			foundDNSDrift = op.Drifted && op.DesiredTarget == "1.1.1.1" && op.AppliedTarget == "2.2.2.2" && op.Attempts == 2 && op.LastError == "temporary"
+		}
+	}
+	if !foundDNSDrift {
+		t.Fatalf("overview must expose DNS desired/applied/retry state: %+v", ov.DNS.Items)
 	}
 
 	// events endpoint

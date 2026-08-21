@@ -1,3 +1,8 @@
+[security]
+# Общий секрет machine-to-machine API. Обязателен; один и тот же токен
+# указывается как registry.token на каждой ноде. Генерируйте минимум 32 байта.
+node_token = "PASTE_A_LONG_RANDOM_NODE_API_TOKEN"
+
 [http]
 # За Caddy-реверс-прокси достаточно loopback: ноды и панель ходят через https://домен.
 addr = "127.0.0.1:8080"
@@ -7,11 +12,13 @@ file = "/var/lib/sharedd/registry_state.json"
 
 # Встроенная веб-панель: /panel (HTML), /panel/api/overview, /panel/api/events.
 # token защищает API панели и /status (Authorization: Bearer <token>).
-# Пустой token = dev-режим без авторизации.
+# Обязательный Bearer token панели (минимум 16 символов).
 [panel]
 enabled = true
-token = ""
+token = "REPLACE_WITH_A_RANDOM_PANEL_TOKEN"
 events_max = 500
+# Доверенный публичный origin для готовой команды подключения ноды.
+public_url = "https://registry.example.com"
 
 [healthcheck]
 probe_interval_ms = 5000
@@ -29,6 +36,9 @@ heartbeat_ttl_sec = 60
 fail_threshold = 3
 recover_threshold = 2
 report_freshness_min = 15
+# Verified Globalping result is valid for this many minutes. Must be strictly
+# greater than node_defaults.globalping_ms.
+globalping_validity_min = 15
 # Рипер неактивных: нода, НЕПРЕРЫВНО нездоровая дольше стольких минут
 # (живой агент, мёртвый прокси — heartbeat'ы идут, все проверки красные),
 # удаляется из пула событием node_pruned; как прокси починится — сама
@@ -92,6 +102,9 @@ api_base = "https://api.globalping.io/v1"
 
 [shared_proxy]
 tls_domain = "www.example.com"
+# Общий порт всех прокси. Нода с другим локальным port не входит в пул;
+# agent применяет ANTISCAN_MTPROTO только при точном совпадении.
+port = 443
 
 [shared_proxy.users]
 hello = "0123456789abcdef0123456789abcdef"

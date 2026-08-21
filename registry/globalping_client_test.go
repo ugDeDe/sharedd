@@ -17,11 +17,19 @@ func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if calls.Add(1) < 3 {
-			json.NewEncoder(w).Encode(map[string]any{"id": "m-wait", "status": "in-progress", "results": []any{}})
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "m-wait", "type": "http", "target": "1.2.3.4", "status": "in-progress",
+				"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
+				"results":            []any{},
+			})
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]any{
-			"id": "m-wait", "status": "finished",
+			"id": "m-wait", "type": "http", "target": "1.2.3.4", "status": "finished",
+			"measurementOptions": map[string]any{
+				"protocol": "HTTPS", "port": 443,
+				"request": map[string]any{"host": "front.example.com"},
+			},
 			"results": []map[string]any{
 				{"result": map[string]any{"status": "finished", "statusCode": 200}},
 				{"result": map[string]any{"status": "finished", "statusCode": 200}},
@@ -48,7 +56,11 @@ func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 func TestFetchFinishedTimeoutOnStuckMeasurement(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": "m-stuck", "status": "in-progress", "results": []any{}})
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "m-stuck", "type": "http", "target": "1.2.3.4", "status": "in-progress",
+			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
+			"results":            []any{},
+		})
 	}))
 	defer mock.Close()
 
@@ -78,7 +90,7 @@ func TestHealthReportInconclusiveKeepsGPState(t *testing.T) {
 	r.mu.Unlock()
 
 	payload := HealthReportPayload{
-		NodeID: "n1", IP: "1.2.3.4", Port: 443,
+		NodeID: "n1", IP: "1.2.3.4", Port: 443, FakeSNI: "front.example.com",
 		GlobalpingOK: true, GlobalpingMeasurementID: "m-dead", MetricsOK: true,
 	}
 	body, _ := json.Marshal(payload)
@@ -102,5 +114,91 @@ func TestHealthReportInconclusiveKeepsGPState(t *testing.T) {
 	// а вот доступность отчёт не портит: metrics были ok
 	if c.ReportsOK != 1 || c.ReportsTotal != 1 {
 		t.Fatalf("report with ok metrics must count despite inconclusive GP, got ok=%d total=%d", c.ReportsOK, c.ReportsTotal)
+	}
+}
+
+func TestHealthReportMeasurementBindingMismatchKeepsGPState(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		port   int
+		host   string
+	}{
+		{name: "target", target: "5.6.7.8", port: 443, host: "front.example.com"},
+		{name: "port", target: "1.2.3.4", port: 8443, host: "front.example.com"},
+		{name: "sni", target: "1.2.3.4", port: 443, host: "other.example.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]any{
+					"id": "m-binding", "type": "http", "target": tt.target, "status": "finished",
+					"measurementOptions": map[string]any{
+						"protocol": "HTTPS", "port": tt.port,
+						"request": map[string]any{"host": tt.host},
+					},
+					"results": []map[string]any{{"result": map[string]any{"status": "finished", "statusCode": 200}}},
+				})
+			}))
+			defer mock.Close()
+
+			r := newTestRegistry(t)
+			r.cfg.Globalping.APIBase = mock.URL
+			r.register(registerRequest{NodeID: "n1", IP: "1.2.3.4"})
+			c := r.state.Candidates["n1"]
+			c.GlobalpingOK = true
+			c.GlobalpingVerifiedRatio = 0.9
+			c.GlobalpingMeasurementID = "m-old"
+
+			payload := HealthReportPayload{
+				NodeID: "n1", IP: "1.2.3.4", Port: 443, FakeSNI: "front.example.com",
+				GlobalpingOK: true, GlobalpingMeasurementID: "m-binding", MetricsOK: true,
+			}
+			body, _ := json.Marshal(payload)
+			rec := httptest.NewRecorder()
+			r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected inconclusive report to return 200, got %d", rec.Code)
+			}
+
+			c = r.state.Candidates["n1"]
+			if !c.GlobalpingOK || c.GlobalpingVerifiedRatio != 0.9 || c.GlobalpingMeasurementID != "m-old" {
+				t.Fatalf("binding mismatch changed GP state: %+v", c)
+			}
+			if c.GPChecksTotal != 0 || c.Quarantine != nil || r.state.Counters.GPBlocked != 0 {
+				t.Fatalf("binding mismatch was applied as a GP check: %+v", c)
+			}
+		})
+	}
+}
+
+func TestHealthReportMeasurementWithoutProtocolIsAccepted(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "m-no-protocol", "type": "http", "target": "1.2.3.4", "status": "finished",
+			"measurementOptions": map[string]any{
+				"port": 443, "request": map[string]any{"host": "front.example.com"},
+			},
+			"results": []map[string]any{{"result": map[string]any{"status": "finished", "statusCode": 200}}},
+		})
+	}))
+	defer mock.Close()
+
+	r := newTestRegistry(t)
+	r.cfg.Globalping.APIBase = mock.URL
+	r.register(registerRequest{NodeID: "n1", IP: "1.2.3.4"})
+	body, _ := json.Marshal(HealthReportPayload{
+		NodeID: "n1", IP: "1.2.3.4", Port: 443, FakeSNI: "front.example.com",
+		GlobalpingOK: true, GlobalpingMeasurementID: "m-no-protocol", MetricsOK: true,
+	})
+	rec := httptest.NewRecorder()
+	r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !r.state.Candidates["n1"].GlobalpingOK {
+		t.Fatal("expected Globalping state to be accepted")
 	}
 }

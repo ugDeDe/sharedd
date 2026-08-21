@@ -18,18 +18,14 @@ ARCHIVE_NAME="${PKG_NAME}-${VERSION}-${GOOS}-${GOARCH}.tar.gz"
 echo "==> building $PKG_NAME $VERSION for $GOOS/$GOARCH"
 
 cd "$PKG_DIR"
-if [[ ! -f go.mod ]]; then
-    echo "==> go.mod not found, initializing"
-    go mod init "sharedd/registry"
-fi
-go get github.com/pelletier/go-toml/v2 github.com/cloudflare/cloudflare-go
-go mod tidy
+[[ -f go.mod ]] || { echo "==> go.mod not found" >&2; exit 1; }
+go mod download
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
 CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-    go build -trimpath -ldflags="-s -w" -o "$STAGE/$PKG_NAME" .
+    go build -mod=readonly -trimpath -ldflags="-s -w" -o "$STAGE/$PKG_NAME" .
 
 # --- содержимое архива ---
 mkdir -p "$STAGE/pkg"
@@ -48,5 +44,6 @@ tar -C "$STAGE" -czf "$DIST_DIR/$ARCHIVE_NAME" pkg
 # голый бинарник для web-установщика: залейте его же в GitHub Release — ссылка
 # releases/latest/download/sharedd-registry тогда работает «из коробки»
 install -m 0755 "$STAGE/pkg/$PKG_NAME" "$DIST_DIR/$PKG_NAME"
+(cd "$DIST_DIR" && sha256sum "$PKG_NAME" > "${PKG_NAME}.sha256")
 
-echo "==> done: $DIST_DIR/$ARCHIVE_NAME (+ .sha256) и голый бинарник $DIST_DIR/$PKG_NAME"
+echo "==> done: $DIST_DIR/$ARCHIVE_NAME и $DIST_DIR/$PKG_NAME (+ .sha256)"

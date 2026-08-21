@@ -147,8 +147,14 @@ func ensureUser(lines []string, username, secret string) ([]string, bool) {
 		}
 		return appendNewSection(lines, "access.users", []string{entry}), true
 	}
-	if _, exists := hasKey(lines, headerIdx+1, endIdx, username); exists {
-		return lines, false
+	if idx, exists := hasKey(lines, headerIdx+1, endIdx, username); exists {
+		_, current, ok := parseKeyValueLine(lines[idx])
+		if ok && current == secret {
+			return lines, false
+		}
+		out := append([]string{}, lines...)
+		out[idx] = entry
+		return out, true
 	}
 	return insertIntoSection(lines, endIdx, entry), true
 }
@@ -332,9 +338,11 @@ type NodeIntervals struct {
 }
 
 type SharedConfig struct {
-	TLSDomain string            `json:"tls_domain"`
-	Users     map[string]string `json:"users"`
-	Intervals NodeIntervals     `json:"intervals"`
+	TLSDomain       string            `json:"tls_domain"`
+	ProxyPort       int               `json:"proxy_port"`
+	Users           map[string]string `json:"users"`
+	Intervals       NodeIntervals     `json:"intervals"`
+	ForceGlobalping bool              `json:"force_globalping"`
 }
 
 type SharedConfigCache struct {
@@ -411,9 +419,9 @@ func (a *agentIntervals) Metrics() time.Duration {
 }
 func (a *agentIntervals) Sync() time.Duration { a.mu.RLock(); defer a.mu.RUnlock(); return a.syncI }
 
-func fetchSharedConfig(registryURL string) (SharedConfig, error) {
+func fetchSharedConfig(cfg *NodeConfig) (SharedConfig, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(registryURL + "/config")
+	resp, err := registryRequest(client, cfg, http.MethodGet, "/config", nil)
 	if err != nil {
 		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
 		return SharedConfig{}, fmt.Errorf("fetch /config error: %w", err)
@@ -424,11 +432,11 @@ func fetchSharedConfig(registryURL string) (SharedConfig, error) {
 	if resp.StatusCode != http.StatusOK {
 		return SharedConfig{}, fmt.Errorf("fetch /config failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
-	var cfg SharedConfig
-	if err := json.Unmarshal(body, &cfg); err != nil {
+	var shared SharedConfig
+	if err := json.Unmarshal(body, &shared); err != nil {
 		return SharedConfig{}, fmt.Errorf("parse /config error: %w", err)
 	}
-	return cfg, nil
+	return shared, nil
 }
 
 // applySharedConfig — единая точка применения /config: кэш + интервалы + telemt.toml.
@@ -438,8 +446,16 @@ func fetchSharedConfig(registryURL string) (SharedConfig, error) {
 // Запись файла идёт через applySharedConfigManaged — с остановкой и
 // рестартом прокси (конфиг на работающем прокси не применяется сам).
 func applySharedConfig(cfg *NodeConfig, shared SharedConfig) {
+	previousPort := sharedConfigCache.Get().ProxyPort
 	sharedConfigCache.Set(shared)
+	if previousPort != shared.ProxyPort {
+		kickAntiscan()
+	}
 	intervals.apply(shared.Intervals)
+	if shared.ForceGlobalping {
+		log.Printf("globalping check requested by registry (stale or missing result)")
+		kickGlobalping()
+	}
 
 	if !cfg.Sync.ApplyToTelemt {
 		return
@@ -451,7 +467,7 @@ func applySharedConfig(cfg *NodeConfig, shared SharedConfig) {
 
 func syncLoop(cfg *NodeConfig) {
 	for {
-		shared, err := fetchSharedConfig(cfg.Registry.URL)
+		shared, err := fetchSharedConfig(cfg)
 		if err != nil {
 			log.Printf("failed to fetch shared config: %v", err)
 		} else {
@@ -483,7 +499,7 @@ func computeSharedConfigPatch(cfg *NodeConfig, shared SharedConfig) (newLines []
 		var ch bool
 		lines, ch = ensureUser(lines, username, secret)
 		if ch {
-			log.Printf("added new secret for user %q to %s (existing secrets untouched)", username, path)
+			log.Printf("synchronized secret for user %q in %s", username, path)
 			anyChange = true
 		}
 	}
@@ -532,6 +548,31 @@ func computeSharedConfigPatch(cfg *NodeConfig, shared SharedConfig) (newLines []
 // не нужны никому.
 var applySvcMu sync.Mutex
 
+// Indirections keep service failure paths deterministic in unit tests.
+var (
+	applySystemdAvailable = systemdAvailable
+	applyDetectProxyUnit  = detectProxyUnit
+	applyPreferMtproxyl   = preferMtproxylCLI
+	applyDetectNodeType   = detectNodeType
+	applyMtproxylRestart  = tryMtproxylRestart
+	applyBlindRestart     = blindRestartTelemt
+	applyProxyCtl         = proxyCtl
+	applyWaitMetrics      = waitMetricsReady
+)
+
+func rollbackConfig(path string, orig []string, restart func() error, cause error) error {
+	if orig == nil {
+		return cause
+	}
+	if err := writeLines(path, orig); err != nil {
+		return fmt.Errorf("%w; rollback write failed: %v", cause, err)
+	}
+	if err := restart(); err != nil {
+		return fmt.Errorf("%w; rollback restart failed: %v", cause, err)
+	}
+	return fmt.Errorf("%w; config rolled back", cause)
+}
+
 // applySharedConfigManaged — боевой конвейер применения /config к telemt.toml:
 //
 // 1. стоп прокси (systemd-юнит telemt.service и т.п.);
@@ -563,10 +604,10 @@ func applySharedConfigManaged(cfg *NodeConfig, shared SharedConfig) error {
 	}
 
 	unit := ""
-	if systemdAvailable() {
-		unit = detectProxyUnit()
+	if applySystemdAvailable() {
+		unit = applyDetectProxyUnit()
 	}
-	if unit != "" && preferMtproxylCLI() {
+	if unit != "" && applyPreferMtproxyl() {
 		// На MTProxyL systemctl-рестарт поднял бы прокси со СТАРЫМ
 		// сгенерированным config.toml — наш патч лежит в superexpert.toml и до
 		// рабочего конфига его доносит только `mtproxyl restart`.
@@ -584,20 +625,19 @@ func applySharedConfigManaged(cfg *NodeConfig, shared SharedConfig) error {
 		if err := writeLines(path, newLines); err != nil {
 			return err
 		}
-		if preferMtproxylCLI() || detectNodeType() == NodeTypeMTProxyL {
+		if applyPreferMtproxyl() || applyDetectNodeType() == NodeTypeMTProxyL {
 			log.Printf("%s updated; restarting proxy via mtproxyl CLI (no systemd unit found)...", path)
-			if rerr := tryMtproxylRestart(); rerr != nil {
-				log.Printf("mtproxyl restart failed: %v — перезапустите прокси вручную", rerr)
-				return nil
+			if rerr := applyMtproxylRestart(); rerr != nil {
+				return rollbackConfig(path, orig, applyMtproxylRestart, fmt.Errorf("mtproxyl restart after config write: %w", rerr))
 			}
-			if werr := waitMetricsReady(cfg, proxyUpTimeout); werr != nil {
-				log.Printf("proxy not ready after mtproxyl restart: %v", werr)
+			if werr := applyWaitMetrics(cfg, proxyUpTimeout); werr != nil {
+				return rollbackConfig(path, orig, applyMtproxylRestart, fmt.Errorf("proxy not ready after mtproxyl restart: %w", werr))
 			}
 			return nil
 		}
 		log.Printf("%s updated; systemd unit not detected — last resort: blind `systemctl restart telemt.service` ...", path)
-		if rerr := blindRestartTelemt(cfg); rerr != nil {
-			log.Printf("blind restart telemt.service failed: %v — restart proxy manually to apply", rerr)
+		if rerr := applyBlindRestart(cfg); rerr != nil {
+			return rollbackConfig(path, orig, func() error { return applyBlindRestart(cfg) }, fmt.Errorf("blind restart telemt.service after config write: %w", rerr))
 		}
 		return nil
 	}
@@ -606,32 +646,32 @@ func applySharedConfigManaged(cfg *NodeConfig, shared SharedConfig) error {
 
 	// 1. СТОП прокси (если стоп падает — файл не трогаем: писать конфиг в
 	// работающий прокси бессмысленно, он его не перечитает).
-	if err := proxyCtl("stop", unit); err != nil {
+	if err := applyProxyCtl("stop", unit); err != nil {
 		return fmt.Errorf("stop %s before config write: %w", unit, err)
 	}
 	// 2. патч и сохранение конфига
 	if err := writeLines(path, newLines); err != nil {
-		_ = proxyCtl("start", unit)
+		_ = applyProxyCtl("start", unit)
 		return fmt.Errorf("write %s: %w (proxy started back with old config)", path, err)
 	}
 	// 3. СТАРТ прокси
-	if err := proxyCtl("start", unit); err != nil {
-		return fmt.Errorf("start %s after config write: %w", unit, err)
+	if err := applyProxyCtl("start", unit); err != nil {
+		return rollbackConfig(path, orig, func() error { return applyProxyCtl("start", unit) }, fmt.Errorf("start %s after config write: %w", unit, err))
 	}
 	// 4. ждём подъёма по метрикам
-	if err := waitMetricsReady(cfg, proxyUpTimeout); err != nil {
+	if err := applyWaitMetrics(cfg, proxyUpTimeout); err != nil {
 		log.Printf("proxy %s did not come up after config apply: %v — rolling back %s", unit, err, path)
 		if orig != nil {
-			_ = proxyCtl("stop", unit)
+			_ = applyProxyCtl("stop", unit)
 			if werr := writeLines(path, orig); werr != nil {
 				log.Printf("rollback: write original %s failed: %v", path, werr)
 			}
 		}
-		rerr := proxyCtl("restart", unit)
+		rerr := applyProxyCtl("restart", unit)
 		if rerr != nil {
 			return fmt.Errorf("proxy not ready: %v; rollback restart failed: %v", err, rerr)
 		}
-		if werr := waitMetricsReady(cfg, proxyRollbackTimeout); werr != nil {
+		if werr := applyWaitMetrics(cfg, proxyRollbackTimeout); werr != nil {
 			return fmt.Errorf("proxy not ready: %v; rolled back but proxy STILL not ready: %v", err, werr)
 		}
 		return fmt.Errorf("config apply rolled back (proxy runs previous config): %w", err)

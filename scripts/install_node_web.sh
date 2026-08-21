@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/v1.0.1/sharedd-node-agent"
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -34,22 +34,25 @@ MTPROXYL_MODE=0
 #                    спорные развилки решаются дефолтами)
 #   --name=ИМЯ       имя ноды; итоговый id = ИМЯ-<5 символов a-z0-9>,
 #                    например ddproxy-6an4o. Без --name id генерирует агент,
-#                    как раньше (node-<16 hex>)
-# То же можно задать переменными окружения REGISTRY_URL / NODE_NAME.
+#                    с именем node (node-xxxxx)
+#   --registry-token=TOKEN  обязательный Node API token регистратора
+# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME.
 # Пример автоматизации:
-#   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --name=ddproxy
+#   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --registry-token=TOKEN --name=ddproxy
 NODE_NAME="${NODE_NAME:-}"
+REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 NONINTERACTIVE=0
 usage() {
     cat <<USAGE
-Использование: sudo bash $0 [--registry=URL] [--name=ИМЯ]
+Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ]
 
   --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
-  --name=ИМЯ       имя ноды; итоговый id: ИМЯ-xxxxx (5 символов a-z0-9), напр. ddproxy-6an4o
+  --registry-token=TOKEN  Node API token из панели регистратора
+  --name=ИМЯ       имя ноды длиной 1..10; итоговый id: ИМЯ-xxxxx, напр. helsinki-6an4o
   -h, --help       эта справка
 
-Переменные окружения: REGISTRY_URL, NODE_NAME (флаги имеют приоритет).
-Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --name=ИМЯ
+Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME (флаги имеют приоритет).
+Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --registry-token=TOKEN --name=ИМЯ
 USAGE
 }
 while [ $# -gt 0 ]; do
@@ -57,6 +60,9 @@ while [ $# -gt 0 ]; do
         --registry=*) REGISTRY_URL="${1#*=}"; NONINTERACTIVE=1 ;;
         --registry)   shift; [ $# -gt 0 ] || die "--registry требует URL"
                       REGISTRY_URL="$1"; NONINTERACTIVE=1 ;;
+        --registry-token=*) REGISTRY_TOKEN="${1#*=}" ;;
+        --registry-token) shift; [ $# -gt 0 ] || die "--registry-token требует токен"
+                          REGISTRY_TOKEN="$1" ;;
         --name=*)     NODE_NAME="${1#*=}" ;;
         --name)       shift; [ $# -gt 0 ] || die "--name требует значение"
                       NODE_NAME="$1" ;;
@@ -66,8 +72,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 if [ -n "$NODE_NAME" ]; then
-    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,40}[A-Za-z0-9])?$' \
-        || die "недопустимое имя '$NODE_NAME' — латиница/цифры/._- (до 42 символов, без ._- по краям)"
+    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+        || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
 fi
 
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash $0"
@@ -102,17 +108,83 @@ case "$REGISTRY_URL" in
         warn "URL регистратора без схемы — использую ${REGISTRY_URL}" ;;
 esac
 
+read_registry_token() { # read_registry_token <node.toml>
+    local file="$1" line section=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^[[:space:]]*\[[^]]+\][[:space:]]*$ ]]; then
+            section=0
+            [[ "$line" =~ ^[[:space:]]*\[registry\][[:space:]]*$ ]] && section=1
+            continue
+        fi
+        if [ "$section" -eq 1 ] && [[ "$line" =~ ^[[:space:]]*token[[:space:]]*=[[:space:]]*\"([^\"]*)\" ]]; then
+            printf '%s' "${BASH_REMATCH[1]}"
+            return
+        fi
+    done <"$file"
+}
+
+if [ -z "$REGISTRY_TOKEN" ] && [ -f "$ETC_DIR/node.toml" ]; then
+    REGISTRY_TOKEN="$(read_registry_token "$ETC_DIR/node.toml")"
+    [ -z "$REGISTRY_TOKEN" ] || say "сохраняю существующий Node API token из $ETC_DIR/node.toml"
+fi
+if [ -z "$REGISTRY_TOKEN" ] && [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
+    read -r -s -p "  → Node API token регистратора: " REGISTRY_TOKEN </dev/tty || true
+    echo ""
+fi
+[ -n "$REGISTRY_TOKEN" ] || die "нужен --registry-token. Скопируйте готовую команду: Панель → Настройки → Подключение"
+
+toml_escape() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    printf '%s' "$value"
+}
+
+update_registry_config() { # update_registry_config <node.toml>
+    local file="$1" tmp line section=0 saw_registry=0 have_url=0 have_token=0
+    local escaped_url escaped_token
+    escaped_url="$(toml_escape "$REGISTRY_URL")"
+    escaped_token="$(toml_escape "$REGISTRY_TOKEN")"
+    tmp="$(mktemp "${file}.XXXXXX")"
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^[[:space:]]*\[[^]]+\][[:space:]]*$ ]]; then
+            if [ "$section" -eq 1 ]; then
+                [ "$have_url" -eq 1 ] || printf 'url = "%s"\n' "$escaped_url" >>"$tmp"
+                [ "$have_token" -eq 1 ] || printf 'token = "%s"\n' "$escaped_token" >>"$tmp"
+            fi
+            section=0
+            if [[ "$line" =~ ^[[:space:]]*\[registry\][[:space:]]*$ ]]; then section=1; saw_registry=1; fi
+        fi
+        if [ "$section" -eq 1 ] && [[ "$line" =~ ^[[:space:]]*url[[:space:]]*= ]]; then
+            printf 'url = "%s"\n' "$escaped_url" >>"$tmp"; have_url=1; continue
+        fi
+        if [ "$section" -eq 1 ] && [[ "$line" =~ ^[[:space:]]*token[[:space:]]*= ]]; then
+            printf 'token = "%s"\n' "$escaped_token" >>"$tmp"; have_token=1; continue
+        fi
+        printf '%s\n' "$line" >>"$tmp"
+    done <"$file"
+    if [ "$section" -eq 1 ]; then
+        [ "$have_url" -eq 1 ] || printf 'url = "%s"\n' "$escaped_url" >>"$tmp"
+        [ "$have_token" -eq 1 ] || printf 'token = "%s"\n' "$escaped_token" >>"$tmp"
+    fi
+    if [ "$saw_registry" -eq 0 ]; then
+        printf '\n[registry]\nurl = "%s"\ntoken = "%s"\n' "$escaped_url" "$escaped_token" >>"$tmp"
+    fi
+    mv -f "$tmp" "$file"
+    chmod 0640 "$file"
+}
+
 # ── имя ноды ─────────────────────────────────────────────────────────────
 # Итоговый id: ИМЯ-<5 символов a-z0-9> (напр. ddproxy-6an4o). Установщик
 # кладёт его в state-файл агента ($STATE_DIR/node_id) — агент видит готовый
 # id и новый не генерирует. Без имени — пусто: агент сгенерирует случайный
 # персистентный id сам, как раньше.
 if [ -z "$NODE_NAME" ] && [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
-    read -r -p "  → Имя ноды (итог: ИМЯ-xxxxx; пусто = случайный id): " ans </dev/tty || true
+    read -r -p "  → Имя ноды, 1..10 символов (итог: ИМЯ-xxxxx; пусто = node-xxxxx): " ans </dev/tty || true
     NODE_NAME="${ans:-}"
     if [ -n "$NODE_NAME" ]; then
-        printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,40}[A-Za-z0-9])?$' \
-            || die "недопустимое имя '$NODE_NAME' — латиница/цифры/._- (до 42 символов, без ._- по краям)"
+        printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+            || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
     fi
 fi
 
@@ -122,10 +194,18 @@ gen_suffix() {
 }
 NODE_ID=""
 if [ -n "$NODE_NAME" ]; then
-    sfx="$(gen_suffix)"
-    [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
-    [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
-    NODE_ID="${NODE_NAME}-${sfx}"
+    ID_STATE_FILE="$STATE_DIR/node_id"
+    OLD_ID=""
+    [ ! -s "$ID_STATE_FILE" ] || OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
+    old_suffix="${OLD_ID##*-}"
+    if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
+        NODE_ID="$OLD_ID"
+    else
+        sfx="$(gen_suffix)"
+        [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
+        [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
+        NODE_ID="${NODE_NAME}-${sfx}"
+    fi
 fi
 
 # ── голый бинарник по ссылке ─────────────────────────────────────────────
@@ -144,8 +224,8 @@ else
     die "нужен curl или wget (apt install curl)"
 fi
 [ -s "$file" ] || die "скачался пустой файл — проверьте BINARY_URL"
-install -m 0755 "$file" "$BIN_DEST"
-ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
+IDENTITY="$("$file" --version 2>/dev/null || true)"
+[ "$IDENTITY" = "sharedd-node-agent" ] || die "release asset sharedd-node-agent содержит неверный или устаревший бинарник (identity: ${IDENTITY:-не определён})"
 
 # ── конфиг telemt: автоопределение ───────────────────────────────────────
 superexpert_active() {  # флаг в настройках + файл на месте (семантика MTProxyL)
@@ -217,6 +297,44 @@ fi
 [ -f "$TELEMT_CONFIG" ] || die "конфиг telemt не найден: $TELEMT_CONFIG — сначала поставьте telemt/MTProxyL"
 say "конфиг telemt: ${BOLD}${TELEMT_CONFIG}${NC}"
 
+# Registry is the source of truth for the shared proxy port. Validate before
+# replacing the installed agent or touching systemd.
+if command -v curl &>/dev/null; then
+    SHARED_JSON="$(curl -fsSL --connect-timeout 15 -H "Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config")" \
+        || die "не удалось получить /config регистратора для проверки общего порта"
+else
+    SHARED_JSON="$(wget -qO- --header="Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config")" \
+        || die "не удалось получить /config регистратора для проверки общего порта"
+fi
+REGISTRY_PROXY_PORT="$(printf '%s' "$SHARED_JSON" | grep -oE '"proxy_port"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -n1 || true)"
+[ -n "$REGISTRY_PROXY_PORT" ] && [ "$REGISTRY_PROXY_PORT" -ge 1 ] && [ "$REGISTRY_PROXY_PORT" -le 65535 ] \
+    || die "регистратор вернул некорректный proxy_port"
+LOCAL_PROXY_PORT="$("$file" --telemt-port="$TELEMT_CONFIG" 2>>"$INSTALL_LOG")" \
+    || die "не удалось прочитать порт из $TELEMT_CONFIG — см. $INSTALL_LOG"
+printf '%s' "$LOCAL_PROXY_PORT" | grep -qE '^[0-9]+$' || die "агент вернул некорректный локальный порт: $LOCAL_PROXY_PORT"
+[ "$LOCAL_PROXY_PORT" = "$REGISTRY_PROXY_PORT" ] \
+    || die "порт прокси $LOCAL_PROXY_PORT не совпадает с общим портом регистратора $REGISTRY_PROXY_PORT"
+ok "общий порт прокси подтверждён регистратором: ${BOLD}${REGISTRY_PROXY_PORT}${NC}"
+
+if ! command -v ipset >/dev/null 2>&1 || ! command -v iptables >/dev/null 2>&1; then
+    say "устанавливаю зависимости antiscan (ipset, iptables)..."
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq >>"$INSTALL_LOG" 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ipset iptables >>"$INSTALL_LOG" 2>&1
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
+    else
+        die "для antiscan нужны ipset и iptables; пакетный менеджер не найден"
+    fi
+fi
+command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1 \
+    || die "не удалось установить ipset/iptables — см. $INSTALL_LOG"
+
+install -m 0755 "$file" "$BIN_DEST"
+ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
+
 # ── конфиг ноды + systemd ────────────────────────────────────────────────
 install -d -m 0750 -o root -g root "$ETC_DIR"
 install -d -m 0750 -o root -g root "$STATE_DIR"
@@ -237,25 +355,14 @@ if [ -n "$NODE_ID" ]; then
     ok "имя ноды: ${BOLD}${NODE_ID}${NC}"
 fi
 if [ -f "$ETC_DIR/node.toml" ]; then
-    # Конфиг уже есть — оставляем, но registry.url приводим к выбранному
-    # (и заодно чиним старый битый url без схемы: unsupported protocol scheme).
-    CUR_URL="$(grep -E '^[[:space:]]*url[[:space:]]*=' "$ETC_DIR/node.toml" | head -n1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)"
-    if [ "$CUR_URL" = "$REGISTRY_URL" ]; then
-        say "$ETC_DIR/node.toml существует — оставляю как есть"
-    else
-        warn "registry.url в конфиге: '${CUR_URL:-<не найден>}' — обновляю на '${REGISTRY_URL}'"
-        if grep -qE '^[[:space:]]*url[[:space:]]*=' "$ETC_DIR/node.toml"; then
-            sed -i -E "0,/^[[:space:]]*url[[:space:]]*=.*/s||url = \"${REGISTRY_URL}\"|" "$ETC_DIR/node.toml"
-        else
-            printf '\n[registry]\nurl = "%s"\n' "$REGISTRY_URL" >> "$ETC_DIR/node.toml"
-        fi
-        ok "registry.url обновлён в $ETC_DIR/node.toml (остальное не тронуто)"
-    fi
+	update_registry_config "$ETC_DIR/node.toml"
+	ok "registry.url и обязательный registry.token обновлены в $ETC_DIR/node.toml"
 else
     cat > "$ETC_DIR/node.toml" <<TOML
 # sharedd node agent (установлено $(date -Iseconds))
 [registry]
-url = "${REGISTRY_URL}"
+url = "$(toml_escape "$REGISTRY_URL")"
+token = "$(toml_escape "$REGISTRY_TOKEN")"
 
 [telemt]
 config_path = "${TELEMT_CONFIG}"

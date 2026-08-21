@@ -15,9 +15,34 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/cloudflare/cloudflare-go"
 )
+
+const (
+	dnsReconcileInterval = 5 * time.Second
+	dnsRetryBase         = 5 * time.Second
+	dnsRetryMax          = 5 * time.Minute
+)
+
+type DNSOperation struct {
+	DesiredType   string    `json:"desired_type,omitempty"`
+	DesiredTarget string    `json:"desired_target,omitempty"`
+	DesiredNode   string    `json:"desired_node,omitempty"`
+	AppliedType   string    `json:"applied_type,omitempty"`
+	AppliedTarget string    `json:"applied_target,omitempty"`
+	Attempts      int       `json:"attempts,omitempty"`
+	NextAttempt   time.Time `json:"next_attempt,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
+	LastSuccess   time.Time `json:"last_success,omitempty"`
+	Generation    uint64    `json:"generation,omitempty"`
+}
+
+func (op *DNSOperation) drifted() bool {
+	return op.DesiredType != op.AppliedType || op.DesiredTarget != op.AppliedTarget
+}
 
 // cfDNSAPI — минимально используемый срез Cloudflare API; *cloudflare.API
 // удовлетворяет интерфейсу напрямую, в тестах подсовывается фейк.
@@ -38,17 +63,154 @@ func (r *Registry) cfSnapshot() (cf cfDNSAPI, zoneID string, ttl int, proxied bo
 // applyDNSTarget — upsert A-записи домена + учёт (счётчики, событие, персист).
 // Cloudflare-вызов вне локов, учёт — под mu.
 func (r *Registry) applyDNSTarget(domain, nodeID, ip string) {
-	err := r.upsertARecord(domain, ip)
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.enqueueDNSDesiredLocked(domain, "A", ip, nodeID)
+	r.persistStateLocked()
+	r.mu.Unlock()
+	r.reconcileDNSDomain(domain, true)
+}
+
+func (r *Registry) enqueueDNSDesiredLocked(domain, typ, target, nodeID string) bool {
+	if r.state.DNSOperations == nil {
+		r.state.DNSOperations = make(map[string]*DNSOperation)
+	}
+	typ = strings.ToUpper(strings.TrimSpace(typ))
+	op := r.state.DNSOperations[domain]
+	if op == nil {
+		op = &DNSOperation{}
+		r.state.DNSOperations[domain] = op
+	}
+	if op.DesiredType == typ && op.DesiredTarget == target && op.DesiredNode == nodeID {
+		return false
+	}
+	op.DesiredType, op.DesiredTarget, op.DesiredNode = typ, target, nodeID
+	op.Attempts, op.NextAttempt, op.LastError = 0, time.Time{}, ""
+	op.Generation++
+	return true
+}
+
+func dnsRetryDelay(attempts int) time.Duration {
+	d := dnsRetryBase
+	for i := 1; i < attempts && d < dnsRetryMax; i++ {
+		d *= 2
+	}
+	if d > dnsRetryMax {
+		return dnsRetryMax
+	}
+	return d
+}
+
+func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
+	now := time.Now()
+	r.mu.Lock()
+	if r.dnsInFlight == nil {
+		r.dnsInFlight = make(map[string]bool)
+	}
+	op := r.state.DNSOperations[domain]
+	if op == nil || !op.drifted() || (!force && now.Before(op.NextAttempt)) || r.dnsInFlight[domain] || !r.domainInConfigLocked(domain) {
+		r.mu.Unlock()
+		return nil
+	}
+	r.dnsInFlight[domain] = true
+	typ, target, nodeID, generation := op.DesiredType, op.DesiredTarget, op.DesiredNode, op.Generation
+	op.Attempts++
+	r.persistStateLocked()
+	r.mu.Unlock()
+
+	var err error
+	switch typ {
+	case "A":
+		err = r.upsertARecord(domain, target)
+	case "CNAME":
+		err = r.upsertCNAMERecord(domain, target)
+	default:
+		err = fmt.Errorf("unsupported desired DNS type %q", typ)
+	}
+
+	now = time.Now()
+	r.mu.Lock()
+	delete(r.dnsInFlight, domain)
+	op = r.state.DNSOperations[domain]
+	if op == nil {
+		r.mu.Unlock()
+		return err
+	}
 	if err != nil {
 		r.state.Counters.DNSErrors++
-		r.addEventLocked(Event{Type: EventDNSError, NodeID: nodeID, IP: ip, Domain: domain, Detail: err.Error()})
+		r.addEventLocked(Event{Type: EventDNSError, NodeID: nodeID, IP: target, Domain: domain, Detail: err.Error()})
+		if op.Generation == generation {
+			op.LastError = err.Error()
+			op.NextAttempt = now.Add(dnsRetryDelay(op.Attempts))
+		}
 	} else {
+		op.AppliedType, op.AppliedTarget, op.LastSuccess = typ, target, now
 		r.state.Counters.DNSUpdates++
-		r.addEventLocked(Event{Type: EventDNSUpdated, NodeID: nodeID, IP: ip, Domain: domain, Detail: "A -> " + ip})
+		detail, ip := typ+" -> "+target, ""
+		if typ == "A" {
+			ip = target
+		} else {
+			detail += " (СРМД)"
+		}
+		r.addEventLocked(Event{Type: EventDNSUpdated, NodeID: nodeID, IP: ip, Domain: domain, Detail: detail})
+		if op.Generation == generation {
+			op.LastError, op.NextAttempt = "", time.Time{}
+		}
 	}
 	r.persistStateLocked()
+	r.mu.Unlock()
+	return err
+}
+
+func (r *Registry) reconcileDNSDue() {
+	r.mu.RLock()
+	domains := make([]string, 0, len(r.state.DNSOperations))
+	for domain := range r.state.DNSOperations {
+		domains = append(domains, domain)
+	}
+	r.mu.RUnlock()
+	var wg sync.WaitGroup
+	for _, domain := range domains {
+		wg.Add(1)
+		go func(d string) {
+			defer wg.Done()
+			r.reconcileDNSDomain(d, false)
+		}(domain)
+	}
+	wg.Wait()
+}
+
+func (r *Registry) dnsReconcileLoop() {
+	r.reconcileDNSDue()
+	ticker := time.NewTicker(dnsReconcileInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		r.reconcileDNSDue()
+	}
+}
+
+func (r *Registry) recoverDNSDesiredLocked() {
+	for domain, target := range r.state.SRMD.CNames {
+		r.enqueueDNSDesiredLocked(domain, "CNAME", target, "")
+	}
+	for domain, nodeID := range r.state.Assignments {
+		if r.state.SRMD.CNames[domain] != "" {
+			continue
+		}
+		if c := r.state.Candidates[nodeID]; c != nil && c.IP != "" {
+			r.enqueueDNSDesiredLocked(domain, "A", c.IP, nodeID)
+		}
+	}
+}
+
+func (r *Registry) domainInConfigLocked(domain string) bool {
+	r.cfgMu.RLock()
+	defer r.cfgMu.RUnlock()
+	for _, d := range r.cfg.Cloudflare.Domains {
+		if strings.TrimSpace(d) == domain {
+			return true
+		}
+	}
+	return false
 }
 
 // upsertARecord: домен = единственная A-запись на ip. Конфликтующие CNAME
@@ -235,8 +397,19 @@ func (r *Registry) sweepOrphans() {
 	r.mu.Unlock()
 
 	for _, d := range orphans {
+		r.mu.Lock()
+		if r.dnsInFlight == nil {
+			r.dnsInFlight = make(map[string]bool)
+		}
+		if r.dnsInFlight[d] || r.domainInConfigLocked(d) {
+			r.mu.Unlock()
+			continue
+		}
+		r.dnsInFlight[d] = true
+		r.mu.Unlock()
 		removed, err := r.sweepDNSOrphan(d)
 		r.mu.Lock()
+		delete(r.dnsInFlight, d)
 		if err != nil {
 			r.state.Counters.DNSErrors++
 			r.addEventLocked(Event{Type: EventDNSError, Domain: d, Detail: "orphan cleanup: " + err.Error()})
@@ -244,7 +417,22 @@ func (r *Registry) sweepOrphans() {
 			r.mu.Unlock()
 			continue
 		}
+		// Config may have been updated while Cloudflare was in flight.
+		if r.domainInConfigLocked(d) {
+			r.recoverDNSDesiredLocked()
+			if op := r.state.DNSOperations[d]; op != nil && removed > 0 {
+				op.AppliedType, op.AppliedTarget = "", ""
+				op.NextAttempt = time.Time{}
+			}
+			r.persistStateLocked()
+			r.mu.Unlock()
+			if removed > 0 {
+				r.reconcileDNSDomain(d, true)
+			}
+			continue
+		}
 		r.state.ManagedDomains = dropDomain(r.state.ManagedDomains, d)
+		delete(r.state.DNSOperations, d)
 		if removed > 0 {
 			r.addEventLocked(Event{
 				Type: EventDNSDeleted, Domain: d,
@@ -260,6 +448,12 @@ func (r *Registry) sweepOrphans() {
 // TXT/MX/NS и прочие записи (почта, верификации) остаются нетронутыми.
 // Возвращает число удалённых записей.
 func (r *Registry) sweepDNSOrphan(domain string) (int, error) {
+	r.mu.RLock()
+	managedAgain := r.domainInConfigLocked(domain)
+	r.mu.RUnlock()
+	if managedAgain {
+		return 0, nil
+	}
 	cf, zoneID, _, _ := r.cfSnapshot()
 	ctx := context.Background()
 	rc := cloudflare.ZoneIdentifier(zoneID)
@@ -274,6 +468,12 @@ func (r *Registry) sweepDNSOrphan(domain string) (int, error) {
 		rec := recs[i]
 		switch strings.ToUpper(rec.Type) {
 		case "A", "AAAA", "CNAME":
+			r.mu.RLock()
+			managedAgain = r.domainInConfigLocked(domain)
+			r.mu.RUnlock()
+			if managedAgain {
+				return removed, nil
+			}
 			if derr := cf.DeleteDNSRecord(ctx, rc, rec.ID); derr != nil {
 				return removed, fmt.Errorf("delete %s: %w", rec.Type, derr)
 			}

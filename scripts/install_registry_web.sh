@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/download/v1.0.1/sharedd-registry"
+BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-registry"
 INSTALLER_URL="https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_registry.sh"
 
 set -euo pipefail

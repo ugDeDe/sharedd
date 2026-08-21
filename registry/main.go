@@ -1,18 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -52,10 +56,12 @@ type Candidate struct {
 	// трогает; вердикт — счётчик попыток → бан по IP или восстановление.
 	Quarantine *QuarantineState `json:"quarantine,omitempty"`
 
-	GlobalpingOK            bool    `json:"globalping_ok"`
-	GlobalpingMeasurementID string  `json:"globalping_measurement_id"`
-	GlobalpingVerifiedRatio float64 `json:"globalping_verified_ratio"`
-	MetricsOK               bool    `json:"metrics_ok"` // сырой вердикт ПОСЛЕДНЕГО отчёта (мигает от любого чиха)
+	GlobalpingOK            bool      `json:"globalping_ok"`
+	GlobalpingMeasurementID string    `json:"globalping_measurement_id"`
+	GlobalpingVerifiedRatio float64   `json:"globalping_verified_ratio"`
+	LastGlobalpingAt        time.Time `json:"last_globalping_at,omitempty"`
+	LastGlobalpingRequestAt time.Time `json:"-"`
+	MetricsOK               bool      `json:"metrics_ok"` // сырой вердикт ПОСЛЕДНЕГО отчёта (мигает от любого чиха)
 	// MetricsHealthy — защёлка metrics-здоровья по fail/recover-
 	// порогам, полный аналог TCP-защёлки Healthy: в fully-healthy входит
 	// ИМЕННО она, а не MetricsOK последнего отчёта. false — только после
@@ -69,8 +75,18 @@ type Candidate struct {
 	MetricsSnapshot   map[string]float64 `json:"metrics_snapshot,omitempty"`
 	LastReportAt      time.Time          `json:"last_report_at"`
 	ReportError       string             `json:"report_error,omitempty"`
+	// Generation changes whenever registration refreshes the candidate. Report
+	// verification may perform a slow network fetch and must not update a
+	// re-registered or replaced candidate afterwards.
+	Generation            uint64    `json:"generation,omitempty"`
+	LastAcceptedCheckedAt time.Time `json:"last_accepted_checked_at,omitempty"`
+	LastMetricsCheckedAt  time.Time `json:"last_metrics_checked_at,omitempty"`
+	LastGPCheckedAt       time.Time `json:"last_gp_checked_at,omitempty"`
+	UsedMeasurementIDs    []string  `json:"used_measurement_ids,omitempty"`
 
 	Port int `json:"port"`
+	// nil keeps legacy persisted candidates compatible until their next report.
+	PortCompatible *bool `json:"port_compatible,omitempty"`
 
 	// NodeType: classic/mtproxyl/meko — тип менеджера прокси на ноде,
 	// информационный бейдж в панели.
@@ -158,7 +174,8 @@ func pushRing[T any](s []T, v T, limit int) []T {
 }
 
 type State struct {
-	Candidates map[string]*Candidate `json:"candidates"`
+	Candidates    map[string]*Candidate    `json:"candidates"`
+	DNSOperations map[string]*DNSOperation `json:"dns_operations,omitempty"`
 	// Assignments — per-domain мастера, domain → node_id. Каждый managed-
 	// домен держит свою ноду; при дефиците нод мастера забирают «сиротские»
 	// домены (fill-empty), при появлении свободной ноды сирота отдаётся ей.
@@ -227,6 +244,7 @@ type Registry struct {
 	srmdExpandTicks int
 	srmdFoldTicks   int
 	srmdPending     []srmdDNSAction
+	dnsInFlight     map[string]bool
 }
 
 // newCFClient — фабрика Cloudflare-клиента (var ради подмены в тестах).
@@ -235,6 +253,12 @@ var newCFClient = func(token string) (cfDNSAPI, error) {
 }
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" || arg == "--version" {
+			fmt.Println("sharedd-registry")
+			return
+		}
+	}
 	cfg, err := loadRegistryConfig()
 	if err != nil {
 		log.Fatalf("config error: %v", err)
@@ -255,6 +279,10 @@ func main() {
 		ttlOverdue: make(map[string]bool),
 	}
 	reg.loadState()
+	reg.mu.Lock()
+	reg.recoverDNSDesiredLocked()
+	reg.persistStateLocked()
+	reg.mu.Unlock()
 	if cfg.DBEnabled {
 		reg.db = openHistoryDB(cfg.Database.File)
 	}
@@ -267,16 +295,23 @@ func main() {
 	reg.persistStateLocked()
 	reg.mu.Unlock()
 
-	if reg.cfg.PanelEnabled && reg.cfg.Panel.Token == "" {
-		log.Printf("WARNING: panel token is empty — /panel API and /status are unauthenticated (set [panel] token)")
-	}
-
 	go reg.probeLoop()
 	go reg.selectionLoop()
+	go reg.dnsReconcileLoop()
 	go reg.expiryLoop()
 	go reg.eventPersistLoop()
 	go reg.historyDBLoop() // ротация событий в SQLite (баны вечны)
-	reg.serveHTTP()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := reg.serveHTTP(ctx); err != nil {
+		log.Printf("registry HTTP stopped: %v", err)
+	}
+	reg.mu.Lock()
+	reg.persistStateLocked()
+	reg.mu.Unlock()
+	if reg.db != nil {
+		reg.db.Close()
+	}
 }
 
 type registerRequest struct {
@@ -294,14 +329,59 @@ type nodeIntervals struct {
 }
 
 type sharedConfigResponse struct {
-	TLSDomain string            `json:"tls_domain"`
-	Users     map[string]string `json:"users"`
-	Intervals nodeIntervals     `json:"intervals"`
+	TLSDomain       string            `json:"tls_domain"`
+	ProxyPort       int               `json:"proxy_port"`
+	Users           map[string]string `json:"users"`
+	Intervals       nodeIntervals     `json:"intervals"`
+	ForceGlobalping bool              `json:"force_globalping,omitempty"`
 }
 
-func (r *Registry) serveHTTP() {
-	log.Printf("registry HTTP listening on %s", r.cfg.HTTP.Addr)
-	log.Fatal(http.ListenAndServe(r.cfg.HTTP.Addr, r.buildMux()))
+const shutdownTimeout = 10 * time.Second
+
+func (r *Registry) httpServer() *http.Server {
+	return &http.Server{
+		Addr:              r.cfg.HTTP.Addr,
+		Handler:           r.buildMux(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      90 * time.Second, // Globalping verification can take 75s.
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    32 << 10,
+	}
+}
+
+func (r *Registry) serveHTTP(ctx context.Context) error {
+	srv := r.httpServer()
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
+	log.Printf("registry HTTP listening on %s", ln.Addr())
+	return serveHTTPServer(ctx, srv, ln)
+}
+
+func serveHTTPServer(ctx context.Context, srv *http.Server, ln net.Listener) error {
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Serve(ln) }()
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			_ = srv.Close()
+			return fmt.Errorf("graceful shutdown: %w", err)
+		}
+		err := <-errCh
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
 }
 
 // buildMux собирает все маршруты. Для Go-1.22+ mux все паттерны метод-квалифицированы —
@@ -309,13 +389,18 @@ func (r *Registry) serveHTTP() {
 func (r *Registry) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /register", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /register", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body registerRequest
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		if err := decodeNodeJSON(w, req, &body); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if body.NodeID == "" || body.IP == "" {
+		if r.nodeAPISecurityEnabled() {
+			if err := validateRegisterRequest(body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		} else if body.NodeID == "" || body.IP == "" {
 			http.Error(w, "node_id, ip required", http.StatusBadRequest)
 			return
 		}
@@ -351,15 +436,21 @@ func (r *Registry) buildMux() *http.ServeMux {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-	})
+	})))
 
-	mux.HandleFunc("POST /heartbeat", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /heartbeat", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			NodeID string `json:"node_id"`
 		}
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.NodeID == "" {
+		if err := decodeNodeJSON(w, req, &body); err != nil || body.NodeID == "" {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
+		}
+		if r.nodeAPISecurityEnabled() {
+			if err := validateNodeID(body.NodeID); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		r.mu.Lock()
 		c, ok := r.state.Candidates[body.NodeID]
@@ -393,9 +484,9 @@ func (r *Registry) buildMux() *http.ServeMux {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-	})
+	})))
 
-	mux.HandleFunc("POST /report", r.handleHealthReport)
+	mux.Handle("POST /report", r.requireNodeToken(http.HandlerFunc(r.handleHealthReport)))
 
 	// POST /retire — агент сообщает о само-завершении по классу
 	// dead (локальные проверки красные > terminate_dead_min): регистратор
@@ -403,15 +494,25 @@ func (r *Registry) buildMux() *http.ServeMux {
 	// по heartbeat-TTL, пока нода молчала. Привязка доверия — RemoteAddr ==
 	// заявленный ip (модель угроз как у открытого /register; стучаться в
 	// retire от чужого имени без его маршрутизируемого адреса нельзя).
-	mux.HandleFunc("POST /retire", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /retire", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			NodeID string `json:"node_id"`
 			IP     string `json:"ip"`
 			Reason string `json:"reason"`
 		}
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.NodeID == "" || body.IP == "" {
+		if err := decodeNodeJSON(w, req, &body); err != nil || body.NodeID == "" || body.IP == "" {
 			http.Error(w, "node_id, ip required", http.StatusBadRequest)
 			return
+		}
+		if r.nodeAPISecurityEnabled() {
+			if err := validateNodeID(body.NodeID); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := validatePublicIPv4(body.IP); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		host, _, _ := net.SplitHostPort(req.RemoteAddr)
 		if host != body.IP {
@@ -436,13 +537,19 @@ func (r *Registry) buildMux() *http.ServeMux {
 		}
 		r.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
-	})
+	})))
 
-	mux.HandleFunc("GET /config", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("GET /config", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		// снапшот под cfgMu: эти секции панель может править на лету
 		r.cfgMu.RLock()
+		gpValidity := r.cfg.GlobalpingValidityTTL
+		proxyPort := r.cfg.SharedProxy.Port
+		if proxyPort == 0 {
+			proxyPort = 443
+		}
 		resp := sharedConfigResponse{
 			TLSDomain: r.cfg.SharedProxy.TLSDomain,
+			ProxyPort: proxyPort,
 			Users:     maps.Clone(r.cfg.SharedProxy.Users),
 			Intervals: nodeIntervals{
 				HeartbeatMs:  r.cfg.NodeDefaults.HeartbeatMs,
@@ -452,9 +559,20 @@ func (r *Registry) buildMux() *http.ServeMux {
 			},
 		}
 		r.cfgMu.RUnlock()
+		nodeID := req.Header.Get("X-ShareDD-Node-ID")
+		if nodeID != "" {
+			now := time.Now()
+			r.mu.Lock()
+			if c := r.state.Candidates[nodeID]; c != nil && globalpingStale(c, now, gpValidity) && now.Sub(c.LastGlobalpingRequestAt) >= time.Minute {
+				resp.ForceGlobalping = true
+				c.LastGlobalpingRequestAt = now
+			}
+			r.mu.Unlock()
+		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
 		json.NewEncoder(w).Encode(resp)
-	})
+	})))
 
 	// /status отдаёт всё состояние (включая IP нод) — когда панель защищена
 	// токеном, /status защищается тем же токеном; без токена — как раньше, открыт.
@@ -477,6 +595,8 @@ func (r *Registry) buildMux() *http.ServeMux {
 	r.mountPanel(mux)
 	r.mountStats(mux)     // публичная статистика нод (/statistics/...)
 	r.mountDashboard(mux) // публичный дашборд блокировок (/dashboard/...)
+	r.mountLinks(mux)     // публичная страница прокси-ссылок (/links)
+	mountAssets(mux)
 
 	return mux
 }
@@ -522,8 +642,11 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 		if existing.IP != body.IP {
 			// Смена ip В КАРАНТИНЕ — старый ip фиксируем как
 			// блокировку (bans row + stale-запись), нода живёт на новом.
-			if existing.Quarantine != nil {
+			if existing.Quarantine != nil && existing.Quarantine.Attempts > 0 {
 				r.quarantineIPChangeLocked(existing, body.IP, now)
+			} else if existing.Quarantine != nil {
+				existing.Quarantine = nil
+				existing.LastGlobalpingAt = time.Time{}
 			}
 			detail = fmt.Sprintf("re-registered, ip changed %s -> %s", existing.IP, body.IP)
 		}
@@ -531,6 +654,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 			detail += fmt.Sprintf(", type %s -> %s", existing.NodeType, body.NodeType)
 		}
 		existing.IP = body.IP
+		existing.Generation++
 		if body.NodeType != "" {
 			existing.NodeType = body.NodeType
 		}
@@ -587,6 +711,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 		RegisteredAt:  now,
 		LastHeartbeat: now,
 		Healthy:       false,
+		Generation:    1,
 		// С нуля защёлка закрыта — в очередь здоровых войдёт после
 		// recover_threshold подряд удачных отчётов (~2 × metrics_ms).
 		MetricsHealthy: false,
@@ -617,21 +742,31 @@ func (r *Registry) probeLoop() {
 
 		var wg sync.WaitGroup
 		for _, c := range targets {
-			if c.Port == 0 {
-				continue
-			}
 			wg.Add(1)
 			go func(c *Candidate) {
 				defer wg.Done()
-				ok := tcpProbe(c.IP, c.Port, r.cfg.ProbeTimeout)
+				r.mu.RLock()
+				ip, port, generation := c.IP, c.Port, c.Generation
+				r.mu.RUnlock()
+				if port == 0 {
+					return
+				}
+				ok := tcpProbe(ip, port, r.cfg.ProbeTimeout)
 				r.mu.Lock()
+				if current := r.state.Candidates[c.NodeID]; current != c || c.Generation != generation || c.IP != ip {
+					r.mu.Unlock()
+					return
+				}
 				// Общая анти-флап защёлка (streakStep) — та же
 				// машина, что и у metrics-отчётов; события/тексты как раньше.
+				r.cfgMu.RLock()
+				failThreshold := clampThreshold(r.cfg.Healthcheck.FailThreshold)
+				recoverThreshold := clampThreshold(r.cfg.Healthcheck.RecoverThreshold)
+				r.cfgMu.RUnlock()
 				var changed bool
 				c.Healthy, c.ConsecutiveFail, c.ConsecutiveOK, changed =
 					streakStep(c.Healthy, c.ConsecutiveFail, c.ConsecutiveOK, ok,
-						clampThreshold(r.cfg.Healthcheck.FailThreshold),
-						clampThreshold(r.cfg.Healthcheck.RecoverThreshold))
+						failThreshold, recoverThreshold)
 				if changed && c.Healthy {
 					r.addEventLocked(Event{Type: EventTCPUp, NodeID: c.NodeID, IP: c.IP})
 					log.Printf("candidate %s is now healthy (tcp)", c.NodeID)
@@ -663,6 +798,7 @@ func (r *Registry) expiryLoop() {
 	ticker := time.NewTicker(r.cfg.HeartbeatTTL / 2)
 	defer ticker.Stop()
 	for range ticker.C {
+		r.sweepGlobalpingFreshness(time.Now())
 		// SweepExpired объединяет heartbeat-expiry и рипер
 		// неактивных (prune по prune_unhealthy_min) — см. prune.go.
 		r.sweepExpired(time.Now())
@@ -1019,6 +1155,11 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	}
 
 	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
+		for _, ch := range changes {
+			if ch.ToID != "" && ch.ToIP != "" {
+				r.enqueueDNSDesiredLocked(ch.Domain, "A", ch.ToIP, ch.ToID)
+			}
+		}
 		r.persistStateLocked()
 	}
 	return changes
@@ -1040,12 +1181,49 @@ func (r *Registry) persistStateLocked() {
 		log.Printf("marshal state error: %v", err)
 		return
 	}
-	if err := os.WriteFile(r.cfg.State.File, data, 0644); err != nil {
+	if err := atomicWriteFile(r.cfg.State.File, data, 0600); err != nil {
 		log.Printf("write state error: %v — проверьте владельца каталога: chown -R sharedd-registry:sharedd-registry %s",
 			err, filepath.Dir(r.cfg.State.File))
 		return
 	}
 	r.eventsDirty = false
+}
+
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	ok := false
+	defer func() {
+		_ = tmp.Close()
+		if !ok {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if err := tmp.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	ok = true
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 func (r *Registry) loadState() {
@@ -1068,6 +1246,9 @@ func (r *Registry) loadState() {
 	if st.AssignmentsSince == nil {
 		st.AssignmentsSince = make(map[string]time.Time)
 	}
+	if st.DNSOperations == nil {
+		st.DNSOperations = make(map[string]*DNSOperation)
+	}
 	if st.Terminated == nil {
 		st.Terminated = make(map[string]*TerminatedRecord)
 	}
@@ -1077,6 +1258,12 @@ func (r *Registry) loadState() {
 	// сфейлившая нода теперь должна доказать восстановление recover-порогом —
 	// это и есть задуманная гистерезисная семантика.
 	for _, c := range st.Candidates {
+		// Не доверяем state-файлу: старый/частично записанный JSON может
+		// содержать null в map candidates. Такая запись не должна ронять
+		// registry ещё до запуска HTTP-сервера.
+		if c == nil {
+			continue
+		}
 		if c.MetricsOK && !c.MetricsHealthy {
 			c.MetricsHealthy = true
 		}

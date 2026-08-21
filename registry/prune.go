@@ -166,7 +166,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 			// Нода отвалилась ИЗ КАРАНТИНА — это не «просто
 			// expiry», а бан: она в карантине потому, что не прошла
 			// globalping. Пишем ip_ban (в статистику дашборда входит).
-			if c.Quarantine != nil {
+			if c.Quarantine != nil && c.Quarantine.Attempts > 0 {
 				r.terminateNodeLocked(c, now, BanReasonIPBan, "нода отвалилась из карантина (heartbeat TTL истёк)")
 				changed = true
 				continue
@@ -202,7 +202,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 				// (нода уже в карантине за GP-фейл); «чистый» dead — только
 				// для нод, GP не фейливших.
 				reason, cause := BanReasonDead, ""
-				if c.Quarantine != nil {
+				if c.Quarantine != nil && c.Quarantine.Attempts > 0 {
 					reason, cause = BanReasonIPBan, "dead (tcp+metrics) во время gp-карантина"
 				}
 				r.terminateNodeLocked(c, now, reason, cause) // удаляет кандидата + persist

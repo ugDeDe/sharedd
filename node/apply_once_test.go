@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -35,6 +34,7 @@ func withApplyOnceEnv(t *testing.T) {
 func mkApplyOnceCfg(registryURL, telemtPath string) *NodeConfig {
 	cfg := &NodeConfig{}
 	cfg.Registry.URL = registryURL
+	cfg.Registry.Token = "test-node-token"
 	cfg.Telemt.ConfigPath = telemtPath
 	cfg.Sync.ApplyToTelemt = true
 	return cfg
@@ -118,23 +118,20 @@ func TestRunApplyOncePatchesConfig(t *testing.T) {
 	// metrics_listen на мёртвый порт — waitMetricsReady гарантированно не
 	// дождётся ответа какое бы окружение ни было (в CI мог висеть чужой
 	// процесс на 9090, и тест превращался бы в лотерею).
-	if err := os.WriteFile(telemtPath, []byte("[server]\nport = 443\nmetrics_listen = \"127.0.0.1:19999\"\n"), 0644); err != nil {
+	original := "[server]\nport = 443\nmetrics_listen = \"127.0.0.1:19999\"\n"
+	if err := os.WriteFile(telemtPath, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// systemd юнита прокси нет (и вслепую telemt.service не рестартанётся):
-	// файл пропатчится, а поднять прокси не выйдет → код 1. Главное —
-	// содержимое файла после конвейера.
+	// поднять прокси не выйдет → код 1, а файл откатится.
 	rc := runApplyOnce(mkApplyOnceCfg(srv.URL, telemtPath))
 	if rc != applyOnceFailed {
 		t.Fatalf("rc = %d, want %d (no systemd to start proxy)", rc, applyOnceFailed)
 	}
 	data, _ := os.ReadFile(telemtPath)
-	s := string(data)
-	for _, want := range []string{`ivan = "sec-1"`, `front.example.com`} {
-		if !strings.Contains(s, want) {
-			t.Fatalf("telemt.toml missing %q after apply-once:\n%s", want, s)
-		}
+	if string(data) != original {
+		t.Fatalf("failed restart must roll telemt.toml back:\n%s", data)
 	}
 }
 
