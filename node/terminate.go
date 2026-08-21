@@ -151,7 +151,19 @@ func readTombstone() *termination {
 func writeTombstone(t termination) {
 	t.At = time.Now()
 	data, _ := json.MarshalIndent(t, "", " ")
-	if err := os.WriteFile(tombstonePath, data, 0644); err != nil {
+	f, err := os.OpenFile(tombstonePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err == nil {
+		err = f.Chmod(0600)
+	}
+	if err == nil {
+		_, err = f.Write(data)
+	}
+	if f != nil {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
 		log.Printf("failed to write termination tombstone %s: %v", tombstonePath, err)
 	}
 }
@@ -194,7 +206,7 @@ func selfTerminate(cfg *NodeConfig, reason, message, ip string) {
 	if reason == reasonDead && cfg != nil && ip != "" {
 		body, _ := json.Marshal(map[string]string{"node_id": nodeID, "ip": ip, "reason": reasonDead})
 		client := &http.Client{Timeout: 4 * time.Second}
-		resp, err := client.Post(cfg.Registry.URL+"/retire", "application/json", bytes.NewReader(body))
+		resp, err := registryRequest(client, cfg, http.MethodPost, "/retire", bytes.NewReader(body))
 		if err != nil {
 			log.Printf("retire notice to registry failed: %v (ban history may miss this node)", err)
 		} else {

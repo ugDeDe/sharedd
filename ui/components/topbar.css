@@ -1,0 +1,143 @@
+/* ═══ Шапка ═══════════════════════════════════════════════════════════ */
+.topbar { position: sticky; top: 0; z-index: 40; padding: 14px 0 12px; margin-bottom: 16px; }
+.topbar-inner {
+  display: flex; align-items: center; gap: var(--gap);
+  padding: 9px 11px; border-radius: var(--r-xl);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; padding-left: 3px; flex: none; }
+.brand-mark {
+  width: 36px; height: 36px; border-radius: var(--r-md); flex: none;
+  display: grid; place-items: center; color: #fff;
+  font-size: 13px; font-weight: 750; letter-spacing: .01em;
+  background: linear-gradient(150deg, var(--acc), var(--acc-2));
+  box-shadow: 0 4px 12px var(--acc-soft),
+              inset 0 1px 0 rgba(255, 255, 255, .5),
+              inset 0 -1px 0 rgba(0, 0, 0, .14);
+}
+.brand-name { font-size: 14.5px; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; }
+.brand-sub { font-size: 11px; color: var(--fg-3); line-height: 1.2; white-space: nowrap; }
+
+/* Сегментированный переключатель: дорожка утоплена, бегунок приподнят.
+   Если сделать наоборот, активный пункт читается как дырка. */
+.navwrap { min-width: 0; flex: 1 1 auto; display: flex; overflow-x: auto; scrollbar-width: none; }
+.navwrap::-webkit-scrollbar { display: none; }
+.nav {
+  display: flex; gap: 2px; padding: 3px; border-radius: var(--r-md); flex: none;
+  background: var(--track); box-shadow: inset 0 1px 2px var(--track-in);
+}
+.nav a {
+  padding: 6px 13px; border-radius: var(--r-sm); white-space: nowrap;
+  font-size: 12.5px; font-weight: 520; color: var(--fg-2); text-decoration: none;
+  transition: color .15s, background .15s;
+}
+.nav a:hover { color: var(--fg); text-decoration: none; }
+.nav a.active {
+  color: var(--fg); font-weight: 600; background: var(--thumb);
+  box-shadow: 0 1px 2px rgba(16, 23, 37, .10), 0 2px 6px rgba(16, 23, 37, .07),
+              inset 0 1px 0 var(--thumb-hi);
+}
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  border-radius: var(--r-pill); background: var(--surf-2); color: var(--fg-2);
+  font-size: 12px; font-weight: 560; white-space: nowrap;
+}
+.status-pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.live { background: var(--ok-soft); color: var(--ok); }
+.status-pill.live i { animation: pulse 2.4s infinite; }
+.status-pill.off { background: var(--bad-soft); color: var(--bad); }
+@keyframes pulse { 50% { opacity: .32; } }
+@media (prefers-reduced-motion: reduce) { .status-pill.live i { animation: none; } }
+
+/* Кнопка-иконка «хрома»: только глиф, без заливки и рамки. Раньше она
+   заимствовала оформление активного пункта навигации (--thumb + рамка +
+   внутренний блик) — на тёмном стекле три светлых слоя складывались в
+   заметную коробку, которая спорила с пилюлей «live». */
+.icon-btn {
+  width: 30px; height: 30px; border-radius: var(--r-sm); flex: none;
+  border: 0; background: transparent; color: var(--fg-2);
+  cursor: pointer; display: grid; place-items: center;
+  transition: color .13s ease, background .13s ease;
+}
+.icon-btn:hover { color: var(--fg); background: var(--track); }
+.icon-btn:active { background: var(--track-in); }
+/* группа ссылок на публичные страницы — отделена от темы и выхода */
+.topbar-links { display: flex; align-items: center; gap: 2px; }
+.topbar-sep { width: 1px; height: 18px; background: var(--line); flex: none; margin: 0 4px; }
+.icon-btn .i-sun { display: none; }
+:root[data-theme="light"] .icon-btn .i-sun { display: block; }
+:root[data-theme="light"] .icon-btn .i-moon { display: none; }
+
+/* ═══ Нижняя панель вкладок ════════════════════════════════════════════
+   На узких экранах верхняя капсула не помещается, и раньше она просто
+   пряталась — переключать разделы становилось нечем. Панель закреплена
+   снизу: до неё дотягивается большой палец. */
+.mobile-nav {
+  display: none;
+  position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 50;
+  padding: 6px; border-radius: var(--r-xl);
+  grid-template-columns: repeat(6, 1fr); gap: 2px;
+}
+.mobile-nav a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 7px 2px; border-radius: var(--r-md);
+  color: var(--fg-3); text-decoration: none; min-width: 0;
+  transition: color .13s ease, background .13s ease;
+}
+.mobile-nav a svg { width: 19px; height: 19px; flex: none; }
+.mobile-nav a span {
+  font-size: 9.5px; font-weight: 560; letter-spacing: -.01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mobile-nav a:hover { color: var(--fg-2); text-decoration: none; }
+.mobile-nav a.active { color: var(--acc); background: var(--acc-soft); }
+
+/* ═══ Точки перелома ═══════════════════════════════════════════════════
+   Ниже 720 px верхняя капсула уступает место нижней панели. */
+@media (max-width: 720px) {
+  .nav { display: none; }
+  .mobile-nav { display: grid; }
+  /* контент не должен уезжать под закреплённую панель */
+  body { padding-bottom: 74px; }
+  .topbar { padding: 10px 0 8px; }
+  .topbar-inner { padding: 7px 9px; border-radius: var(--r-lg); }
+  .brand-mark { width: 32px; height: 32px; font-size: 12px; }
+  .brand-sub { display: none; }
+  .status-pill { height: 27px; padding: 0 10px; font-size: 11.5px; }
+  .icon-btn { width: 28px; height: 28px; }
+}
+
+/* Планшет и небольшой ноутбук: капсула меню вернулась, но вместе с
+   брендом и правым блоком в строку не помещается — «Журнал» обрезался.
+   Убираем вторичную подпись бренда и поджимаем пункты. */
+@media (min-width: 721px) and (max-width: 1100px) {
+  .brand-sub { display: none; }
+  .nav a { padding: 6px 10px; font-size: 12px; }
+  .topbar-inner { gap: 10px; }
+  .topbar-right { gap: 6px; }
+}
+
+/* Телефон: шапка обязана остаться однострочной — на трёхэтажную уходило
+   пол-экрана. Прячем подписи ссылок, оставляем иконки. */
+@media (max-width: 560px) {
+  .topbar-inner { gap: 8px; }
+  .topbar-right { gap: 4px; }
+  .brand-name { font-size: 13.5px; }
+  .status-pill span { display: none; }
+  .status-pill { padding: 0 8px; }
+  .topbar-links .icon-btn { width: 26px; height: 26px; }
+  .topbar-sep { margin: 0 2px; }
+}
+
+/* Узкий телефон: подписи вкладок мельчают, но остаются — иконки без слов
+   в этом наборе неразличимы. */
+@media (max-width: 400px) {
+  .mobile-nav { left: 6px; right: 6px; bottom: 6px; padding: 5px; }
+  .mobile-nav a { padding: 6px 1px; }
+  .mobile-nav a svg { width: 17px; height: 17px; }
+  .mobile-nav a span { font-size: 8.5px; }
+  .brand-name { font-size: 13px; }
+}

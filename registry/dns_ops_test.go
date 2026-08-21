@@ -17,9 +17,10 @@ import (
 // fakeCF — in-memory реализация cfDNSAPI: хранит записи зоны,
 // честно делает list/create/update/delete. Ошибки можно инжектить флагами.
 type fakeCF struct {
-	mu      sync.Mutex
-	records []cloudflare.DNSRecord
-	nextID  int
+	mu        sync.Mutex
+	records   []cloudflare.DNSRecord
+	nextID    int
+	afterList func()
 	// инъекции ошибок (имена операций): "list", "create", "update", "delete"
 	failOp map[string]bool
 }
@@ -50,6 +51,9 @@ func (f *fakeCF) ListDNSRecords(_ context.Context, _ *cloudflare.ResourceContain
 			continue
 		}
 		out = append(out, rec)
+	}
+	if f.afterList != nil {
+		f.afterList()
 	}
 	return out, &cloudflare.ResultInfo{}, nil
 }
@@ -308,5 +312,87 @@ func TestSweepOrphansKeepsForeign(t *testing.T) {
 	r.sweepOrphans()
 	if len(fc.find("d3.example.com", "")) != 0 {
 		t.Fatal("d3 must be swept on retry")
+	}
+}
+
+func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
+	fc := newFakeCF()
+	r := newTestRegistry(t)
+	r.cf = fc
+	fc.failOp["list"] = true
+
+	r.applyDNSTarget("d1.example.com", "node-a", "1.2.3.4")
+	op := r.state.DNSOperations["d1.example.com"]
+	if op == nil || op.Attempts != 1 || op.LastError == "" || op.NextAttempt.IsZero() || !op.drifted() {
+		t.Fatalf("failed operation was not persisted for retry: %+v", op)
+	}
+	fc.failOp["list"] = false
+	op.NextAttempt = time.Now().Add(-time.Second)
+	r.reconcileDNSDue()
+
+	op = r.state.DNSOperations["d1.example.com"]
+	if op.Attempts != 2 || op.LastError != "" || op.AppliedType != "A" || op.AppliedTarget != "1.2.3.4" || op.LastSuccess.IsZero() || op.drifted() {
+		t.Fatalf("successful retry did not converge: %+v", op)
+	}
+	if got := fc.find("d1.example.com", "A"); len(got) != 1 || got[0].Content != "1.2.3.4" {
+		t.Fatalf("retry did not update Cloudflare: %+v", got)
+	}
+}
+
+func TestDNSOperationPersistenceAndSRMDRecovery(t *testing.T) {
+	r := newTestRegistry(t)
+	r.state.Candidates["node-a"] = &Candidate{NodeID: "node-a", IP: "1.2.3.4"}
+	r.state.Assignments = map[string]string{"d1.example.com": "node-a"}
+	r.cfg.Cloudflare.Domains = []string{"d1.example.com", "folded.example.com"}
+	r.state.SRMD.CNames = map[string]string{"folded.example.com": "d1.example.com"}
+	r.recoverDNSDesiredLocked()
+	r.state.DNSOperations["d1.example.com"].Attempts = 3
+	r.state.DNSOperations["d1.example.com"].LastError = "temporary"
+	r.state.DNSOperations["d1.example.com"].NextAttempt = time.Now().Add(time.Minute).Round(time.Millisecond)
+	persistStateNow(r)
+
+	r2 := newTestRegistry(t)
+	r2.cfg.State.File = r.cfg.State.File
+	r2.cfg.Cloudflare.Domains = append([]string(nil), r.cfg.Cloudflare.Domains...)
+	r2.loadState()
+	r2.mu.Lock()
+	r2.recoverDNSDesiredLocked()
+	r2.mu.Unlock()
+
+	a := r2.state.DNSOperations["d1.example.com"]
+	if a == nil || a.DesiredType != "A" || a.DesiredTarget != "1.2.3.4" || a.DesiredNode != "node-a" || a.Attempts != 3 || a.LastError != "temporary" {
+		t.Fatalf("A desired/retry state did not survive reload: %+v", a)
+	}
+	cname := r2.state.DNSOperations["folded.example.com"]
+	if cname == nil || cname.DesiredType != "CNAME" || cname.DesiredTarget != "d1.example.com" {
+		t.Fatalf("SRMD CNAME was not recovered from persistent state: %+v", cname)
+	}
+}
+
+func TestSweepOrphanReaddedDuringListIsNotDeleted(t *testing.T) {
+	fc := newFakeCF()
+	r := newTestRegistry(t)
+	r.cf = fc
+	r.cfg.Cloudflare.Domains = []string{"d2.example.com"}
+	r.state.ManagedDomains = []string{"d1.example.com", "d2.example.com"}
+	fc.seed(cloudflare.DNSRecord{Type: "A", Name: "d1.example.com", Content: "1.2.3.4"})
+	fc.afterList = func() {
+		r.cfgMu.Lock()
+		r.cfg.Cloudflare.Domains = append(r.cfg.Cloudflare.Domains, "d1.example.com")
+		r.cfgMu.Unlock()
+		fc.afterList = nil
+	}
+
+	r.sweepOrphans()
+
+	if got := fc.find("d1.example.com", "A"); len(got) != 1 {
+		t.Fatalf("re-added domain record was deleted: %+v", got)
+	}
+	found := false
+	for _, d := range r.state.ManagedDomains {
+		found = found || d == "d1.example.com"
+	}
+	if !found {
+		t.Fatalf("re-added domain was dropped from managed state: %v", r.state.ManagedDomains)
 	}
 }

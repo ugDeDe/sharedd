@@ -12,6 +12,23 @@ import (
 	"time"
 )
 
+func TestTombstoneMode(t *testing.T) {
+	old := tombstonePath
+	tombstonePath = filepath.Join(t.TempDir(), "terminated.json")
+	defer func() { tombstonePath = old }()
+	if err := os.WriteFile(tombstonePath, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeTombstone(termination{Reason: reasonDead, IP: "1.1.1.1"})
+	info, err := os.Stat(tombstonePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("tombstone mode = %o, want 0600", info.Mode().Perm())
+	}
+}
+
 // Терминальное завершение ноды — tombstone, boot-перевалидация,
 // разбор kill-ответа регистратора, retire-уведомление при локальном dead.
 
@@ -413,8 +430,13 @@ func TestIPBanRecoverSingleFlight(t *testing.T) {
 	stubExit(t)
 	waited, exited := stubIPBanWait(t, "9.9.9.9")
 
+	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
-		go selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
+		}()
 	}
 	select {
 	case <-waited:
@@ -422,7 +444,7 @@ func TestIPBanRecoverSingleFlight(t *testing.T) {
 		t.Fatal("no await entered")
 	}
 	<-exited
-	time.Sleep(100 * time.Millisecond)
+	wg.Wait()
 	if len(waited) != 0 {
 		t.Fatalf("await-IP-change entered %d extra times — must be single-flight", len(waited))
 	}

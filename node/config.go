@@ -2,11 +2,13 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +23,11 @@ const (
 	healthMetricName          = "telemt_me_writers_active_current"
 	uniqueIPsMetricName       = "telemt_user_unique_ips_current"
 	userConnsMetricName       = "telemt_user_connections_current"
+	userOctetsFromMetricName  = "telemt_user_octets_from_client"
+	userOctetsToMetricName    = "telemt_user_octets_to_client"
+	trafficIngressMetricName  = "sharedd_traffic_ingress_bytes_total"
+	trafficEgressMetricName   = "sharedd_traffic_egress_bytes_total"
+	trafficUsersMetricName    = "sharedd_traffic_users_fingerprint"
 	globalpingAPIBase         = "https://api.globalping.io/v1"
 	metricsListenKey          = "metrics_listen"
 	metricsListenValue        = "127.0.0.1:9090"
@@ -33,7 +40,8 @@ const (
 
 type NodeConfig struct {
 	Registry struct {
-		URL string `toml:"url"`
+		URL   string `toml:"url"`
+		Token string `toml:"token"`
 	} `toml:"registry"`
 
 	Telemt struct {
@@ -121,20 +129,45 @@ func loadNodeConfig() (*NodeConfig, error) {
 		return nil, fmt.Errorf("failed to parse config %s: %w", path, err)
 	}
 
-	if cfg.Registry.URL == "" {
+	if strings.TrimSpace(cfg.Registry.URL) == "" {
 		return nil, fmt.Errorf("registry.url is required in %s", path)
 	}
+	if strings.TrimSpace(cfg.Registry.Token) == "" {
+		return nil, fmt.Errorf("registry.token is required in %s", path)
+	}
 	cfg.Registry.URL = strings.TrimRight(cfg.Registry.URL, "/")
+	if err := validateHTTPURL(cfg.Registry.URL); err != nil {
+		return nil, fmt.Errorf("registry.url in %s: %w", path, err)
+	}
+	if cfg.Watchdog.DeadKillMs < -1 || cfg.Watchdog.DeadKillMs > int((30*24*time.Hour)/time.Millisecond) {
+		return nil, fmt.Errorf("watchdog.dead_kill_ms in %s must be -1, 0, or at most 30 days", path)
+	}
+	if cfg.Node.PublicIP != "" && (net.ParseIP(cfg.Node.PublicIP) == nil || net.ParseIP(cfg.Node.PublicIP).To4() == nil) {
+		return nil, fmt.Errorf("node.public_ip in %s is invalid", path)
+	}
 	if cfg.Telemt.ConfigPath == "" {
 		cfg.Telemt.ConfigPath = defaultTelemtConfigPath
 	}
 	if cfg.Globalping.APIBase == "" {
 		cfg.Globalping.APIBase = globalpingAPIBase
 	}
+	if err := validateHTTPURL(cfg.Globalping.APIBase); err != nil {
+		return nil, fmt.Errorf("globalping.api_base in %s: %w", path, err)
+	}
 	return &cfg, nil
 }
 
-// resolveNodeID — всегда случайный персистентный ID (других режимов нет).
+func validateHTTPURL(raw string) error {
+	u, err := url.ParseRequestURI(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("must be an absolute http(s) URL")
+	}
+	return nil
+}
+
+var nodeIDPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$`)
+
+// resolveNodeID — случайный персистентный ID с коротким читаемым именем.
 // ID генерируется один раз и сохраняется в state-файл: он определяет место ноды
 // в очереди регистратора (RegisteredAt), поэтому не должен меняться на рестартах.
 func resolveNodeID() (string, error) {
@@ -142,18 +175,24 @@ func resolveNodeID() (string, error) {
 }
 
 func loadOrGenerateRandomID(stateFile string) (string, error) {
+	name := "node"
 	if data, err := os.ReadFile(stateFile); err == nil {
 		id := strings.TrimSpace(string(data))
-		if id != "" {
+		if nodeIDPattern.MatchString(id) {
 			return id, nil
 		}
+		name = nodeNameFromLegacyID(id)
 	}
 
-	buf := make([]byte, 8)
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	buf := make([]byte, 5)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("crypto/rand read failed: %w", err)
 	}
-	id := "node-" + hex.EncodeToString(buf)
+	for i := range buf {
+		buf[i] = alphabet[int(buf[i])%len(alphabet)]
+	}
+	id := name + "-" + string(buf)
 
 	if err := os.MkdirAll(filepath.Dir(stateFile), 0700); err != nil {
 		return "", fmt.Errorf("failed to create dir for %s: %w", stateFile, err)
@@ -163,4 +202,25 @@ func loadOrGenerateRandomID(stateFile string) (string, error) {
 	}
 
 	return id, nil
+}
+
+func nodeNameFromLegacyID(id string) string {
+	if i := strings.LastIndexByte(id, '-'); i > 0 {
+		id = id[:i]
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if b.Len() >= 10 {
+			break
+		}
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		}
+	}
+	name := strings.Trim(b.String(), "._-")
+	if name == "" {
+		return "node"
+	}
+	return name
 }

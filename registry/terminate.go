@@ -97,6 +97,7 @@ type QuarantineState struct {
 	Attempts          int       `json:"attempts"`
 	LastRatio         float64   `json:"last_ratio"`
 	LastMeasurementID string    `json:"last_measurement_id,omitempty"`
+	Stale             bool      `json:"stale,omitempty"`
 	// Reverify — карантин посажен переподключением СТАРОГО
 	// забаненного ip: попытка одна (Attempts посеяны как max-1), ok
 	// снимает бан (ban_lifted), fail возвращает в бан навсегда
@@ -213,7 +214,10 @@ func (r *Registry) terminatedIPBanByIPLocked(ip string) *TerminatedRecord {
 // верифицированный GP ok — ban_lifted, fail — terminate вернёт запись и
 // kill дойдёт при следующем обращении. Под write-lock.
 func (r *Registry) applyReverifyLocked(c *Candidate, rec *TerminatedRecord, now time.Time) {
-	last := r.cfg.QuarantineAttempts - 1
+	r.cfgMu.RLock()
+	attempts := r.cfg.QuarantineAttempts
+	r.cfgMu.RUnlock()
+	last := attempts - 1
 	if last < 0 {
 		last = 0
 	}
@@ -224,7 +228,7 @@ func (r *Registry) applyReverifyLocked(c *Candidate, rec *TerminatedRecord, now 
 		Detail: fmt.Sprintf("re-verify после gp-бана: ip не сменился (%s); одна верифицированная проверка решает — ok снимает бан, fail возвращает навсегда", rec.IP),
 	})
 	log.Printf("candidate %s (%s): same-ip re-register after gp ban — re-verify quarantine (attempt %d/%d)",
-		c.NodeID, c.IP, last, r.cfg.QuarantineAttempts)
+		c.NodeID, c.IP, last, attempts)
 }
 
 // reverifyOpenLocked — можно ли записи rec дать GP-перепроверку: ip_ban +

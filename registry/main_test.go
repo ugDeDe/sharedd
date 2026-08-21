@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +27,7 @@ func newTestRegistry(t *testing.T) *Registry {
 	cfg.PruneUnhealthyTTL = time.Hour
 	cfg.Panel.EventsMax = 500
 	cfg.QuarantineAttempts = 3 // как ставит applyRegistryDefaults в проде
+	cfg.SharedProxy.TLSDomain = "front.example.com"
 	return &Registry{
 		cfg: cfg,
 		state: State{
@@ -98,8 +102,11 @@ func TestHealthReportIndependentVerification(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"id":     "m-123",
-			"status": "finished",
+			"id": "m-123", "type": "http", "target": "1.1.1.1", "status": "finished",
+			"measurementOptions": map[string]any{
+				"protocol": "HTTPS", "port": 443,
+				"request": map[string]any{"host": "front.example.com"},
+			},
 			"results": []map[string]any{
 				{"result": map[string]any{"status": "finished", "statusCode": 200}},
 				{"result": map[string]any{"status": "failed", "statusCode": 0}},
@@ -119,6 +126,7 @@ func TestHealthReportIndependentVerification(t *testing.T) {
 		NodeID:                  "liar",
 		IP:                      "1.1.1.1",
 		Port:                    443,
+		FakeSNI:                 "front.example.com",
 		GlobalpingOK:            true,
 		GlobalpingMeasurementID: "m-123",
 		GlobalpingSuccessRatio:  0.9,
@@ -174,6 +182,108 @@ func TestMetricsOnlyReportPreservesGlobalping(t *testing.T) {
 	}
 }
 
+func TestHealthReportRejectsStaleAndDuplicateMeasurement(t *testing.T) {
+	r := newTestRegistry(t)
+	r.register(registerRequest{NodeID: "n1", IP: "1.1.1.1"})
+	send := func(checked time.Time, measurement string) int {
+		payload := HealthReportPayload{NodeID: "n1", IP: "1.1.1.1", Port: 443, FakeSNI: "front.example.com", MetricsOK: true, CheckedAt: checked, GlobalpingMeasurementID: measurement}
+		body, _ := json.Marshal(payload)
+		rec := httptest.NewRecorder()
+		r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+		return rec.Code
+	}
+	now := time.Now()
+	if code := send(now, ""); code != http.StatusOK {
+		t.Fatalf("first report status=%d", code)
+	}
+	if code := send(now.Add(-time.Second), ""); code != http.StatusConflict {
+		t.Fatalf("stale report status=%d, want 409", code)
+	}
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": strings.TrimPrefix(req.URL.Path, "/measurements/"), "type": "http", "target": "1.1.1.1", "status": "finished",
+			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
+			"results":            []any{},
+		})
+	}))
+	defer mock.Close()
+	r.cfg.Globalping.APIBase = mock.URL
+	if code := send(now.Add(time.Second), "measurement-1"); code != http.StatusOK {
+		t.Fatalf("first measurement status=%d", code)
+	}
+	if code := send(now.Add(2*time.Second), "measurement-1"); code != http.StatusConflict {
+		t.Fatalf("duplicate measurement status=%d, want 409", code)
+	}
+}
+
+func TestNewGlobalpingReportCanFinishAfterNewerMetricsReport(t *testing.T) {
+	r := newTestRegistry(t)
+	r.register(registerRequest{NodeID: "n1", IP: "1.1.1.1"})
+	now := time.Now()
+	metrics := HealthReportPayload{NodeID: "n1", IP: "1.1.1.1", Port: 443, MetricsOK: true, CheckedAt: now}
+	body, _ := json.Marshal(metrics)
+	rec := httptest.NewRecorder()
+	r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics report: %d", rec.Code)
+	}
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "new-measurement", "type": "http", "target": "1.1.1.1", "status": "finished",
+			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
+			"results":            []any{},
+		})
+	}))
+	defer mock.Close()
+	r.cfg.Globalping.APIBase = mock.URL
+	gp := HealthReportPayload{NodeID: "n1", IP: "1.1.1.1", Port: 443, FakeSNI: "front.example.com", MetricsOK: true,
+		CheckedAt: now.Add(-time.Second), GlobalpingMeasurementID: "new-measurement"}
+	body, _ = json.Marshal(gp)
+	rec = httptest.NewRecorder()
+	r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("new GP report must not be rejected by newer metrics timestamp: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthReportDoesNotApplyAfterReregistration(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		close(started)
+		<-release
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": strings.TrimPrefix(req.URL.Path, "/measurements/"), "type": "http", "target": "1.1.1.1", "status": "finished",
+			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
+			"results":            []any{},
+		})
+	}))
+	defer mock.Close()
+	r := newTestRegistry(t)
+	r.cfg.Globalping.APIBase = mock.URL
+	r.register(registerRequest{NodeID: "n1", IP: "1.1.1.1"})
+	payload := HealthReportPayload{NodeID: "n1", IP: "1.1.1.1", Port: 443, FakeSNI: "front.example.com", MetricsOK: true, CheckedAt: time.Now(), GlobalpingMeasurementID: "slow"}
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		r.handleHealthReport(rec, httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body))))
+		close(done)
+	}()
+	<-started
+	r.register(registerRequest{NodeID: "n1", IP: "1.1.1.1"})
+	close(release)
+	<-done
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("superseded report status=%d, want 409", rec.Code)
+	}
+	if c := r.state.Candidates["n1"]; c.GlobalpingMeasurementID != "" {
+		t.Fatal("slow report must not update the re-registered candidate")
+	}
+}
+
 func TestHealthReportUnknownNode(t *testing.T) {
 	r := newTestRegistry(t)
 	payload := HealthReportPayload{NodeID: "ghost"}
@@ -197,8 +307,35 @@ func TestStatePersistAndLoad(t *testing.T) {
 	if _, ok := r2.state.Candidates["node-x"]; !ok {
 		t.Fatal("state must survive reload")
 	}
+	info, err := os.Stat(r.cfg.State.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("state mode = %o, want 0600", info.Mode().Perm())
+	}
 	// (миграции active_node и её теста больше нет — флотилия
 	// давно на per-domain назначениях, state-файлы тех лет не существует.)
+}
+
+func TestHTTPServerLimitsAndGracefulShutdown(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.HTTP.Addr = "127.0.0.1:0"
+	srv := r.httpServer()
+	if srv.ReadHeaderTimeout <= 0 || srv.ReadTimeout <= 0 || srv.WriteTimeout <= 0 || srv.IdleTimeout <= 0 || srv.MaxHeaderBytes <= 0 {
+		t.Fatalf("HTTP safety limits not configured: %+v", srv)
+	}
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serveHTTPServer(ctx, srv, ln) }()
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("graceful shutdown: %v", err)
+	}
 }
 
 // persistStateNow — тестовый ярлык к persistStateLocked (лок берётся снаружи).

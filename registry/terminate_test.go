@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,10 +34,16 @@ func newGPMock(t *testing.T) *gpMock {
 			}
 			return map[string]any{"result": map[string]any{"status": s, "statusCode": c}}
 		}
+		id := strings.TrimPrefix(req.URL.Path, "/measurements/")
+		targetWithTimestamp := strings.TrimPrefix(id, "m-test-")
+		target := targetWithTimestamp[:strings.LastIndex(targetWithTimestamp, "-")]
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"id":     "m-test",
-			"status": "finished",
+			"id": id, "type": "http", "target": target, "status": "finished",
+			"measurementOptions": map[string]any{
+				"protocol": "HTTPS", "port": 443,
+				"request": map[string]any{"host": "front.example.com"},
+			},
 			"results": []map[string]any{
 				mk(true), mk(!bad), mk(!bad), mk(!bad),
 			},
@@ -53,17 +60,30 @@ func sendReport(t *testing.T, r *Registry, id string, metricsOK bool, withGP boo
 	t.Helper()
 	payload := HealthReportPayload{
 		NodeID: id, IP: r.state.Candidates[id].IP, Port: 443,
-		MetricsOK: metricsOK, CheckedAt: time.Now(),
+		FakeSNI: "front.example.com", MetricsOK: metricsOK, CheckedAt: time.Now(),
 	}
 	if withGP {
 		payload.GlobalpingOK = true
-		payload.GlobalpingMeasurementID = "m-test"
+		payload.GlobalpingMeasurementID = "m-test-" + payload.IP + "-" + strconv.FormatInt(payload.CheckedAt.UnixNano(), 10)
 	}
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/report", strings.NewReader(string(body)))
 	rec := httptest.NewRecorder()
 	r.handleHealthReport(rec, req)
 	return rec
+}
+
+func TestQuarantineAttemptsOneTerminatesImmediately(t *testing.T) {
+	mock := newGPMock(t)
+	mock.setBad(true)
+	r := newTerminateTestRegistry(t)
+	r.cfg.Globalping.APIBase = mock.URL
+	r.cfg.QuarantineAttempts = 1
+	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
+	sendReport(t, r, "node-one", true, true)
+	if r.state.Candidates["node-one"] != nil || r.state.Terminated["node-one"] == nil {
+		t.Fatal("first verified failure must terminate when quarantine_attempts=1")
+	}
 }
 
 // makeGreen — довести ноду до «всё зелёное кроме GP»: metrics-защёлку

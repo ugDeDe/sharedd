@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -26,12 +27,40 @@ import (
 // (атомарно: temp + rename, с.bak-копией). Остальные healthcheck/http/state —
 // намеренно read-only: их тайминги вшиты в запущенные ticker'ы, смена требует рестарта.
 //
-// Ограничение: удаление пользователя из shared_proxy.users НЕ удаляет его на нодах
-// (ноды только добавляют пользователей в telemt через POST /v1/users).
+// Ограничение: удаление пользователя из shared_proxy.users НЕ удаляет его на нодах.
+// Добавление и ротация secret синхронизируются через конфиг telemt.
 
 type editableSharedProxy struct {
 	TLSDomain string            `json:"tls_domain"`
+	Port      int               `json:"port"`
 	Users     map[string]string `json:"users"`
+	hasTLS    bool
+	hasPort   bool
+	hasUsers  bool
+}
+
+func (s *editableSharedProxy) UnmarshalJSON(data []byte) error {
+	type sharedProxyJSON struct {
+		TLSDomain *string            `json:"tls_domain"`
+		Port      *int               `json:"port"`
+		Users     *map[string]string `json:"users"`
+	}
+	var in sharedProxyJSON
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		return err
+	}
+	if in.TLSDomain != nil {
+		s.TLSDomain, s.hasTLS = *in.TLSDomain, true
+	}
+	if in.Port != nil {
+		s.Port, s.hasPort = *in.Port, true
+	}
+	if in.Users != nil {
+		s.Users, s.hasUsers = *in.Users, true
+	}
+	return nil
 }
 
 type editableCloudflare struct {
@@ -65,7 +94,8 @@ type editableRotation struct {
 
 // EditableHealthcheck — число GP-попыток карантина до бана по IP.
 type editableHealthcheck struct {
-	QuarantineAttempts int `json:"quarantine_attempts"`
+	QuarantineAttempts    int  `json:"quarantine_attempts"`
+	GlobalpingValidityMin *int `json:"globalping_validity_min,omitempty"`
 }
 
 // EditableSRMD — Система Распределения и Масштабирования Доменов.
@@ -103,13 +133,19 @@ func validHostname(s string) bool {
 // validateEditable — полная валидация присланных секций; nil = ок.
 func validateEditable(in *editableConfig) error {
 	if sp := in.SharedProxy; sp != nil {
-		if !validHostname(sp.TLSDomain) {
+		if !sp.hasTLS && !sp.hasPort && !sp.hasUsers {
+			return fmt.Errorf("shared_proxy: укажите tls_domain, port или users")
+		}
+		if sp.hasTLS && !validHostname(sp.TLSDomain) {
 			return fmt.Errorf("shared_proxy.tls_domain: %q не hostname", sp.TLSDomain)
 		}
-		if len(sp.Users) == 0 {
+		if sp.hasPort && (sp.Port < 1 || sp.Port > 65535) {
+			return fmt.Errorf("shared_proxy.port: допустимо 1..65535")
+		}
+		if sp.hasUsers && len(sp.Users) == 0 {
 			return fmt.Errorf("shared_proxy.users: хотя бы один пользователь обязателен")
 		}
-		if len(sp.Users) > 64 {
+		if sp.hasUsers && len(sp.Users) > 64 {
 			return fmt.Errorf("shared_proxy.users: не больше 64 пользователей")
 		}
 		for name, secret := range sp.Users {
@@ -162,8 +198,8 @@ func validateEditable(in *editableConfig) error {
 		}
 	}
 	if p := in.Panel; p != nil {
-		if len(p.Token) > 128 {
-			return fmt.Errorf("panel.token: длиннее 128 символов")
+		if len(strings.TrimSpace(p.Token)) < 16 || len(p.Token) > 128 {
+			return fmt.Errorf("panel.token: требуется 16..128 символов")
 		}
 		if p.EventsMax < 50 || p.EventsMax > 10000 {
 			return fmt.Errorf("panel.events_max: допустимо 50..10000")
@@ -178,6 +214,9 @@ func validateEditable(in *editableConfig) error {
 	if hc := in.Healthcheck; hc != nil {
 		if hc.QuarantineAttempts < 1 || hc.QuarantineAttempts > 20 {
 			return fmt.Errorf("healthcheck.quarantine_attempts: допустимо 1..20, получено %d", hc.QuarantineAttempts)
+		}
+		if hc.GlobalpingValidityMin != nil && (*hc.GlobalpingValidityMin < 1 || *hc.GlobalpingValidityMin > 525600) {
+			return fmt.Errorf("healthcheck.globalping_validity_min: допустимо 1..525600, получено %d", *hc.GlobalpingValidityMin)
 		}
 	}
 	if s := in.SRMD; s != nil {
@@ -205,6 +244,25 @@ type staticConfigInfo struct {
 	PruneUnhealthyMin   int    `json:"prune_unhealthy_min"` // эффективное (дефолт 60)
 }
 
+const nodeInstallerURL = "https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_node_web.sh"
+
+type nodeOnboardingInfo struct {
+	Token          string `json:"token"`
+	RegistryURL    string `json:"registry_url,omitempty"`
+	InstallCommand string `json:"install_command,omitempty"`
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func nodeInstallCommand(registryURL, token string) string {
+	if registryURL == "" {
+		return ""
+	}
+	return "curl -fsSL " + shellQuote(nodeInstallerURL) + " | sudo bash -s -- --registry=" + shellQuote(registryURL) + " --registry-token=" + shellQuote(token)
+}
+
 // handleGetConfig — GET /panel/api/config: полная эффективная конфигурация.
 // Секреты отдаются в открытом виде: endpoint закрыт panel-токеном (admin),
 // а редактирование без показа текущих значений неюзабельно.
@@ -214,10 +272,17 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	r.cfgMu.RLock()
+	proxyPort := r.cfg.SharedProxy.Port
+	if proxyPort == 0 {
+		proxyPort = 443
+	}
 	cfg := editableConfig{
 		SharedProxy: &editableSharedProxy{
 			TLSDomain: r.cfg.SharedProxy.TLSDomain,
+			Port:      proxyPort,
 			Users:     mapsClone(r.cfg.SharedProxy.Users),
+			hasTLS:    true,
+			hasUsers:  true,
 		},
 		Cloudflare: &editableCloudflare{
 			APIToken: r.cfg.Cloudflare.APIToken,
@@ -247,7 +312,8 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		// Эффективное значение (max(1, …) при загрузке) — панель видит то,
 		// что реально действует.
 		Healthcheck: &editableHealthcheck{
-			QuarantineAttempts: r.cfg.QuarantineAttempts,
+			QuarantineAttempts:    r.cfg.QuarantineAttempts,
+			GlobalpingValidityMin: intPtr(r.cfg.Healthcheck.GlobalpingValidityMin),
 		},
 		// СРМД — эффективные значения (enabled по умолчанию выкл).
 		SRMD: &editableSRMD{
@@ -268,15 +334,22 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		ReportFreshnessMin:  r.cfg.Healthcheck.ReportFreshnessMin,
 		PruneUnhealthyMin:   resolvePruneUnhealthyMinutes(r.cfg.Healthcheck.PruneUnhealthyMin),
 	}
+	onboarding := nodeOnboardingInfo{
+		Token:       r.cfg.Security.NodeToken,
+		RegistryURL: r.cfg.Panel.PublicURL,
+	}
+	onboarding.InstallCommand = nodeInstallCommand(onboarding.RegistryURL, onboarding.Token)
 	r.cfgMu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static})
+	json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding})
 }
 
 func mapsClone(m map[string]string) map[string]string {
 	return maps.Clone(m)
 }
+
+func intPtr(v int) *int { return &v }
 
 // orDash — пустое значение в журналах/деталях показываем прочерком.
 func orDash(s string) string {
@@ -304,6 +377,26 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "validation: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	r.cfgMu.RLock()
+	globalpingMs := r.cfg.NodeDefaults.GlobalpingMs
+	validityMin := r.cfg.Healthcheck.GlobalpingValidityMin
+	r.cfgMu.RUnlock()
+	if globalpingMs == 0 {
+		globalpingMs = 300000
+	}
+	if validityMin == 0 {
+		validityMin = 15
+	}
+	if in.NodeDefaults != nil {
+		globalpingMs = in.NodeDefaults.GlobalpingMs
+	}
+	if in.Healthcheck != nil && in.Healthcheck.GlobalpingValidityMin != nil {
+		validityMin = *in.Healthcheck.GlobalpingValidityMin
+	}
+	if time.Duration(validityMin)*time.Minute <= time.Duration(globalpingMs)*time.Millisecond {
+		http.Error(w, "validation: healthcheck.globalping_validity_min должен быть больше node_defaults.globalping_ms", http.StatusBadRequest)
+		return
+	}
 
 	// собрать нового CF-клиента ЗАРАНЕЕ (вне локов), если токен меняется
 	var newCF cfDNSAPI
@@ -318,12 +411,26 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 
 	changed := make([]string, 0, 5)
 	var persistErr error
+	sharedPortChanged := false
+	newSharedPort := 0
 
 	r.cfgMu.Lock()
 	if sp := in.SharedProxy; sp != nil {
-		r.cfg.SharedProxy.TLSDomain = strings.TrimSpace(sp.TLSDomain)
-		r.cfg.SharedProxy.Users = mapsClone(sp.Users)
-		changed = append(changed, "shared_proxy(sni,users)")
+		parts := make([]string, 0, 3)
+		if sp.hasTLS {
+			r.cfg.SharedProxy.TLSDomain = strings.TrimSpace(sp.TLSDomain)
+			parts = append(parts, "sni")
+		}
+		if sp.hasPort {
+			r.cfg.SharedProxy.Port = sp.Port
+			sharedPortChanged, newSharedPort = true, sp.Port
+			parts = append(parts, "port")
+		}
+		if sp.hasUsers {
+			r.cfg.SharedProxy.Users = mapsClone(sp.Users)
+			parts = append(parts, "users")
+		}
+		changed = append(changed, "shared_proxy("+strings.Join(parts, ",")+")")
 	}
 	if cf := in.Cloudflare; cf != nil {
 		r.cfg.Cloudflare.APIToken = strings.TrimSpace(cf.APIToken)
@@ -366,7 +473,14 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		// в RegistryConfig — для персиста в TOML.
 		r.cfg.QuarantineAttempts = hc.QuarantineAttempts
 		r.cfg.Healthcheck.QuarantineAttempts = hc.QuarantineAttempts
-		changed = append(changed, fmt.Sprintf("healthcheck(quarantine_attempts=%d)", hc.QuarantineAttempts))
+		if hc.GlobalpingValidityMin != nil {
+			r.cfg.Healthcheck.GlobalpingValidityMin = *hc.GlobalpingValidityMin
+			r.cfg.GlobalpingValidityTTL = time.Duration(*hc.GlobalpingValidityMin) * time.Minute
+		} else if r.cfg.Healthcheck.GlobalpingValidityMin == 0 {
+			r.cfg.Healthcheck.GlobalpingValidityMin = validityMin
+			r.cfg.GlobalpingValidityTTL = time.Duration(validityMin) * time.Minute
+		}
+		changed = append(changed, fmt.Sprintf("healthcheck(quarantine_attempts=%d,gp_validity=%dmin)", hc.QuarantineAttempts, r.cfg.Healthcheck.GlobalpingValidityMin))
 	}
 	if s := in.SRMD; s != nil {
 		// Hot-apply — читается srmdRebalanceLocked на каждом тике
@@ -392,6 +506,12 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 
 	// аудит в журнал событий
 	r.mu.Lock()
+	if sharedPortChanged {
+		for _, c := range r.state.Candidates {
+			compatible := c.Port == newSharedPort
+			c.PortCompatible = &compatible
+		}
+	}
 	r.addEventLocked(Event{
 		Type:   EventConfigChanged,
 		Detail: "via panel: " + strings.Join(changed, ", "),
@@ -399,6 +519,9 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 	r.persistStateLocked()
 	r.mu.Unlock()
 	log.Printf("config changed via panel: %s (persisted: %v)", strings.Join(changed, ", "), persistErr == nil)
+	if sharedPortChanged {
+		r.evaluateAssignments(time.Now())
+	}
 
 	// cloudflare-секция менялась → сначала раскладка (новым доменам нужен мастер),
 	// потом немедленная запись всех записей по назначениям, и в конце —
@@ -459,7 +582,11 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 	for i, d := range names {
 		t := targets[i]
 		if t.cname != "" {
-			if err := r.upsertCNAMERecord(d, t.cname); err != nil {
+			r.mu.Lock()
+			r.enqueueDNSDesiredLocked(d, "CNAME", t.cname, "")
+			r.persistStateLocked()
+			r.mu.Unlock()
+			if err := r.reconcileDNSDomain(d, true); err != nil {
 				errs = append(errs, fmt.Sprintf("%s: %v", d, err))
 			} else {
 				updated = append(updated, fmt.Sprintf("%s → CNAME %s", d, t.cname))
@@ -470,7 +597,11 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 			errs = append(errs, d+": no assigned master")
 			continue
 		}
-		if err := r.upsertARecord(d, t.ip); err != nil {
+		r.mu.Lock()
+		r.enqueueDNSDesiredLocked(d, "A", t.ip, t.nodeID)
+		r.persistStateLocked()
+		r.mu.Unlock()
+		if err := r.reconcileDNSDomain(d, true); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", d, err))
 		} else {
 			updated = append(updated, fmt.Sprintf("%s → %s", d, t.ip))
@@ -478,15 +609,11 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 	}
 
 	r.mu.Lock()
-	for range updated {
-		r.state.Counters.DNSUpdates++
-	}
 	if len(updated) > 0 {
-		r.addEventLocked(Event{Type: EventDNSUpdated, Detail: strings.Join(updated, ", ") + " (manual push)"})
+		r.addEventLocked(Event{Type: EventDNSUpdated, Detail: strings.Join(updated, ", ") + " (manual push requested)"})
 	}
-	r.state.Counters.DNSErrors += len(errs)
 	if len(errs) > 0 {
-		r.addEventLocked(Event{Type: EventDNSError, Detail: strings.Join(errs, "; ") + " (manual push)"})
+		r.addEventLocked(Event{Type: EventDNSError, Detail: strings.Join(errs, "; ") + " (manual push requested)"})
 	}
 	r.persistStateLocked()
 	r.mu.Unlock()

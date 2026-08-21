@@ -3,9 +3,20 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDashboardDoesNotRenderAPIDataAsHTML(t *testing.T) {
+	html := string(dashboardHTML)
+	if strings.Contains(html, ".innerHTML") {
+		t.Fatal("dashboard must build dynamic content with textContent/DOM, not innerHTML")
+	}
+	if !strings.Contains(html, "cell.textContent = values[j]") {
+		t.Fatal("recent ban values must be assigned through textContent")
+	}
+}
 
 // Storage и агрегации вечной истории.
 
@@ -167,6 +178,41 @@ func TestDashboardAggregates(t *testing.T) {
 	d2 := r2.buildDashboard("day", now)
 	if d2.HistoryOK || d2.KPI.Bans != 0 || len(d2.Buckets) != 24 {
 		t.Fatalf("no-db registry must degrade gracefully: %+v", d2.KPI)
+	}
+}
+
+func TestDashboardHistoryFalseOnQueryError(t *testing.T) {
+	r := newTestRegistry(t)
+	r.db = openHistoryDB(filepath.Join(t.TempDir(), "hist.db"))
+	if r.db == nil {
+		t.Fatal("db must open")
+	}
+	r.db.Close()
+	if got := r.buildDashboard("day", time.Now()); got.HistoryOK {
+		t.Fatal("history_ok must be false when the DB query fails")
+	}
+}
+
+func TestTrafficHistoryAndCounterReset(t *testing.T) {
+	if got := trafficCounterDelta(map[string]float64{trafficIngressMetric: 100}, map[string]float64{trafficIngressMetric: 160}, trafficIngressMetric); got != 60 {
+		t.Fatalf("normal delta=%d", got)
+	}
+	if got := trafficCounterDelta(map[string]float64{trafficIngressMetric: 100}, map[string]float64{trafficIngressMetric: 7}, trafficIngressMetric); got != 7 {
+		t.Fatalf("reset delta=%d", got)
+	}
+	if got := trafficCounterDelta(nil, map[string]float64{trafficIngressMetric: 100}, trafficIngressMetric); got != 0 {
+		t.Fatalf("first observation must only establish baseline, got %d", got)
+	}
+
+	r := newTestRegistry(t)
+	r.db = openHistoryDB(filepath.Join(t.TempDir(), "traffic.db"))
+	defer r.db.Close()
+	now := time.Now()
+	r.db.recordTraffic(now.Add(-time.Hour), "n1", 100, 900)
+	r.db.recordTraffic(now.Add(-30*time.Minute), "n2", 50, 450)
+	d := r.buildDashboard("day", now)
+	if d.KPI.TrafficIngress != 150 || d.KPI.TrafficEgress != 1350 || d.KPI.TrafficTotal != 1500 {
+		t.Fatalf("traffic KPI mismatch: %+v", d.KPI)
 	}
 }
 

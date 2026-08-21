@@ -1,802 +1,2212 @@
-<!doctype html>
-<html lang="ru">
+<!-- ВНИМАНИЕ: файл собран автоматически из ui/pages/stats/.
+     Правки здесь будут потеряны при следующей сборке.
+     Исходники: ui/  ·  пересборка: bash scripts/build_ui.sh -->
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <meta name="robots" content="noindex">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
 <title>sharedd · публичная статистика ноды</title>
-<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%236366f1"/><stop offset="1" stop-color="%2322d3ee"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(%23g)"/><text x="32" y="44" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<script>/* тема до первой отрисовки, иначе мигает светлый кадр */
+try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
 <style>
+  /* ui/tokens.css */
   :root {
-    --bg: #05070d;
-    --bg2: #0a0f1a;
-    --card: rgba(15, 22, 36, .72);
-    --border: rgba(148, 163, 184, .13);
-    --border-strong: rgba(148, 163, 184, .26);
-    --text: #e7ecf5;
-    --muted: #8694aa;
-    --green: #34d399;
-    --red: #fb7185;
-    --yellow: #fbbf24;
-    --blue: #60a5fa;
-    --purple: #c084fc;
-    --accent1: #6366f1;
-    --accent2: #22d3ee;
-    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    --radius: 16px;
-    --shadow: 0 16px 44px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+    --bg: #080a0f;
+    --surf: #12151d;
+    --surf-2: #171b25;
+    --surf-3: #1d2331;
+    --line: rgba(255, 255, 255, .09);
+    --line-2: rgba(255, 255, 255, .05);
+    --fg: #eef1f6;
+    --fg-2: #a0abbe;
+    --fg-3: #6d7788;
+    --acc: #4da3ff;
+    --acc-2: #8b8bf5;
+    --acc-fg: #06121f;
+    --acc-soft: rgba(77, 163, 255, .16);
+    --link: #5ac8fa;
+    --ok: #3ddc97;
+    --ok-soft: rgba(61, 220, 151, .13);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, .13);
+    --bad: #ff7089;
+    --bad-soft: rgba(255, 112, 137, .13);
+    --info: #5ac8fa;
+    --info-soft: rgba(90, 200, 250, .13);
+    --special: #c084fc;
+    --special-soft: rgba(192, 132, 252, .13);
+    --gold: #f0b34a;
+    --gold-soft: rgba(240, 179, 74, .14);
+    --amb-1: rgba(77, 163, 255, .40);
+    --amb-2: rgba(90, 200, 250, .26);
+    --amb-3: rgba(139, 139, 245, .30);
+    --dot: rgba(255, 255, 255, .075);
+    --gl-a: rgba(38, 44, 60, .62);
+    --gl-b: rgba(22, 27, 38, .52);
+    --gl-brd: rgba(255, 255, 255, .13);
+    --gl-hi: rgba(255, 255, 255, .18);
+    --gl-lo: rgba(0, 0, 0, .45);
+    --gl-sheen: rgba(255, 255, 255, .10);
+    --gl-rim-a: rgba(255, 255, 255, .42);
+    --gl-rim-b: rgba(255, 255, 255, .04);
+    --gl-blur: 30px;
+    --track: rgba(0, 0, 0, .26);
+    --track-in: rgba(0, 0, 0, .40);
+    --thumb: rgba(255, 255, 255, .14);
+    --thumb-hi: rgba(255, 255, 255, .22);
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .45);
+    --sh-2: 0 2px 8px rgba(0, 0, 0, .40), 0 18px 46px rgba(0, 0, 0, .45);
+    --sh-pop: 0 16px 44px rgba(0, 0, 0, .60);
+    --sans:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    --mono:
+      ui-monospace,
+      SFMono-Regular,
+      "SF Mono",
+      Menlo,
+      Consolas,
+      monospace;
+    --r-xs: 7px;
+    --r-sm: 10px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 22px;
+    --r-pill: 999px;
+    --ctl-h: 34px;
+    --gap: 14px;
+    --pad: 18px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { color-scheme: dark; }
+  :root[data-theme=light] {
+    color-scheme: light;
+    --bg: #eef0f6;
+    --surf: #ffffff;
+    --surf-2: #f5f6fa;
+    --surf-3: #eceef4;
+    --line: rgba(17, 24, 39, .09);
+    --line-2: rgba(17, 24, 39, .05);
+    --fg: #101725;
+    --fg-2: #57627a;
+    --fg-3: #8d97a8;
+    --acc: #0a6fff;
+    --acc-2: #5b5bd6;
+    --acc-fg: #ffffff;
+    --acc-soft: rgba(10, 111, 255, .11);
+    --link: #0e8fd6;
+    --ok: #0a8a5f;
+    --ok-soft: rgba(10, 138, 95, .11);
+    --warn: #b6740b;
+    --warn-soft: rgba(182, 116, 11, .12);
+    --bad: #d1344b;
+    --bad-soft: rgba(209, 52, 75, .10);
+    --info: #0e6fb8;
+    --info-soft: rgba(14, 111, 184, .10);
+    --special: #7c3aed;
+    --special-soft: rgba(124, 58, 237, .10);
+    --gold: #a35f06;
+    --gold-soft: rgba(163, 95, 6, .12);
+    --amb-1: rgba(10, 111, 255, .34);
+    --amb-2: rgba(56, 189, 248, .30);
+    --amb-3: rgba(91, 91, 214, .24);
+    --dot: rgba(16, 23, 37, .10);
+    --gl-a: rgba(255, 255, 255, .74);
+    --gl-b: rgba(255, 255, 255, .52);
+    --gl-brd: rgba(255, 255, 255, .75);
+    --gl-hi: rgba(255, 255, 255, .92);
+    --gl-lo: rgba(16, 23, 37, .07);
+    --gl-sheen: rgba(255, 255, 255, .42);
+    --gl-rim-a: rgba(255, 255, 255, 1);
+    --gl-rim-b: rgba(16, 23, 37, .14);
+    --track: rgba(16, 23, 37, .055);
+    --track-in: rgba(16, 23, 37, .07);
+    --thumb: #ffffff;
+    --thumb-hi: rgba(255, 255, 255, .9);
+    --sh-1: 0 1px 2px rgba(16, 23, 37, .05);
+    --sh-2: 0 2px 6px rgba(16, 23, 37, .05), 0 14px 40px rgba(16, 23, 37, .09);
+    --sh-pop: 0 12px 34px rgba(16, 23, 37, .16);
+  }
+
+  /* ui/base.css */
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-cyrillic.woff2) format("woff2");
+    unicode-range:
+      U+0301,
+      U+0400-045F,
+      U+0490-0491,
+      U+04B0-04B1,
+      U+2116;
+  }
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-latin.woff2) format("woff2");
+    unicode-range:
+      U+0000-00FF,
+      U+0131,
+      U+0152-0153,
+      U+02BB-02BC,
+      U+02C6,
+      U+02DA,
+      U+02DC,
+      U+0304,
+      U+0308,
+      U+0329,
+      U+2000-206F,
+      U+20AC,
+      U+2122,
+      U+2191,
+      U+2193,
+      U+2212,
+      U+2215,
+      U+FEFF,
+      U+FFFD;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    background:
-      radial-gradient(920px 520px at 12% -12%, rgba(99,102,241,.15), transparent 62%),
-      radial-gradient(820px 500px at 90% -14%, rgba(34,211,238,.09), transparent 62%),
-      radial-gradient(760px 640px at 50% 118%, rgba(192,132,252,.06), transparent 60%),
-      var(--bg);
-    background-attachment: fixed;
-    color: var(--text);
-    font: 14px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    background: transparent;
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums;
     min-height: 100vh;
   }
-  ::selection { background: rgba(99,102,241,.42); color: #fff; }
-  a { color: var(--blue); text-decoration: none; }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -20% -10%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        46rem 30rem at 12% -8%,
+        var(--amb-1),
+        transparent 60%),
+      radial-gradient(
+        40rem 26rem at 88% 2%,
+        var(--amb-2),
+        transparent 58%),
+      radial-gradient(
+        44rem 30rem at 62% 108%,
+        var(--amb-3),
+        transparent 60%);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(
+        circle at 1px 1px,
+        var(--dot) 1px,
+        transparent 0);
+    background-size: 26px 26px;
+    -webkit-mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+    mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+  }
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  h1 {
+    font-size: 17px;
+  }
+  h2 {
+    font-size: 13.5px;
+  }
+  a {
+    color: var(--acc);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+  }
+  ::selection {
+    background: var(--acc-soft);
+  }
+  .mono {
+    font-family: var(--mono);
+    font-size: .92em;
+    letter-spacing: -.015em;
+  }
+  .muted {
+    color: var(--fg-2);
+  }
+  .dim {
+    color: var(--fg-3);
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .spacer {
+    flex: 1 1 auto;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 44px;
+  }
+  .page-foot {
+    padding: 22px 4px 30px;
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 12px;
+  }
+  @media (max-width: 640px) {
+    .wrap {
+      padding: 0 12px 30px;
+    }
+  }
 
-  /* ── каркас: сайдбар + контент ───────────────────────────────── */
-  #app { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; }
-  .view[hidden] { display: none; }
-.brand { display: flex; align-items: center; gap: 11px; padding: 0 6px; }
-  .brand-name { font-weight: 800; font-size: 15.5px; letter-spacing: .02em; }
-  .brand-sub { color: var(--muted); font-size: 11.5px; }
-  .nav { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.nav-item svg { flex: 0 0 auto; opacity: .85; }
-  .nav-item:hover { color: var(--text); background: rgba(148,163,184,.07); }
-  .nav-item.active {
+  /* ui/components/glass.css */
+  .glass {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        180deg,
+        var(--gl-a),
+        var(--gl-b));
+    border: 1px solid var(--gl-brd);
+    box-shadow:
+      inset 0 1px 0 var(--gl-hi),
+      inset 0 -1px 0 var(--gl-lo),
+      var(--sh-2);
+    -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+    backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+  }
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      linear-gradient(
+        142deg,
+        var(--gl-rim-a) 0%,
+        transparent 34%,
+        transparent 66%,
+        var(--gl-rim-b) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  .glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        125deg,
+        var(--gl-sheen) 0%,
+        transparent 34%);
+  }
+  .glass > *:not(.glass-raw) {
+    position: relative;
+    z-index: 1;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      background: var(--surf);
+    }
+  }
+
+  /* ui/components/topbar.css */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding: 14px 0 12px;
+    margin-bottom: 16px;
+  }
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    padding: 9px 11px;
+    border-radius: var(--r-xl);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 3px;
+    flex: none;
+  }
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-md);
+    flex: none;
+    display: grid;
+    place-items: center;
     color: #fff;
-    background: linear-gradient(135deg, rgba(99,102,241,.22), rgba(34,211,238,.13));
-    border-color: rgba(99,102,241,.42);
-    box-shadow: 0 6px 18px rgba(99,102,241,.16), inset 3px 0 0 var(--accent1);
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: .01em;
+    background:
+      linear-gradient(
+        150deg,
+        var(--acc),
+        var(--acc-2));
+    box-shadow:
+      0 4px 12px var(--acc-soft),
+      inset 0 1px 0 rgba(255, 255, 255, .5),
+      inset 0 -1px 0 rgba(0, 0, 0, .14);
   }
-.nav-item.active.main { min-width: 0; padding: 0 28px; display: flex; flex-direction: column; }
-  .main main, .main footer, header.top { width: 100%; max-width: 1380px; margin-left: auto; margin-right: auto; }
-
-  header.top {
-    position: sticky; top: 0; z-index: 40;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 15px 0 16px; margin-bottom: 22px;
-    background: rgba(5,7,13,.8);
-    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
+  .brand-name {
+    font-size: 14.5px;
+    font-weight: 650;
+    letter-spacing: -.025em;
+    line-height: 1.15;
   }
-  header.top h1 { font-size: 19px; font-weight: 700; letter-spacing: .01em; }
-  header.top .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
-  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
-
-    .logo {
-    width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
-    background: linear-gradient(135deg, var(--accent1), var(--accent2));
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 800; color: #fff; font-size: 13px; letter-spacing: 0.5px;
-    box-shadow: 0 6px 20px rgba(99,102,241,.45), inset 0 1px 0 rgba(255,255,255,.3);
-    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  .brand-sub {
+    font-size: 11px;
+    color: var(--fg-3);
+    line-height: 1.2;
+    white-space: nowrap;
   }
-  .pill {
-    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
-    font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 7px;
-    background: rgba(148,163,184,.06); backdrop-filter: blur(6px);
+  .navwrap {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
-  .pill.live .dot { animation: pulse 1.6s infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
-  button.ghost {
-    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
-    border-radius: 10px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
-    transition: color .15s, border-color .15s, background .15s;
+  .navwrap::-webkit-scrollbar {
+    display: none;
   }
-  button.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(148,163,184,.1); }
-  a.ghost {
-    display: inline-flex; align-items: center;
-    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
-    border-radius: 10px; padding: 5px 12px; font-size: 12.5px;
-    transition: color .15s, border-color .15s, background .15s;
+  .nav {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    flex: none;
+    background: var(--track);
+    box-shadow: inset 0 1px 2px var(--track-in);
   }
-  a.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(148,163,184,.1); }
-
-.back-link:hover { color: var(--text); }
-
-  /* ── баннер тревоги ────────────────────────────────────────── */
-.banner.show { display: block; animation: fade-in .25s ease; }
-/* ── KPI-карточки: строго одинаковая высота, только числа ──── */
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
-  .card {
-    position: relative; overflow: hidden;
-    background: linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
-    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
-    box-shadow: 0 10px 26px rgba(0,0,0,.35);
-    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-    display: flex; flex-direction: column; min-height: 112px;
+  .nav a {
+    padding: 6px 13px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    font-size: 12.5px;
+    font-weight: 520;
+    color: var(--fg-2);
+    text-decoration: none;
+    transition: color .15s, background .15s;
   }
-  .card::before {
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, var(--accent1), var(--accent2)); opacity: .6;
+  .nav a:hover {
+    color: var(--fg);
+    text-decoration: none;
   }
-  .card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: 0 18px 36px rgba(0,0,0,.48); }
-  .card .label { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px; }
-  .card .value { font-size: 27px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-  .card .extra { color: var(--muted); font-size: 12px; margin-top: auto; padding-top: 6px; }
-  .value.good { color: var(--green); text-shadow: 0 0 18px rgba(52,211,153,.35); }
-  .value.bad  { color: var(--red);   text-shadow: 0 0 18px rgba(251,113,133,.35); }
-  .value.warn { color: var(--yellow); }
-.card-top .label { margin-bottom: 0; }
-.kpi-ico.kpi-ico.kpi-ico.kpi-ico.kpi-ico.kpi-ico/* ── секции ────────────────────────────────────────────────── */
-  section.block {
-    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 20px; overflow: hidden; box-shadow: var(--shadow);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  .nav a.active {
+    color: var(--fg);
+    font-weight: 600;
+    background: var(--thumb);
+    box-shadow:
+      0 1px 2px rgba(16, 23, 37, .10),
+      0 2px 6px rgba(16, 23, 37, .07),
+      inset 0 1px 0 var(--thumb-hi);
   }
-  .block-head {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 14px 18px; border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,.025);
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
   }
-  .block-head h2 { font-size: 14.5px; font-weight: 700; display: flex; align-items: center; gap: 10px; letter-spacing: .01em; }
-  .block-head h2::before {
-    content: ""; width: 4px; height: 17px; border-radius: 2px;
-    background: linear-gradient(180deg, var(--accent1), var(--accent2));
-    box-shadow: 0 0 10px rgba(99,102,241,.5);
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 560;
+    white-space: nowrap;
   }
-  .block-head .hint { color: var(--muted); font-size: 12px; }
-
-  /* ── таблица нод ───────────────────────────────────────────── */
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,.09); white-space: nowrap; }
-  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; background: rgba(255,255,255,.015); }
-  tbody tr { transition: background .14s ease; }
-  tbody tr:hover { background: rgba(148,163,184,.05); }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr.rowlink { cursor: pointer; }
-  tbody tr.master {
-    background: linear-gradient(90deg, rgba(251,191,36,.09), transparent 55%);
-    box-shadow: inset 3px 0 0 rgba(251,191,36,.55);
+  .status-pill i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
   }
-  tbody tr.master:hover { background: linear-gradient(90deg, rgba(251,191,36,.13), rgba(148,163,184,.04) 55%); }
-  td.idcell { font-family: var(--mono); font-size: 12.5px; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
-  td .ip { font-family: var(--mono); font-size: 12.5px; color: #b7c3d9; }
-  .tbl-wrap { overflow-x: auto; }
-
-  /* ── бейджи ────────────────────────────────────────────────── */
-  .badge {
-    display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 700; letter-spacing: .03em;
-    border: 1px solid transparent;
+  .status-pill.live {
+    background: var(--ok-soft);
+    color: var(--ok);
   }
-  .badge.ok  { color: var(--green);  background: rgba(52,211,153,.1);  border-color: rgba(52,211,153,.3); }
-  .badge.no  { color: var(--red);    background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.32); }
-  .badge.unk { color: var(--muted);  background: rgba(134,148,170,.1); border-color: rgba(134,148,170,.24); }
-  .badge.master {
-    color: #fcd34d; background: rgba(251,191,36,.13); border-color: rgba(251,191,36,.4);
-    text-shadow: 0 0 14px rgba(251,191,36,.4);
+  .status-pill.live i {
+    animation: pulse 2.4s infinite;
   }
-  .badge.queue { color: var(--blue); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); font-family: var(--mono); }
-  /* бейджи типа ноды (classic — обычный muted, без класса) */
-  .badge.t-purple {
-    color: var(--purple); background: rgba(192,132,252,.12); border-color: rgba(192,132,252,.38);
-    text-shadow: 0 0 14px rgba(192,132,252,.35);
+  .status-pill.off {
+    background: var(--bad-soft);
+    color: var(--bad);
   }
-  .badge.t-cyan {
-    color: var(--accent2); background: rgba(34,211,238,.1); border-color: rgba(34,211,238,.36);
-    text-shadow: 0 0 14px rgba(34,211,238,.32);
+  @keyframes pulse {
+    50% {
+      opacity: .32;
+    }
   }
-
-  .avail { display: flex; align-items: center; gap: 8px; }
-  .avail .bar {
-    width: 74px; height: 7px; border-radius: 999px;
-    background: rgba(148,163,184,.14); overflow: hidden;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,.55);
+  @media (prefers-reduced-motion: reduce) {
+    .status-pill.live i {
+      animation: none;
+    }
   }
-  .avail .bar > div { height: 100%; border-radius: 999px; transition: width .4s ease; }
-  .avail .mono { font-variant-numeric: tabular-nums; }
-  .muted { color: var(--muted); }
-  .mono { font-family: var(--mono); font-size: 12px; }
-  .reason { color: var(--yellow); font-size: 12px; white-space: normal; min-width: 160px; }
-
-  /* ── рельса мастеров (строки доменов) ─────────────────────── */
-.mrow:hover { background: rgba(148,163,184,.05); }
-  .mrow:last-child { border-bottom: none; }
-.mdot.alive { background: var(--green);  box-shadow: 0 0 9px rgba(52,211,153,.8); }
-  .mdot.warn  { background: var(--yellow); box-shadow: 0 0 9px rgba(251,191,36,.8); }
-  .mdot.dead  { background: var(--red);    box-shadow: 0 0 9px rgba(251,113,133,.8); }
-.mrow .badge { flex: 0 0 auto; }
-
-  /* ── фильтры журнала ───────────────────────────────────────── */
-.filters button {
-    background: rgba(148,163,184,.06); border: 1px solid var(--border); color: var(--muted);
-    border-radius: 999px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: color .13s ease, background .13s ease;
   }
-  .filters button:hover { color: var(--text); border-color: var(--border-strong); }
-  .filters button.active {
-    color: #fff; border-color: transparent;
-    background: linear-gradient(135deg, var(--accent1), var(--accent2));
-    box-shadow: 0 5px 16px rgba(99,102,241,.4);
+  .icon-btn:hover {
+    color: var(--fg);
+    background: var(--track);
   }
-
-  /* ── журнал событий ────────────────────────────────────────── */
-  .events { list-style: none; padding: 10px 14px 14px; max-height: 460px; overflow-y: auto; }
-  .events li {
-    display: flex; gap: 10px; align-items: baseline; padding: 7px 8px; border-radius: 9px;
-    border-bottom: 1px solid rgba(148,163,184,.07); font-size: 13px;
-    transition: background .13s ease;
+  .icon-btn:active {
+    background: var(--track-in);
   }
-  .events li:hover { background: rgba(148,163,184,.05); }
-  .events li:last-child { border-bottom: none; }
-  .ev-time { color: var(--muted); font-family: var(--mono); font-size: 11.5px; flex: 0 0 178px; font-variant-numeric: tabular-nums; }
-  .ev-type {
-    flex: 0 0 auto; border-radius: 999px; padding: 2px 9px; font-size: 10.5px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .05em; border: 1px solid transparent;
+  .topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
   }
-  .ev-good  { color: var(--green);  background: rgba(52,211,153,.1);  border-color: rgba(52,211,153,.26); }
-  .ev-bad   { color: var(--red);    background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.28); }
-  .ev-warn  { color: var(--yellow); background: rgba(251,191,36,.1);  border-color: rgba(251,191,36,.26); }
-  .ev-info  { color: var(--blue);   background: rgba(96,165,250,.1);  border-color: rgba(96,165,250,.26); }
-  .ev-neutral { color: var(--muted); background: rgba(134,148,170,.1); border-color: rgba(134,148,170,.22); }
-  .ev-node { font-family: var(--mono); font-size: 12px; color: var(--purple); }
-  .ev-detail { color: var(--muted); font-size: 12.5px; word-break: break-word; }
-  .events::-webkit-scrollbar,
-  .masters-list::-webkit-scrollbar { width: 9px; }
-  .events::-webkit-scrollbar-thumb,
-  .masters-list::-webkit-scrollbar-thumb {
-    background: rgba(148,163,184,.22); border-radius: 999px;
-    border: 2px solid transparent; background-clip: padding-box;
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line);
+    flex: none;
+    margin: 0 4px;
   }
-  .events::-webkit-scrollbar-thumb:hover,
-  .masters-list::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,.34); background-clip: padding-box; }
-
-  .empty { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
-
-  /* ── нода детально ──────────────────────────────────────────── */
-  .card.nd-head {
-    flex-direction: row; align-items: center; gap: 16px; flex-wrap: wrap;
-    padding: 18px 20px; margin-bottom: 18px; min-height: 0;
+  .icon-btn .i-sun {
+    display: none;
   }
-  .card.nd-head:hover { transform: none; }
-  .nd-id { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
-  .nd-ip { font-family: var(--mono); color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-  .nd-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; }
-  .nd-reason { flex: 0 0 100%; }
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px; margin-bottom: 18px; }
-  .gp-grid {
-    display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.7fr);
-    gap: 20px; padding: 16px 18px 18px; align-items: start;
+  :root[data-theme=light] .icon-btn .i-sun {
+    display: block;
   }
-  .gp-side .extra { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-  .gp-side .extra b { color: var(--text); font-family: var(--mono); }
-  .gp-big { font-size: 38px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 8px; }
-  .gp-big.good { color: var(--green); text-shadow: 0 0 22px rgba(52,211,153,.4); }
-  .gp-big.bad  { color: var(--red);   text-shadow: 0 0 22px rgba(251,113,133,.4); }
-  .chart-body { padding: 12px 18px 18px; }
-  .chart-cap {
-    color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
-    margin: 14px 0 8px; display: flex; gap: 8px; align-items: baseline;
+  :root[data-theme=light] .icon-btn .i-moon {
+    display: none;
   }
-  .chart-cap:first-child { margin-top: 2px; }
-  .chart-cap .hint { text-transform: none; letter-spacing: 0; }
-  .ticks { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
-  .tick { width: 7px; height: 16px; border-radius: 2.5px; background: rgba(52,211,153,.85); }
-  .tick.fail { background: rgba(251,113,133,.9); }
-  .bars { display: flex; align-items: flex-end; gap: 3px; min-height: 56px; }
-  .bars:empty { display: none; }
-  .gbar {
-    flex: 1 1 0; min-width: 4px; max-width: 16px; border-radius: 3px 3px 1px 1px;
-    background: linear-gradient(180deg, rgba(52,211,153,.95), rgba(52,211,153,.4));
-    transition: height .3s ease;
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 50;
+    padding: 6px;
+    border-radius: var(--r-xl);
+    grid-template-columns: repeat(6, 1fr);
+    gap: 2px;
   }
-  .gbar.mid  { background: linear-gradient(180deg, rgba(251,191,36,.95), rgba(251,191,36,.4)); }
-  .gbar.fail { background: linear-gradient(180deg, rgba(251,113,133,.95), rgba(251,113,133,.4)); }
-  .spark { width: 100%; height: 56px; display: block; cursor: crosshair; }
-
-  /* ── hover-подсказка спарклайна клиентов на странице ноды ──────── */
-  .sparkwrap { position: relative; }
-  .spark-guide {
-    position: absolute; top: 0; bottom: 0; width: 1px;
-    background: rgba(231,236,245,.38); pointer-events: none;
-    opacity: 0; transition: opacity .1s ease;
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 2px;
+    border-radius: var(--r-md);
+    color: var(--fg-3);
+    text-decoration: none;
+    min-width: 0;
+    transition: color .13s ease, background .13s ease;
   }
-  .spark-dot {
-    position: absolute; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--accent2); box-shadow: 0 0 8px rgba(34,211,238,.9);
-    transform: translate(-50%, -50%); pointer-events: none;
-    opacity: 0; transition: opacity .1s ease;
+  .mobile-nav a svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
   }
-  .spark-tip {
-    position: absolute; top: -6px; transform: translate(-50%, -100%);
-    background: rgba(7,12,21,.95); border: 1px solid var(--border-strong);
-    border-radius: 9px; padding: 4px 10px; font-family: var(--mono);
-    font-size: 11px; color: var(--text); white-space: nowrap;
-    pointer-events: none; z-index: 5; box-shadow: 0 6px 18px rgba(0,0,0,.45);
-    opacity: 0; transition: opacity .1s ease;
+  .mobile-nav a span {
+    font-size: 9.5px;
+    font-weight: 560;
+    letter-spacing: -.01em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .spark-tip b { color: var(--accent2); }
-  .sparkwrap.hover .spark-guide,
-  .sparkwrap.hover .spark-dot,
-  .sparkwrap.hover .spark-tip { opacity: 1; }
-
-  /* ── вход ──────────────────────────────────────────────────── */
-  #login-overlay {
-    position: fixed; inset: 0; background: rgba(3,5,10,.8);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    display: none; align-items: center; justify-content: center; z-index: 50;
+  .mobile-nav a:hover {
+    color: var(--fg-2);
+    text-decoration: none;
   }
-  #login-overlay.show { display: flex; animation: fade-in .2s ease; }
-.login-box::before {
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    background: linear-gradient(90deg, var(--accent1), var(--accent2));
-  }
-.login-box h2 { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; }
-  .login-box h2::before { content: none; }
-  .login-box p { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-  .login-box input {
-    width: 100%; background: rgba(4,7,14,.75); border: 1px solid var(--border); color: var(--text);
-    border-radius: 10px; padding: 10px 13px; font-size: 13.5px; margin-bottom: 12px; font-family: var(--mono);
-    transition: border-color .15s, box-shadow .15s;
-  }
-  .login-box input:focus { outline: none; border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(99,102,241,.22); }
-  .login-box button {
-    width: 100%; border: none; border-radius: 10px; padding: 10px; cursor: pointer;
-    font-size: 13.5px; font-weight: 700; color: #fff;
-    background: linear-gradient(135deg, var(--accent1), var(--accent2));
-    box-shadow: 0 6px 18px rgba(99,102,241,.4);
-    transition: filter .15s, transform .15s;
-  }
-  .login-box button:hover { filter: brightness(1.12); transform: translateY(-1px); }
-.login-err.show { display: block; }
-
-  /* ── настройки ─────────────────────────────────────────────── */
-fieldsetfieldset.cfg legend {
-    color: #aeb9cd; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
-    font-weight: 700; padding: 0 8px;
-  }
-  fieldset.cfg label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
-  .cfg input[type=text], .cfg input[type=password], .cfg input[type=number], .cfg textarea {
-    width: 100%; background: rgba(4,7,14,.7); border: 1px solid var(--border); color: var(--text);
-    border-radius: 9px; padding: 8px 11px; font-size: 12.5px; font-family: var(--mono);
-    transition: border-color .15s, box-shadow .15s;
-  }
-  .cfg input:focus, .cfg textarea:focus { outline: none; border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
-  .cfg input[type=checkbox] { accent-color: var(--accent1); width: 15px; height: 15px; }
-  .cfg textarea { resize: vertical; min-height: 64px; }
-  .cfg .row { display: flex; gap: 8px; align-items: center; margin-top: 11px; flex-wrap: wrap; }
-  .cfg .row label { margin: 0; }
-  button.act {
-    border: none; border-radius: 9px; padding: 7px 15px; cursor: pointer;
-    font-size: 12.5px; font-weight: 700; color: #fff;
-    background: linear-gradient(135deg, var(--accent1), var(--accent2));
-    box-shadow: 0 4px 14px rgba(99,102,241,.32);
-    transition: filter .15s, transform .15s, box-shadow .15s;
-  }
-  button.act:hover { filter: brightness(1.14); transform: translateY(-1px); }
-  button.act:active { transform: translateY(0); }
-  button.act.secondary {
-    background: rgba(148,163,184,.08); color: var(--text);
-    border: 1px solid var(--border-strong); box-shadow: none;
-  }
-  button.act.secondary:hover { background: rgba(148,163,184,.13); filter: none; }
-  button.act.danger {
-    background: transparent; color: var(--red); border: 1px solid rgba(251,113,133,.45); box-shadow: none;
-  }
-  button.act.danger:hover { background: rgba(251,113,133,.12); filter: none; }
-  .cfg .note { color: var(--muted); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
-  #users-tbl { width: 100%; font-size: 12.5px; }
-  #users-tbl td { padding: 4px 6px; border-bottom: 1px solid rgba(148,163,184,.08); white-space: normal; }
-  #users-tbl input { width: 100%; }
-/* ── тост ──────────────────────────────────────────────────── */
-  #toast {
-    position: fixed; top: 20px; right: 20px; z-index: 60; max-width: 460px;
-    border-radius: 14px; padding: 12px 17px; font-size: 13px; display: none;
-    border: 1px solid rgba(52,211,153,.45); border-left-width: 3px;
-    background: rgba(7,12,21,.93); color: var(--green);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    box-shadow: var(--shadow);
-  }
-  #toast.err { border-color: rgba(251,113,133,.5); border-left-width: 3px; color: #fecdd3; }
-  #toast.show { display: block; animation: toast-in .28s cubic-bezier(.2,1.1,.4,1); }
-
-  footer {
-    color: var(--muted); font-size: 12px; text-align: center; margin-top: 30px;
-    letter-spacing: .02em; opacity: .85; padding-bottom: 12px;
-  }
-
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes pop-in { from { opacity: 0; transform: scale(.95) translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
-
-  /* сайдбар сворачивается в верхнюю полосу */
-  @media (max-width: 1080px) {
-    #app { grid-template-columns: 1fr; }
-.brand-sub { display: none; }
-    .nav { flex-direction: row; margin-top: 0; overflow-x: auto; flex: 1 1 auto; gap: 5px; }
-.nav-item.active { box-shadow: 0 4px 14px rgba(99,102,241,.16), inset 0 -3px 0 var(--accent1); }
-.gp-grid { grid-template-columns: 1fr; }
+  .mobile-nav a.active {
+    color: var(--acc);
+    background: var(--acc-soft);
   }
   @media (max-width: 720px) {
-    .main { padding: 0 14px; }
-    .ev-time { flex: 0 0 118px; }
-    .card .value { font-size: 23px; }
-    .brand { display: none; }
+    .nav {
+      display: none;
+    }
+    .mobile-nav {
+      display: grid;
+    }
+    body {
+      padding-bottom: 74px;
+    }
+    .topbar {
+      padding: 10px 0 8px;
+    }
+    .topbar-inner {
+      padding: 7px 9px;
+      border-radius: var(--r-lg);
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
+    }
+    .brand-sub {
+      display: none;
+    }
+    .status-pill {
+      height: 27px;
+      padding: 0 10px;
+      font-size: 11.5px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  @media (min-width: 721px) and (max-width: 1100px) {
+    .brand-sub {
+      display: none;
+    }
+    .nav a {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .topbar-inner {
+      gap: 10px;
+    }
+    .topbar-right {
+      gap: 6px;
+    }
+  }
+  @media (max-width: 560px) {
+    .topbar-inner {
+      gap: 8px;
+    }
+    .topbar-right {
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 13.5px;
+    }
+    .status-pill span {
+      display: none;
+    }
+    .status-pill {
+      padding: 0 8px;
+    }
+    .topbar-links .icon-btn {
+      width: 26px;
+      height: 26px;
+    }
+    .topbar-sep {
+      margin: 0 2px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mobile-nav {
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 5px;
+    }
+    .mobile-nav a {
+      padding: 6px 1px;
+    }
+    .mobile-nav a svg {
+      width: 17px;
+      height: 17px;
+    }
+    .mobile-nav a span {
+      font-size: 8.5px;
+    }
+    .brand-name {
+      font-size: 13px;
+    }
   }
 
-  /* ── публичный одноколоночный каркас ──────────────────────────── */
-  #app { display: block; }
-  header.top { max-width: 1180px; margin: 0 auto 22px; padding-left: 28px; padding-right: 28px; }
-  main.pub { max-width: 1180px; margin: 0 auto; padding: 0 28px 42px; display: block; }
-  footer.pub-foot { max-width: 1180px; margin: 0 auto; padding: 0 28px 26px; color: var(--muted); font-size: 12px; }
-  .pub-note {
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: rgba(148,163,184,.05); color: var(--muted);
-    font-size: 12.5px; padding: 10px 14px; margin-bottom: 18px;
+  /* ui/components/card.css */
+  .card {
+    background: var(--surf);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    min-width: 0;
   }
-  .pub-note b { color: var(--text); font-weight: 600; }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .card-head h2 {
+    margin: 0;
+  }
+  .card-head .hint {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--fg-3);
+    font-weight: 400;
+  }
+  .card-body {
+    padding: var(--pad);
+  }
+  .card-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px var(--pad);
+    border-top: 1px solid var(--line-2);
+    background: var(--surf-2);
+  }
+  .card-note {
+    padding: 12px var(--pad) 16px;
+    color: var(--fg-3);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .metrics {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+  }
+  .metric {
+    padding: 15px 17px;
+    display: flex;
+    flex-direction: column;
+    min-height: 118px;
+  }
+  .metric-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 540;
+    color: var(--fg-2);
+  }
+  .metric-label svg {
+    color: var(--fg-3);
+    flex: none;
+  }
+  .metric-value {
+    font-size: 32px;
+    font-weight: 640;
+    letter-spacing: -.035em;
+    line-height: 1;
+    margin: 12px 0 5px;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+  .metric-value.ok {
+    color: var(--ok);
+  }
+  .metric-value.warn {
+    color: var(--warn);
+  }
+  .metric-value.bad {
+    color: var(--bad);
+  }
+  .metric-value .sep {
+    color: var(--fg-3);
+    font-weight: 300;
+    margin: 0 1px;
+  }
+  .metric-value .unit {
+    font-size: 13px;
+    font-weight: 540;
+    color: var(--fg-2);
+    letter-spacing: -.01em;
+    margin-left: 4px;
+  }
+  .metric-foot {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    margin-top: auto;
+  }
+  .metric-spark {
+    display: block;
+    width: 100%;
+    height: 26px;
+    margin: 2px 0 6px;
+  }
+  @media (max-width: 640px) {
+    .metrics {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 12px 13px;
+    }
+    .metric-value {
+      font-size: 24px;
+      margin: 8px 0 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+    }
+    .metric-foot {
+      font-size: 10.5px;
+    }
+  }
+  @media (max-width: 400px) {
+    .metrics {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ui/components/badge.css */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 21px;
+    padding: 0 7px;
+    border-radius: var(--r-xs);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    white-space: nowrap;
+  }
+  .badge.ok {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .badge.warn {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .badge.bad {
+    background: var(--bad-soft);
+    color: var(--bad);
+  }
+  .badge.info {
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .badge.special {
+    background: var(--special-soft);
+    color: var(--special);
+  }
+  .badge.gold {
+    background: var(--gold-soft);
+    color: var(--gold);
+  }
+  .badge.mono {
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .badge i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 520;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: .14s;
+  }
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-3);
+  }
+  .chip.active {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
+    color: var(--ok);
+  }
+  .check-tag.warn {
+    color: var(--warn);
+  }
+  .check-tag.bad {
+    color: var(--bad);
+  }
+  .check-tag.unknown {
+    color: var(--fg-3);
+    opacity: .55;
+  }
+
+  /* ui/components/table.css */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .card > .table-wrap:last-child {
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  thead th {
+    text-align: left;
+    padding: 9px var(--pad);
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 1px solid var(--line-2);
+  }
+  tbody td {
+    padding: 11px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  tbody tr {
+    transition: background .12s;
+  }
+  tbody tr.clickable {
+    cursor: pointer;
+  }
+  tbody tr:hover td {
+    background: var(--surf-2);
+  }
+  tbody tr.master td:first-child {
+    box-shadow: inset 2px 0 0 var(--gold);
+  }
+  td.num,
+  th.num {
+    text-align: right;
+  }
+  tbody td.mono,
+  tbody td .mono {
+    white-space: nowrap;
+  }
+  tbody td.wrap,
+  tbody td.wrap .mono {
+    white-space: normal;
+  }
+  .table-empty {
+    padding: 34px var(--pad);
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 13px;
+  }
+  .meter {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 118px;
+  }
+  .meter-track {
+    flex: 1;
+    height: 5px;
+    min-width: 46px;
+    border-radius: var(--r-pill);
+    background: var(--surf-3);
+    overflow: hidden;
+  }
+  .meter-fill {
+    display: block;
+    height: 100%;
+    max-width: 100%;
+    border-radius: inherit;
+    background: var(--fg-3);
+    transition: width .3s ease;
+  }
+  .meter-fill.ok {
+    background: var(--ok);
+  }
+  .meter-fill.warn {
+    background: var(--warn);
+  }
+  .meter-fill.bad {
+    background: var(--bad);
+  }
+  .meter-value {
+    font-size: 12.5px;
+    color: var(--fg-2);
+  }
+  @media (max-width: 720px) {
+    .table-cards thead {
+      display: none;
+    }
+    .table-cards tbody tr {
+      display: block;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-2);
+    }
+    .table-cards tbody tr:last-child {
+      border-bottom: 0;
+    }
+    .table-cards tbody td {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 3px 0;
+      border: 0;
+    }
+    .table-cards tbody td::before {
+      content: attr(data-label);
+      flex: 0 0 92px;
+      color: var(--fg-3);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .table-cards tbody td.num {
+      text-align: left;
+    }
+    .table-cards tbody tr:hover td {
+      background: none;
+    }
+  }
+
+  /* ui/components/misc.css */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 15px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-3);
+    border-radius: var(--r-md);
+    background: var(--surf);
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  .banner svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    margin-top: 2px;
+  }
+  .banner b {
+    color: var(--fg);
+    font-weight: 620;
+  }
+  .banner.info {
+    border-left-color: var(--acc);
+    background: var(--acc-soft);
+  }
+  .banner.warn {
+    border-left-color: var(--warn);
+    background: var(--warn-soft);
+  }
+  .banner.warn svg {
+    color: var(--warn);
+  }
+  .banner.bad {
+    border-left-color: var(--bad);
+    background: var(--bad-soft);
+  }
+  .banner.bad svg {
+    color: var(--bad);
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--fg-3);
+  }
+  .empty-state svg {
+    width: 26px;
+    height: 26px;
+    opacity: .55;
+  }
+  .empty-state .t {
+    color: var(--fg-2);
+    font-size: 13.5px;
+    font-weight: 560;
+  }
+  .empty-state .s {
+    font-size: 12.5px;
+    max-width: 44ch;
+    line-height: 1.5;
+  }
+  .skeleton {
+    border-radius: var(--r-xs);
+    background:
+      linear-gradient(
+        90deg,
+        var(--surf-2) 25%,
+        var(--surf-3) 37%,
+        var(--surf-2) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+  #toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 90;
+    display: none;
+    max-width: min(380px, calc(100vw - 36px));
+    padding: 11px 15px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ok);
+    background: var(--surf);
+    box-shadow: var(--sh-pop);
+    color: var(--ok);
+    font-size: 13px;
+  }
+  #toast.show {
+    display: block;
+    animation: toast-in .18s ease;
+  }
+  #toast.err {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .kv {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 12px;
+  }
+  .kv-k {
+    color: var(--fg-3);
+    font-size: 10.5px;
+  }
+  .kv-v {
+    color: var(--fg);
+    font-weight: 560;
+  }
+
+  /* ui/components/feed.css */
+  .feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+  }
+  .feed-item {
+    display: flex;
+    gap: 11px;
+    padding: 11px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .feed-item:last-child {
+    border-bottom: 0;
+  }
+  .feed-item:hover {
+    background: var(--surf-2);
+  }
+  .feed-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex: none;
+    background: var(--fg-3);
+  }
+  .feed-dot.ok {
+    background: var(--ok);
+  }
+  .feed-dot.warn {
+    background: var(--warn);
+  }
+  .feed-dot.bad {
+    background: var(--bad);
+  }
+  .feed-dot.info {
+    background: var(--acc);
+  }
+  .feed-body {
+    min-width: 0;
+    flex: 1;
+  }
+  .feed-head {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .feed-kind {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .feed-time {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-family: var(--mono);
+    flex: none;
+  }
+  .feed-detail {
+    font-size: 12px;
+    color: var(--fg-2);
+    margin-top: 2px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .feed-detail code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--fg);
+  }
+  .feed {
+    position: relative;
+  }
+  .feed-day {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px var(--pad) 8px 44px;
+    background:
+      linear-gradient(
+        180deg,
+        var(--surf) 62%,
+        transparent);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .feed-day span {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    border: 1px solid var(--line-2);
+  }
+  .feed-item {
+    position: relative;
+    padding-left: 44px;
+  }
+  .feed-item::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  .feed-item:last-child::before {
+    bottom: 50%;
+  }
+  .feed-dot {
+    position: absolute;
+    left: 17px;
+    top: 15px;
+    margin: 0;
+    z-index: 1;
+    box-shadow: 0 0 0 3px var(--surf);
+  }
+  .feed-item:hover .feed-dot {
+    box-shadow: 0 0 0 3px var(--surf-2);
+  }
+
+  /* ui/components/form.css */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: var(--ctl-h);
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 550;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background .13s,
+      border-color .13s,
+      color .13s;
+  }
+  .btn:hover {
+    background: var(--surf-2);
+    border-color: var(--fg-3);
+    text-decoration: none;
+  }
+  .btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .btn svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .btn.primary {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
+    border-color: var(--acc);
+  }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--fg-2);
+  }
+  .btn.ghost:hover {
+    background: var(--surf-2);
+    color: var(--fg);
+  }
+  .btn.danger {
+    color: var(--bad);
+    border-color: transparent;
+    background: var(--bad-soft);
+  }
+  .btn.danger:hover {
+    background: var(--bad-soft);
+    filter: brightness(1.1);
+  }
+  .btn.sm {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .btn.icon {
+    width: var(--ctl-h);
+    padding: 0;
+  }
+  .btn.icon.sm {
+    width: 28px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .field > label {
+    color: var(--fg-2);
+    font-size: 12.5px;
+    font-weight: 520;
+  }
+  .field .help {
+    color: var(--fg-3);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  input[type=text],
+  input[type=password],
+  input[type=number],
+  input[type=search],
+  textarea,
+  select {
+    width: 100%;
+    min-width: 0;
+    height: var(--ctl-h);
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surf-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    transition: border-color .13s, box-shadow .13s;
+  }
+  textarea {
+    height: auto;
+    min-height: 84px;
+    padding: 9px 11px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--fg-3);
+  }
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 30px;
+    cursor: pointer;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent 50%,
+        var(--fg-3) 50%),
+      linear-gradient(
+        135deg,
+        var(--fg-3) 50%,
+        transparent 50%);
+    background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  input.mono,
+  textarea.mono {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  input[type=number] {
+    max-width: 150px;
+    -moz-appearance: textfield;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .check input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .check .box {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surf-2);
+    display: grid;
+    place-items: center;
+    transition: all .13s;
+  }
+  .check .box::after {
+    content: "";
+    width: 9px;
+    height: 9px;
+    transform: scale(0);
+    background: var(--acc-fg);
+    transition: transform .13s;
+    clip-path: polygon(14% 47%, 0 61%, 39% 100%, 100% 22%, 85% 8%, 39% 71%);
+  }
+  .check input:checked + .box {
+    background: var(--acc);
+    border-color: var(--acc);
+  }
+  .check input:checked + .box::after {
+    transform: scale(1);
+  }
+  .check input:focus-visible + .box {
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-group input {
+    padding-right: 42px;
+  }
+  .input-group .in-btn {
+    position: absolute;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--fg-3);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .input-group .in-btn:hover {
+    background: var(--surf-3);
+    color: var(--fg);
+  }
+
+  /* ui/pages/stats/page.css */
+  .stats-wrap {
+    max-width: 1280px;
+  }
+  .page-title {
+    margin: 4px 0 16px;
+  }
+  .node-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 18px var(--pad);
+    margin-bottom: 16px;
+  }
+  .node-id {
+    font-family: var(--mono);
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+  }
+  .node-ip {
+    font-family: var(--mono);
+    color: var(--fg-3);
+    font-size: 12.5px;
+    margin-top: 2px;
+  }
+  .node-chips {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-left: auto;
+  }
+  .node-reason {
+    flex: 0 0 100%;
+    margin-top: 12px;
+  }
+  .node-reason .banner {
+    margin-bottom: 0;
+  }
+  .gp-summary {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    background: var(--surf-2);
+  }
+  .gp-facts {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .gp-big {
+    font-size: 30px;
+    font-weight: 680;
+    letter-spacing: -.03em;
+    line-height: 1;
+  }
+  .gp-big.ok {
+    color: var(--ok);
+  }
+  .gp-big.bad {
+    color: var(--bad);
+  }
+  .chart-body {
+    padding: 12px var(--pad) var(--pad);
+  }
+  .chart-cap {
+    color: var(--fg-3);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin: 14px 0 8px;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .chart-cap:first-child {
+    margin-top: 2px;
+  }
+  .chart-cap .hint {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .ticks {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .tick {
+    width: 7px;
+    height: 16px;
+    border-radius: 2.5px;
+    background: var(--ok);
+    opacity: .85;
+  }
+  .tick.fail {
+    background: var(--bad);
+    opacity: .9;
+  }
+  .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    min-height: 56px;
+  }
+  .bars:empty {
+    display: none;
+  }
+  .gbar {
+    flex: 1 1 0;
+    min-width: 4px;
+    max-width: 16px;
+    border-radius: 3px 3px 1px 1px;
+    background: var(--ok);
+    opacity: .85;
+    transition: height .3s ease;
+  }
+  .gbar.mid {
+    background: var(--warn);
+  }
+  .gbar.fail {
+    background: var(--bad);
+  }
+  .quarantine-card {
+    margin-top: var(--gap);
+  }
+  .spark {
+    width: 100%;
+    height: 56px;
+    display: block;
+    cursor: crosshair;
+  }
+  .sparkwrap {
+    position: relative;
+  }
+  .spark-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--fg-3);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .1s ease;
+  }
+  .spark-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--acc);
+    box-shadow: 0 0 8px var(--acc);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .1s ease;
+  }
+  .spark-tip {
+    position: absolute;
+    top: -6px;
+    transform: translate(-50%, -100%);
+    background: var(--surf);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fg);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: var(--sh-pop);
+    opacity: 0;
+    transition: opacity .1s ease;
+  }
+  .spark-tip b {
+    color: var(--acc);
+  }
+  .sparkwrap.hover .spark-guide,
+  .sparkwrap.hover .spark-dot,
+  .sparkwrap.hover .spark-tip {
+    opacity: 1;
+  }
+  .feed-domain {
+    color: var(--special);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  @media (max-width: 1080px) {
+    .gp-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 640px) {
+    .node-chips {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
 </style>
 </head>
 <body>
-<div id="app">
-  <header class="top">
-    <div class="brand" style="padding:0">
-      <div class="logo">DD</div>
-      <div>
-        <div class="brand-name">sharedd</div>
-        <div class="brand-sub">регистратор прокси-пула</div>
+
+<div class="wrap stats-wrap" id="app">
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub" id="view-sub">открытая статистика · IP частично скрыт</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <a class="btn ghost sm" href="/dashboard">Дашборд блокировок →</a>
+        <a class="btn ghost sm" href="/links">Прокси-ссылки →</a>
+        <span class="status-pill live" id="live-pill"><i></i><span id="upd">обновление…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
       </div>
     </div>
-    <div style="min-width:0">
-      <h1 id="view-title">Публичная статистика</h1>
-      <div class="sub" id="view-sub">открытая страница · IP частично скрыт</div>
-    </div>
-    <div class="top-right">
-      <a class="back-link" href="/dashboard">Дашборд блокировок →</a>
-      <span class="pill live"><span class="dot"></span><span id="upd">обновление…</span></span>
-    </div>
   </header>
-  <main class="pub" id="root"><div class="empty">загрузка…</div></main>
-  <footer class="pub-foot">sharedd · публичная статистика нод пула · обновление каждые 15 с</footer>
+
+  <h1 id="view-title" class="page-title">Публичная статистика</h1>
+
+  <main id="root"><div class="card"><div class="card-body dim">загрузка…</div></div></main>
+
+  <footer class="page-foot">sharedd · публичная статистика нод пула · обновление каждые 15 с</footer>
 </div>
 
 <script>
-"use strict";
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+(() => {
+  // ui/lib/dom.ts
+  var $ = (id) => document.getElementById(id);
+  var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  var ICONS = {
+    masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,
+    nodes: `<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>`,
+    users: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/>`,
+    ban: `<circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/>`,
+    dns: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>`,
+    clock: `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
+    health: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
+    swap: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`,
+    layers: `<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>`,
+    list: `<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>`,
+    sliders: `<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>`,
+    link: `<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>`,
+    chart: `<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>`,
+    info: `<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`,
+    check: `<polyline points="20 6 9 17 4 12"/>`,
+    back: `<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>`
+  };
 
-function fmtDur(sec) {
-  sec = Math.max(0, Math.floor(sec));
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
-        m = Math.floor((sec % 3600) / 60), s = sec % 60;
-  if (d > 0) return `${d}д ${h}ч`;
-  if (h > 0) return `${h}ч ${m}м`;
-  if (m > 0) return `${m}м ${s}с`;
-  return `${s}с`;
-}
-function fmtAgo(iso) {
-  if (!iso) return "—";
-  const sec = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (sec < 10) return "только что";
-  if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
-  if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
-  return `${Math.floor(sec / 86400)} дн назад`;
-}
-function fmtClock(iso) {
-  const d = new Date(iso);
-  return d.toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"});
-}
-function chip(flag, okText, noText) {
-  if (flag === null || flag === undefined) return `<span class="badge unk">—</span>`;
-  return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge no">${noText || "fail"}</span>`;
-}
-function availColor(p) { return p >= 99 ? "var(--green)" : p >= 95 ? "var(--yellow)" : "var(--red)"; }
+  // ui/lib/format.ts
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    if (d > 0) return `${d}д ${h}ч`;
+    if (h > 0) return `${h}ч ${m}м`;
+    if (m > 0) return `${m}м ${s}с`;
+    return `${s}с`;
+  }
+  function fmtAgo(iso) {
+    if (!iso) return "—";
+    const sec = (Date.now() - new Date(iso).getTime()) / 1e3;
+    if (sec < 10) return "только что";
+    if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
+    return `${Math.floor(sec / 86400)} дн назад`;
+  }
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
 
-const NODE_TYPE_META = {
-  classic:  {label: "Classic",  cls: "unk",      title: "классический telemt"},
-  mtproxyl: {label: "MTProxyL", cls: "t-purple", title: "форк MTProxyL (/opt/mtproxyl/)"},
-  meko:     {label: "MEKO",     cls: "t-cyan",   title: "фикс MEKO (/opt/mtpr-simple/)"},
-};
-function nodeTypeBadge(t) {
-  const m = NODE_TYPE_META[t];
-  if (!m) return "";
-  return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-}
+  // ui/lib/theme.ts
+  var KEY = "sharedd.theme";
+  function initTheme() {
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === "light" ? "dark" : "light";
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem(KEY, next);
+      } catch {
+      }
+      document.dispatchEvent(new CustomEvent("themechange"));
+    });
+  }
 
-const EV_META = {
-  registry_started:      {label: "Запуск регистратора",  cls: "ev-neutral"},
-  config_changed:        {label: "Конфиг изменён",       cls: "ev-info"},
-  node_registered:       {label: "Регистрация ноды",     cls: "ev-info"},
-  node_replaced:         {label: "Нода вытеснена",       cls: "ev-warn"},
-  node_expired:          {label: "Нода отвалилась",      cls: "ev-warn"},
-  node_pruned:           {label: "Удалена (неактивна)",  cls: "ev-warn"},
-  tcp_down:              {label: "TCP недоступен",       cls: "ev-bad"},
-  tcp_up:                {label: "TCP восстановлен",     cls: "ev-good"},
-  metrics_down:          {label: "Метрики в отказе",     cls: "ev-bad"},
-  metrics_up:            {label: "Метрики восстановлены", cls: "ev-good"},
-  globalping_blocked:    {label: "Блокировка (GP)",      cls: "ev-bad"},
-  globalping_recovered:  {label: "GP восстановлен",      cls: "ev-good"},
-  queue_joined:          {label: "В очереди мастеров",   cls: "ev-info"},
-  ip_blocked:            {label: "IP заблокирован (смена в карантине)", cls: "ev-bad"},
-  queue_left:            {label: "Вышла из очереди",     cls: "ev-warn"},
-  master_elected:        {label: "Мастер избран",        cls: "ev-good"},
-  master_lost:           {label: "Мастер потерян",       cls: "ev-bad"},
-  dns_updated:           {label: "DNS обновлён",         cls: "ev-info"},
-  dns_error:             {label: "Ошибка DNS",           cls: "ev-bad"},
-  dns_deleted:           {label: "DNS запись удалена",   cls: "ev-warn"},
-};
-
-async function pubApi(path) {
-  const resp = await fetch(path, {cache: "no-store"});
-  if (!resp.ok) { const e = new Error("HTTP " + resp.status); e.status = resp.status; throw e; }
-  return resp.json();
-}
-
-/* ---------------- список нод (/statistics) ---------------- */
-
-function listRowHTML(n) {
-  const avail = n.availability_pct ?? 0;
-  const role = n.is_master
-    ? `<span class="badge master" title="${esc((n.master_domains || []).join(", "))}">★ МАСТЕР</span>`
-    : (n.queue_position > 0 ? `<span class="badge queue">#${n.queue_position}</span>` : `<span class="badge unk">вне очереди</span>`);
-  // когда мастера переключит таймер (принудительная ротация)
-  const ttlRem = n.is_master && n.master_ttl_remaining_sec != null
-    ? `<div class="muted" style="font-size:11px;margin-top:3px" title="принудительная ротация мастерства по master_ttl_minutes">⏱ ${
-        n.master_ttl_remaining_sec <= 0 ? "переключение сейчас" : "переключение через " + fmtDur(n.master_ttl_remaining_sec)}</div>`
-    : "";
-  const clients = n.clients_unique_ips ?? null;
-  return `<tr class="rowlink" data-id="${esc(n.node_id)}" title="открыть публичную статистику ноды">
-    <td class="idcell mono" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
-    <td><span class="ip mono">${esc(n.ip)}${n.port ? ":" + n.port : ""}</span></td>
-    <td>${role}${ttlRem}</td>
-    <td>${chip(n.healthy)}</td>
-    <td>${chip(n.globalping_ok)}</td>
-    <td><span title="защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов">${chip(n.metrics_healthy, "metrics ok", "metrics fail")}</span></td>
-    <td><div class="avail"><div class="bar"><div style="width:${avail}%;background:${availColor(avail)}"></div></div><span class="mono">${avail.toFixed(1)}%</span></div></td>
-    <td class="mono">${clients === null ? "—" : clients}</td>
-    <td class="mono">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
-    <td>${nodeTypeBadge(n.node_type)}</td>
+  // ui/pages/stats/main.ts
+  function chip(flag, okText, noText) {
+    if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
+    return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
+  }
+  function availClass(p) {
+    return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
+  }
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+  };
+  function nodeTypeBadge(t) {
+    const m = NODE_TYPE_META[t];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
+  var EV_META = {
+    registry_started: { label: "Запуск регистратора", cls: "" },
+    config_changed: { label: "Конфиг изменён", cls: "info" },
+    node_registered: { label: "Регистрация ноды", cls: "info" },
+    node_replaced: { label: "Нода вытеснена", cls: "warn" },
+    node_expired: { label: "Нода отвалилась", cls: "warn" },
+    node_pruned: { label: "Удалена (неактивна)", cls: "warn" },
+    tcp_down: { label: "TCP недоступен", cls: "bad" },
+    tcp_up: { label: "TCP восстановлен", cls: "ok" },
+    metrics_down: { label: "Метрики в отказе", cls: "bad" },
+    metrics_up: { label: "Метрики восстановлены", cls: "ok" },
+    globalping_blocked: { label: "Блокировка (GP)", cls: "bad" },
+    globalping_recovered: { label: "GP восстановлен", cls: "ok" },
+    queue_joined: { label: "В очереди мастеров", cls: "info" },
+    ip_blocked: { label: "IP заблокирован (смена в карантине)", cls: "bad" },
+    queue_left: { label: "Вышла из очереди", cls: "warn" },
+    master_elected: { label: "Мастер избран", cls: "ok" },
+    master_lost: { label: "Мастер потерян", cls: "bad" },
+    dns_updated: { label: "DNS обновлён", cls: "info" },
+    dns_error: { label: "Ошибка DNS", cls: "bad" },
+    dns_deleted: { label: "DNS запись удалена", cls: "warn" }
+  };
+  async function pubApi(path) {
+    const resp = await fetch(path, { cache: "no-store" });
+    if (!resp.ok) {
+      const e = new Error("HTTP " + resp.status);
+      e.status = resp.status;
+      throw e;
+    }
+    return resp.json();
+  }
+  function checksHTML(n) {
+    const st = (flag) => flag === null || flag === void 0 ? "unknown" : flag ? "ok" : "bad";
+    const tag = (label, state, title) => `<span class="check-tag ${state}" title="${esc(title)}">${label}</span>`;
+    return `<span class="checks">
+    ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
+    ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
+    ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
+  </span>`;
+  }
+  function listRowHTML(n) {
+    var _a, _b;
+    const avail = (_a = n.availability_pct) != null ? _a : 0;
+    const role = n.is_master ? `<span class="badge gold" title="${esc((n.master_domains || []).join(", "))}">★ МАСТЕР</span>` : n.queue_position > 0 ? `<span class="badge info mono">#${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
+    const ttlRem = n.is_master && n.master_ttl_remaining_sec != null ? `<div class="dim" style="font-size:11px;margin-top:3px" title="принудительная ротация мастерства по master_ttl_minutes">⏱ ${n.master_ttl_remaining_sec <= 0 ? "переключение сейчас" : "переключение через " + fmtDur(n.master_ttl_remaining_sec)}</div>` : "";
+    const clients = (_b = n.clients_unique_ips) != null ? _b : null;
+    return `<tr class="clickable${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}" title="открыть публичную статистику ноды">
+    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+    <td class="mono" data-label="IP (маска)">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
+    <td data-label="Роль">${role}${ttlRem}</td>
+    <td data-label="Проверки">${checksHTML(n)}</td>
+    <td data-label="Доступность"><div class="meter"><div class="meter-track"><span class="meter-fill ${availClass(avail)}" style="width:${avail}%"></span></div><span class="meter-value mono">${avail.toFixed(1)}%</span></div></td>
+    <td class="mono num" data-label="Клиенты">${clients === null ? "—" : clients}</td>
+    <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
+    <td data-label="Тип">${nodeTypeBadge(n.node_type)}</td>
   </tr>`;
-}
-
-async function renderListView() {
-  const d = await pubApi("/statistics/api/list");
-  $("view-title").textContent = "Публичная статистика пула";
-  const rows = (d.nodes || []).map(listRowHTML).join("");
-  $("root").innerHTML = `
-    <div class="pub-note">Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</div>
-    <section class="block">
-      <div class="block-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>TCP</th><th>GP</th><th>Metrics</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
-        <tbody id="pub-nodes-body">${rows || `<tr><td colspan="10" class="empty">пул пуст</td></tr>`}</tbody>
+  }
+  async function renderListView() {
+    const d = await pubApi("/statistics/api/list");
+    $("view-title").textContent = "Публичная статистика пула";
+    const rows = (d.nodes || []).map(listRowHTML).join("");
+    const quarantineRows = (d.quarantine || []).map((n) => `<tr>
+    <td class="mono" data-label="Нода">${esc(n.node_id)}</td>
+    <td class="mono" data-label="IP (маска)">${esc(n.ip)}</td>
+    <td data-label="Причина"><span class="badge warn">${n.stale ? "ожидает свежий GP" : n.reverify ? "перепроверка IP" : "GP карантин"}</span></td>
+    <td class="mono" data-label="Попытки">${n.attempts}/${n.max_attempts}</td>
+    <td class="mono" data-label="Последний ratio">${Math.round((n.last_ratio || 0) * 100)}%</td>
+    <td class="mono" data-label="В карантине">${fmtDur(n.age_sec)}</td>
+  </tr>`).join("");
+    $("root").innerHTML = `
+    <div class="banner info">${icon(ICONS.info, 16)}<span>Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</span></div>
+    <section class="card">
+      <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
+      <div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>Проверки</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
+        <tbody id="pub-nodes-body">${rows || `<tr><td colspan="10" class="table-empty">пул пуст</td></tr>`}</tbody>
+      </table></div>
+    </section>
+    <section class="card quarantine-card">
+      <div class="card-head"><h2>Карантин</h2><span class="hint">${(d.quarantine || []).length} шт</span></div>
+      <div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Причина</th><th>Попытки</th><th>Последний ratio</th><th>В карантине</th></tr></thead>
+        <tbody>${quarantineRows || `<tr><td colspan="6" class="table-empty">карантин пуст</td></tr>`}</tbody>
       </table></div>
     </section>`;
-  const body = $("pub-nodes-body");
-  if (body) body.addEventListener("click", (e) => {
-    const tr = e.target.closest("tr[data-id]");
-    if (tr) location.href = "/statistics/" + encodeURIComponent(tr.dataset.id);
-  });
-}
-
-/* ---------------- страница ноды (/statistics/<id>) ---------------- */
-
-function clientsSparkInteractive(pts) {
-  if (pts.length < 2) {
-    return `<div class="muted" style="padding:6px 0">пока мало данных</div>`;
+    const body = $("pub-nodes-body");
+    if (body) body.addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if (tr) location.href = "/statistics/" + encodeURIComponent(tr.dataset.id);
+    });
   }
-  const w = 600, hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
-  const step = w / (pts.length - 1);
-  const xy = pts.map((p, i) => [i * step, hgt - 5 - (p.v / max) * (hgt - 12)]);
-  const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  return `<div class="sparkwrap" id="clients-sparkwrap">
+  function clientsSparkInteractive(pts) {
+    if (pts.length < 2) {
+      return `<div class="dim" style="padding:6px 0">пока мало данных</div>`;
+    }
+    const w = 600, hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+    const step = w / (pts.length - 1);
+    const xy = pts.map((p, i) => [i * step, hgt - 5 - p.v / max * (hgt - 12)]);
+    const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+    return `<div class="sparkwrap" id="clients-sparkwrap">
     <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
-      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="rgba(99,102,241,.13)"/>
-      <polyline points="${s}" fill="none" stroke="var(--accent2)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="var(--acc)" fill-opacity=".13"/>
+      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
     </svg>
     <div class="spark-guide" id="clients-guide"></div>
     <div class="spark-dot" id="clients-dot"></div>
     <div class="spark-tip" id="clients-tip"></div>
   </div>`;
-}
-
-function attachSparkHover(pts) {
-  const wrap = $("clients-sparkwrap");
-  const svg = $("clients-spark");
-  if (!wrap || !svg || pts.length < 2 || !svg.getBoundingClientRect) return;
-  const guide = $("clients-guide"), dot = $("clients-dot"), tip = $("clients-tip");
-  const hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
-  wrap.addEventListener("mousemove", (e) => {
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    let frac = (e.clientX - rect.left) / rect.width;
-    frac = Math.min(1, Math.max(0, frac));
-    const i = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
-    const xFraction = i / (pts.length - 1);
-    const xPx = xFraction * rect.width;
-    const yUnit = hgt - 5 - (pts[i].v / max) * (hgt - 12);
-    const yPx = (yUnit / hgt) * rect.height;
-    guide.style.left = xPx.toFixed(1) + "px";
-    dot.style.left = xPx.toFixed(1) + "px";
-    dot.style.top = yPx.toFixed(1) + "px";
-    tip.textContent = `${fmtClock(pts[i].at)} · ${pts[i].v} подкл.`;
-    tip.style.left = Math.min(Math.max(xPx, 62), rect.width - 62).toFixed(1) + "px";
-    wrap.classList.add("hover");
-  });
-  wrap.addEventListener("mouseleave", () => wrap.classList.remove("hover"));
-}
-
-function renderPubEvents(list) {
-  if (!list || list.length === 0) return `<li class="empty">Событий пока нет</li>`;
-  return list.map((ev) => {
-    const m = EV_META[ev.type] || {label: ev.type, cls: "ev-neutral"};
-    return `<li>
-      <span class="ev-time" title="${esc(ev.at)}">${fmtClock(ev.at)}</span>
-      <span class="ev-type ${m.cls}">${m.label}</span>
-      ${ev.domain ? `<span class="ev-node" style="color:var(--purple)">${esc(ev.domain)}</span>` : ""}
-      ${ev.detail ? `<span class="ev-detail">${esc(ev.detail)}</span>` : ""}
-    </li>`;
-  }).join("");
-}
-
-async function renderNodeView(id) {
-  const d = await pubApi("/statistics/api/node?id=" + encodeURIComponent(id));
-  const n = d.node || {};
-  $("view-title").textContent = "Нода · " + (n.node_id || id);
-  const mdoms = n.master_domains || [];
-  const clients = n.clients_unique_ips ?? null;
-  const roleChip = n.is_master
-    ? `<span class="badge master" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>`
-    : (n.queue_position > 0
-        ? `<span class="badge queue" title="fully healthy — ждёт назначения домена">очередь #${n.queue_position}</span>`
-        : `<span class="badge unk">вне очереди</span>`);
-  const hcFail = (d.hc && d.hc.fail_threshold) || "?";
-  const mStreak = n.metrics_fail_streak || 0;
-  const mChip = chip(n.metrics_healthy, "metrics ok", "metrics fail")
-    + (mStreak > 0
-      ? ` <span class="muted" style="font-size:11px">серия ${mStreak}/${hcFail}</span>`
-      : "");
-  const ttlRem = n.is_master && n.master_ttl_remaining_sec != null
-    ? `<span class="muted" title="принудительная ротация мастерства по master_ttl_minutes"> · ⏱ ${
-        n.master_ttl_remaining_sec <= 0 ? "переключение сейчас" : "переключение через " + fmtDur(n.master_ttl_remaining_sec)}</span>`
-    : "";
-  const chips = [
-    chip(n.healthy, "TCP ok", "TCP fail"),
-    chip(n.globalping_ok, "GP ok", "GP fail"),
-    mChip,
-    roleChip,
-    nodeTypeBadge(n.node_type),
-  ].join(" ") + ttlRem;
-  const reason = n.unhealthy_reason
-    ? `<div class="nd-reason"><span class="reason">${esc(n.unhealthy_reason)}</span></div>` : "";
-
-  const statDefs = [
-    {l: "Доступность", v: `${(n.availability_pct ?? 0).toFixed(1)}%`, e: `отчётов ok: ${n.reports_ok ?? 0}/${n.reports_total ?? 0}`,
-     cls: (n.availability_pct ?? 0) >= 99 ? "good" : (n.availability_pct ?? 0) >= 95 ? "warn" : "bad",
-     t: "ReportsOK/ReportsTotal × 100% за всё время жизни node_id"},
-    {l: "GP верификации", v: `${(n.gp_verified_pct ?? 0).toFixed(1)}%`, e: `верификаций всего: ${n.gp_checks_total ?? 0}`,
-     cls: (n.gp_verified_pct ?? 0) >= 99 ? "good" : (n.gp_verified_pct ?? 0) >= 90 ? "warn" : "bad",
-     t: "Доля успешных НЕЗАВИСИМЫХ верификаций Globalping"},
-    {l: "Клиенты", v: clients === null ? "—" : String(clients),
-     e: clients === null ? "нет данных" : "уникальные активные IP",
-     t: "telemt_user_unique_ips_current (агрегат по пользователям)"},
-    {l: "Мастерство", v: (n.master_stints ?? 0) > 0 ? fmtDur(n.master_time_sec) : "—", e: `stint'ов: ${n.master_stints ?? 0}`,
-     t: "Суммарное время в роли мастера домена"},
-    {l: "Heartbeat", v: `${fmtDur(n.heartbeat_age_sec)} назад`, e: `всего: ${n.heartbeats_total ?? 0}`, cls: n.heartbeat_age_sec > 45 ? "bad" : ""},
-    {l: "Отчёт", v: n.report_age_sec < 0 ? "—" : `${fmtDur(n.report_age_sec)} назад`, e: "metrics / globalping"},
-  ];
-  const stats = statDefs.map((s) => `<div class="card"${s.t ? ` title="${esc(s.t)}"` : ""}>
-      <div class="label">${s.l}</div>
-      <div class="value ${s.cls || ""}" style="font-size:20px">${s.v}</div>
-      <div class="extra">${esc(s.e)}</div></div>`).join("");
-
-  const gp = d.gp_last || null;
-  const gpHist = d.gp_hist || [];
-  let gpSide;
-  if (gp) {
-    gpSide = `<div class="gp-side">
-      <div class="gp-big ${gp.ok ? "good" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
-      <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
-      <div class="extra">проб успешно: <b>${gp.probes_ok}/${gp.probes_total}</b></div>
-      <div class="extra">проверено: ${esc(fmtAgo(gp.at))}</div>
-    </div>`;
-  } else {
-    gpSide = `<div class="gp-side">
-      <div class="empty" style="padding:12px 0">Детали по площадкам появятся после ближайшей верификации</div>
-      <div class="extra">текущий статус: ${chip(n.globalping_ok)}${n.gp_checks_total ? ` · ratio последней: ${(n.globalping_ratio * 100).toFixed(0)}%` : ""}</div>
-    </div>`;
   }
-  const probesTbl = gp && (gp.probes || []).length
-    ? `<div class="tbl-wrap"><table>
+  function attachSparkHover(pts) {
+    const wrap = $("clients-sparkwrap");
+    const svg = $("clients-spark");
+    if (!wrap || !svg || pts.length < 2 || !svg.getBoundingClientRect) return;
+    const guide = $("clients-guide"), dot = $("clients-dot"), tip = $("clients-tip");
+    const hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
+    wrap.addEventListener("mousemove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      let frac = (e.clientX - rect.left) / rect.width;
+      frac = Math.min(1, Math.max(0, frac));
+      const i = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
+      const xFraction = i / (pts.length - 1);
+      const xPx = xFraction * rect.width;
+      const yUnit = hgt - 5 - pts[i].v / max * (hgt - 12);
+      const yPx = yUnit / hgt * rect.height;
+      guide.style.left = xPx.toFixed(1) + "px";
+      dot.style.left = xPx.toFixed(1) + "px";
+      dot.style.top = yPx.toFixed(1) + "px";
+      tip.textContent = `${fmtClock(pts[i].at)} · ${pts[i].v} подкл.`;
+      tip.style.left = Math.min(Math.max(xPx, 62), rect.width - 62).toFixed(1) + "px";
+      wrap.classList.add("hover");
+    });
+    wrap.addEventListener("mouseleave", () => wrap.classList.remove("hover"));
+  }
+  function renderPubEvents(list) {
+    if (!list || list.length === 0) return `<li class="feed-item"><div class="feed-body dim">Событий пока нет</div></li>`;
+    return list.map((ev) => {
+      const m = EV_META[ev.type] || { label: ev.type, cls: "" };
+      return `<li class="feed-item">
+      <span class="feed-dot ${m.cls}"></span>
+      <div class="feed-body">
+        <div class="feed-head">
+          <span class="feed-kind">${esc(m.label)}</span>
+          <span class="feed-time" title="${esc(ev.at)}">${fmtClock(ev.at)}</span>
+        </div>
+        <div class="feed-detail">${ev.domain ? `<span class="feed-domain">${esc(ev.domain)}</span> ` : ""}${ev.detail ? esc(ev.detail) : ""}</div>
+      </div>
+    </li>`;
+    }).join("");
+  }
+  async function renderNodeView(id) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+    const d = await pubApi("/statistics/api/node?id=" + encodeURIComponent(id));
+    const n = d.node || {};
+    $("view-title").textContent = "Нода · " + (n.node_id || id);
+    const mdoms = n.master_domains || [];
+    const clients = (_a = n.clients_unique_ips) != null ? _a : null;
+    const roleChip = n.is_master ? `<span class="badge gold" title="${esc(mdoms.join(", "))}">★ МАСТЕР${mdoms.length > 1 ? " ×" + mdoms.length : ""}</span>` : n.queue_position > 0 ? `<span class="badge info mono" title="fully healthy — ждёт назначения домена">очередь #${n.queue_position}</span>` : `<span class="badge">вне очереди</span>`;
+    const hcFail = d.hc && d.hc.fail_threshold || "?";
+    const mStreak = n.metrics_fail_streak || 0;
+    const mChip = chip(n.metrics_healthy, "metrics ok", "metrics fail") + (mStreak > 0 ? ` <span class="dim" style="font-size:11px">серия ${mStreak}/${hcFail}</span>` : "");
+    const ttlRem = n.is_master && n.master_ttl_remaining_sec != null ? `<span class="dim" title="принудительная ротация мастерства по master_ttl_minutes"> · ⏱ ${n.master_ttl_remaining_sec <= 0 ? "переключение сейчас" : "переключение через " + fmtDur(n.master_ttl_remaining_sec)}</span>` : "";
+    const chips = [
+      chip(n.healthy, "TCP ok", "TCP fail"),
+      chip(n.globalping_ok, "GP ok", "GP fail"),
+      mChip,
+      roleChip,
+      nodeTypeBadge(n.node_type)
+    ].join(" ") + ttlRem;
+    const reason = n.unhealthy_reason ? `<div class="node-reason"><div class="banner warn">${icon(ICONS.info, 16)}<span>${esc(n.unhealthy_reason)}</span></div></div>` : "";
+    const statDefs = [
+      {
+        l: "Доступность",
+        v: `${((_b = n.availability_pct) != null ? _b : 0).toFixed(1)}%`,
+        e: `отчётов ok: ${(_c = n.reports_ok) != null ? _c : 0}/${(_d = n.reports_total) != null ? _d : 0}`,
+        cls: ((_e = n.availability_pct) != null ? _e : 0) >= 99 ? "ok" : ((_f = n.availability_pct) != null ? _f : 0) >= 95 ? "warn" : "bad",
+        icn: ICONS.health,
+        t: "ReportsOK/ReportsTotal × 100% за всё время жизни node_id"
+      },
+      {
+        l: "GP верификации",
+        v: `${((_g = n.gp_verified_pct) != null ? _g : 0).toFixed(1)}%`,
+        e: `верификаций всего: ${(_h = n.gp_checks_total) != null ? _h : 0}`,
+        cls: ((_i = n.gp_verified_pct) != null ? _i : 0) >= 99 ? "ok" : ((_j = n.gp_verified_pct) != null ? _j : 0) >= 90 ? "warn" : "bad",
+        icn: ICONS.check,
+        t: "Доля успешных НЕЗАВИСИМЫХ верификаций Globalping"
+      },
+      {
+        l: "Клиенты",
+        v: clients === null ? "—" : String(clients),
+        e: clients === null ? "нет данных" : "уникальные активные IP",
+        icn: ICONS.users,
+        t: "telemt_user_unique_ips_current (агрегат по пользователям)"
+      },
+      {
+        l: "Мастерство",
+        v: ((_k = n.master_stints) != null ? _k : 0) > 0 ? fmtDur(n.master_time_sec) : "—",
+        e: `stint'ов: ${(_l = n.master_stints) != null ? _l : 0}`,
+        icn: ICONS.masters,
+        t: "Суммарное время в роли мастера домена"
+      },
+      {
+        l: "Heartbeat",
+        v: `${fmtDur(n.heartbeat_age_sec)} назад`,
+        e: `всего: ${(_m = n.heartbeats_total) != null ? _m : 0}`,
+        cls: n.heartbeat_age_sec > 45 ? "bad" : "",
+        icn: ICONS.clock
+      },
+      {
+        l: "Отчёт",
+        v: n.report_age_sec < 0 ? "—" : `${fmtDur(n.report_age_sec)} назад`,
+        e: "metrics / globalping",
+        icn: ICONS.info
+      }
+    ];
+    const stats = statDefs.map((s) => `<div class="card metric"${s.t ? ` title="${esc(s.t)}"` : ""}>
+      <div class="metric-label">${icon(s.icn, 13)}${esc(s.l)}</div>
+      <div class="metric-value ${s.cls || ""}" style="font-size:20px">${s.v}</div>
+      <div class="metric-foot">${esc(s.e)}</div></div>`).join("");
+    const gp = d.gp_last || null;
+    const gpHist = d.gp_hist || [];
+    let gpSide;
+    if (gp) {
+      gpSide = `<div class="gp-summary">
+      <div class="gp-big ${gp.ok ? "ok" : "bad"}">${Math.round((gp.ratio || 0) * 100)}%</div>
+      <div class="gp-facts">
+        <div>${chip(gp.ok, "верификация пройдена", "верификация провалена")}</div>
+        <div class="kv"><span class="kv-k">проб успешно</span><span class="kv-v">${gp.probes_ok}/${gp.probes_total}</span></div>
+        <div class="kv"><span class="kv-k">проверено</span><span class="kv-v">${esc(fmtAgo(gp.at))}</span></div>
+      </div>
+    </div>`;
+    } else {
+      gpSide = `<div class="gp-summary">
+      <div class="gp-facts">
+        <div class="kv"><span class="kv-k">текущий статус</span><span class="kv-v">${chip(n.globalping_ok)}</span></div>
+        ${n.gp_checks_total ? `<div class="kv"><span class="kv-k">ratio последней</span><span class="kv-v">${(n.globalping_ratio * 100).toFixed(0)}%</span></div>` : ""}
+        <div class="dim">Детали по площадкам появятся после ближайшей верификации.</div>
+      </div>
+    </div>`;
+    }
+    const probesTbl = gp && (gp.probes || []).length ? `<div class="table-wrap"><table class="table-cards">
         <thead><tr><th>Площадка</th><th>Сеть</th><th>Статус пробы</th><th>HTTP</th><th>Итог</th></tr></thead>
         <tbody>${gp.probes.map((p) => `<tr>
-          <td class="mono">${esc(p.country || "?")}${p.city ? " · " + esc(p.city) : ""}</td>
-          <td class="mono muted">${esc(p.network || "—")}${p.asn ? " (AS" + p.asn + ")" : ""}</td>
-          <td class="mono">${esc(p.status || "—")}</td>
-          <td class="mono">${p.http_code || "—"}</td>
-          <td>${chip(p.ok)}</td>
-        </tr>`).join("")}</tbody></table></div>`
-    : `<div class="empty">строк проб нет${gp ? " (measurement ещё выполнялся, когда его скачали)" : ""}</div>`;
-
-  const tcpHist = d.tcp_hist || [];
-  const tcpTicks = tcpHist.slice(-96).map((p) =>
-    `<div class="tick ${p.ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — ${p.ok ? "ok" : "FAIL"}"></div>`).join("");
-  const gpBars = gpHist.map((p) => {
-    const h = 6 + Math.round((p.ratio || 0) * 50);
-    const cls = p.ok ? "" : (p.ratio >= 0.35 ? "mid" : "fail");
-    return `<div class="gbar ${cls}" style="height:${h}px" title="${esc(fmtClock(p.at))} — ratio ${(p.ratio * 100).toFixed(0)}% (${p.probes_ok}/${p.probes_total})"></div>`;
-  }).join("");
-  const repHist = d.report_hist || [];
-  const repTicks = repHist.slice(-96).map((p) =>
-    `<div class="tick ${p.metrics_ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — metrics ${p.metrics_ok ? "ok" : "FAIL"}"></div>`).join("");
-  const clientPts = repHist.filter((p) => p.clients >= 0).map((p) => ({at: p.at, v: p.clients}));
-
-  $("root").innerHTML = `
-    <div class="pub-note"><a href="/statistics">← все ноды пула</a> · IP-адрес замаскирован.</div>
-    <div class="card nd-head">
+          <td class="mono" data-label="Площадка">${esc(p.country || "?")}${p.city ? " · " + esc(p.city) : ""}</td>
+          <td class="mono dim" data-label="Сеть">${esc(p.network || "—")}${p.asn ? " (AS" + p.asn + ")" : ""}</td>
+          <td class="mono" data-label="Статус пробы">${esc(p.status || "—")}</td>
+          <td class="mono" data-label="HTTP">${p.http_code || "—"}</td>
+          <td data-label="Итог">${chip(p.ok)}</td>
+        </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">строк проб нет${gp ? " (measurement ещё выполнялся, когда его скачали)" : ""}</div>`;
+    const tcpHist = d.tcp_hist || [];
+    const tcpTicks = tcpHist.slice(-96).map((p) => `<div class="tick ${p.ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — ${p.ok ? "ok" : "FAIL"}"></div>`).join("");
+    const gpBars = gpHist.map((p) => {
+      const h = 6 + Math.round((p.ratio || 0) * 50);
+      const cls = p.ok ? "" : p.ratio >= 0.35 ? "mid" : "fail";
+      return `<div class="gbar ${cls}" style="height:${h}px" title="${esc(fmtClock(p.at))} — ratio ${(p.ratio * 100).toFixed(0)}% (${p.probes_ok}/${p.probes_total})"></div>`;
+    }).join("");
+    const repHist = d.report_hist || [];
+    const repTicks = repHist.slice(-96).map((p) => `<div class="tick ${p.metrics_ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — metrics ${p.metrics_ok ? "ok" : "FAIL"}"></div>`).join("");
+    const clientPts = repHist.filter((p) => p.clients >= 0).map((p) => ({ at: p.at, v: p.clients }));
+    $("root").innerHTML = `
+    <div class="banner info">${icon(ICONS.info, 16)}<span><a href="/statistics">← все ноды пула</a> · IP-адрес замаскирован.</span></div>
+    <div class="card node-head">
       <div>
-        <div class="nd-id">${esc(n.node_id)}</div>
-        <div class="nd-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        <div class="node-id">${esc(n.node_id)}</div>
+        <div class="node-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
       </div>
-      <div class="nd-chips">${chips}</div>
+      <div class="node-chips">${chips}</div>
       ${reason}
     </div>
-    <div class="stat-grid">${stats}</div>
-    <section class="block">
-      <div class="block-head">
-        <h2>Globalping — независимая верификация</h2>
-      </div>
-      <div class="gp-grid">${gpSide}${probesTbl}</div>
+    <div class="metrics" style="margin-bottom:16px">${stats}</div>
+    <section class="card" style="margin-bottom:16px">
+      <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
+      ${gpSide}${probesTbl}
     </section>
-    <section class="block">
-      <div class="block-head">
-        <h2>История проверок</h2>
-      </div>
+    <section class="card" style="margin-bottom:16px">
+      <div class="card-head"><h2>История проверок</h2></div>
       <div class="chart-body">
         <div class="chart-cap">Globalping — ratio по верификациям <span class="hint">всего ${gpHist.length}</span></div>
-        <div class="bars">${gpBars || '<span class="muted">пока нет верификаций</span>'}</div>
+        <div class="bars">${gpBars || '<span class="dim">пока нет верификаций</span>'}</div>
         <div class="chart-cap">TCP-probe регистратора <span class="hint">последние ${Math.min(tcpHist.length, 96)}</span></div>
-        <div class="ticks">${tcpTicks || '<span class="muted">пока нет данных</span>'}</div>
+        <div class="ticks">${tcpTicks || '<span class="dim">пока нет данных</span>'}</div>
         <div class="chart-cap">Отчёты metrics <span class="hint">последние ${Math.min(repHist.length, 96)}</span></div>
-        <div class="ticks">${repTicks || '<span class="muted">пока нет данных</span>'}</div>
+        <div class="ticks">${repTicks || '<span class="dim">пока нет данных</span>'}</div>
         <div class="chart-cap">Активные клиенты (unique IP)</div>
         ${clientsSparkInteractive(clientPts)}
       </div>
     </section>
-    <section class="block">
-      <div class="block-head">
-        <h2>События ноды</h2>
-        <span class="hint">последние 100</span>
-      </div>
-      <ul class="events" style="max-height:none">${renderPubEvents(d.events || [])}</ul>
+    <section class="card">
+      <div class="card-head"><h2>События ноды</h2><span class="hint">последние 100</span></div>
+      <ul class="feed" style="max-height:none">${renderPubEvents(d.events || [])}</ul>
     </section>`;
-  attachSparkHover(clientPts);
-}
-
-/* ---------------- каркас ---------------- */
-
-const pathId = decodeURIComponent(location.pathname.replace(/^\/statistics\/?/, "").replace(/\/+$/, ""));
-
-async function refreshCurrent() {
-  const y = window.scrollY;
-  try {
-    if (pathId) { await renderNodeView(pathId); } else { await renderListView(); }
-    $("upd").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
-  } catch (e) {
-    if (e && e.status === 404 && pathId) {
-      $("root").innerHTML = `<div class="empty">нода <b>${esc(pathId)}</b> не найдена в пуле (или уже удалена).<br><br><a href="/statistics">← к списку нод</a></div>`;
-    } else {
-      $("root").innerHTML = `<div class="empty">не удалось загрузить данные: ${esc(e.message || e)}</div>`;
-    }
-    $("upd").textContent = "ошибка обновления";
+    attachSparkHover(clientPts);
   }
-  window.scrollTo(0, y);
-}
-
-refreshCurrent();
-setInterval(refreshCurrent, 15000);
+  var pathId = decodeURIComponent(location.pathname.replace(/^\/statistics\/?/, "").replace(/\/+$/, ""));
+  async function refreshCurrent() {
+    const y = window.scrollY;
+    const pill = $("live-pill");
+    try {
+      if (pathId) {
+        await renderNodeView(pathId);
+      } else {
+        await renderListView();
+      }
+      pill.className = "status-pill live";
+      $("upd").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
+    } catch (e) {
+      if (e && e.status === 404 && pathId) {
+        $("root").innerHTML = `<div class="card"><div class="empty-state">${icon(ICONS.info, 26)}<span class="t">нода не найдена</span><span class="s">Нода <b>${esc(pathId)}</b> не найдена в пуле (или уже удалена).</span></div><div class="card-foot"><a class="btn sm" href="/statistics">← к списку нод</a></div></div>`;
+      } else {
+        $("root").innerHTML = `<div class="card"><div class="empty-state">${icon(ICONS.info, 26)}<span class="t">не удалось загрузить данные</span><span class="s">${esc(e.message || e)}</span></div></div>`;
+      }
+      pill.className = "status-pill off";
+      $("upd").textContent = "ошибка обновления";
+    }
+    window.scrollTo(0, y);
+  }
+  initTheme();
+  refreshCurrent();
+  setInterval(refreshCurrent, 15e3);
+})();
 </script>
 </body>
 </html>

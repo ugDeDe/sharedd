@@ -8,7 +8,7 @@ package main
 // терминальные блокировки нод) — редкие и должны переживать всё: их и
 // кладём в SQLite (embedded, чистый Go — modernc.org/sqlite, CGO не нужен).
 //
-// Две таблицы:
+// Три таблицы:
 //
 //	bans — терминальные блокировки нод (без восстановления). НИКОГДА не
 //	 ротируются: из неё публичный /dashboard считает три метрики —
@@ -22,6 +22,8 @@ package main
 //	 прошёл) свою строку из статистики убирает (liftBanIP).
 //	events — зеркало журнала событий (addEventLocked). Ротируется по
 //	 [database] events_retention_days (умолчание 30 суток).
+//	traffic — положительные дельты cumulative octets-счётчиков нод; хранится
+//	 35 суток для публичных диапазонов day/week/month.
 //
 // БД — необязательный компонент: файл не открылся/сломан → регистратор
 // продолжает работать как раньше (r.db == nil), просто без длинной истории.
@@ -75,7 +77,7 @@ func openHistoryDB(path string) *historyDB {
 	// одно соединение: иначе in-memory/тестовые файлы получают «table not found»
 	// между соединениями пула, а на проде — лишние busy-гонки на WAL.
 	db.SetMaxOpenConns(1)
-	const schema = `
+	schema := `
 CREATE TABLE IF NOT EXISTS bans (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  ts INTEGER NOT NULL,
@@ -96,6 +98,15 @@ CREATE TABLE IF NOT EXISTS events (
  detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);`
+	schema += `
+CREATE TABLE IF NOT EXISTS traffic (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ ts INTEGER NOT NULL,
+ node_id TEXT NOT NULL,
+ ingress_bytes INTEGER NOT NULL,
+ egress_bytes INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic(ts);`
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("history db %s: schema failed: %v — continuing WITHOUT persistent history", path, err)
 		db.Close()
@@ -161,6 +172,41 @@ func (d *historyDB) recordEvent(ev Event) {
 	}
 }
 
+type trafficRow struct {
+	TS      time.Time
+	Ingress int64
+	Egress  int64
+}
+
+func (d *historyDB) recordTraffic(ts time.Time, nodeID string, ingress, egress int64) {
+	if ingress <= 0 && egress <= 0 {
+		return
+	}
+	if _, err := d.sql.Exec(`INSERT INTO traffic (ts, node_id, ingress_bytes, egress_bytes) VALUES (?,?,?,?)`,
+		ts.Unix(), nodeID, max(int64(0), ingress), max(int64(0), egress)); err != nil {
+		log.Printf("history db: record traffic for %s: %v", nodeID, err)
+	}
+}
+
+func (d *historyDB) trafficSince(since time.Time) ([]trafficRow, error) {
+	rows, err := d.sql.Query(`SELECT ts, ingress_bytes, egress_bytes FROM traffic WHERE ts >= ? ORDER BY ts ASC, id ASC`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []trafficRow{}
+	for rows.Next() {
+		var r trafficRow
+		var ts int64
+		if err := rows.Scan(&ts, &r.Ingress, &r.Egress); err != nil {
+			return nil, err
+		}
+		r.TS = time.Unix(ts, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // pruneEvents — ротация журнала в БД. bans НЕ трогаем никогда: три метрики
 // дашборда (баны/периодичность/время жизни) должны жить постоянно.
 func (d *historyDB) pruneEvents(olderThan time.Time) {
@@ -171,6 +217,9 @@ func (d *historyDB) pruneEvents(olderThan time.Time) {
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("history db: events retention removed %d rows (older than %s)", n, olderThan.Format("2006-01-02"))
+	}
+	if _, err := d.sql.Exec(`DELETE FROM traffic WHERE ts < ?`, time.Now().Add(-35*24*time.Hour).Unix()); err != nil {
+		log.Printf("history db: traffic retention: %v", err)
 	}
 }
 

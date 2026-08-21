@@ -1,13 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"time"
 )
+
+const usedMeasurementIDsCap = 64
 
 type HealthReportPayload struct {
 	NodeID                  string             `json:"node_id"`
@@ -59,11 +60,16 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	var payload HealthReportPayload
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+	if err := decodeNodeJSON(w, req, &payload); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if payload.NodeID == "" {
+	if r.nodeAPISecurityEnabled() {
+		if err := validateHealthReport(payload, time.Now()); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else if payload.NodeID == "" {
 		http.Error(w, "node_id required", http.StatusBadRequest)
 		return
 	}
@@ -75,6 +81,16 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if !ok {
 		host, _, _ := net.SplitHostPort(req.RemoteAddr)
 		rec = r.terminatedBlockingLocked(payload.NodeID, host)
+	}
+	var generation uint64
+	var candidateIP string
+	if ok {
+		generation, candidateIP = candidate.Generation, candidate.IP
+		if reportReplayed(candidate, payload) {
+			r.mu.Unlock()
+			http.Error(w, "stale or duplicate health report", http.StatusConflict)
+			return
+		}
 	}
 	r.mu.Unlock()
 	if rec != nil {
@@ -103,6 +119,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		// api_base Globalping — под cfgMu (панель может менять на лету)
 		r.cfgMu.RLock()
 		gpBase := r.cfg.Globalping.APIBase
+		expectedSNI := r.cfg.SharedProxy.TLSDomain
 		r.cfgMu.RUnlock()
 		gp := NewGlobalpingChecker(gpBase)
 		m, err := gp.FetchFinished(payload.GlobalpingMeasurementID, 45*time.Second)
@@ -110,6 +127,9 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			// чистая ошибка скачивания (сеть/5xx) — один повтор через 3 с
 			time.Sleep(3 * time.Second)
 			m, err = gp.FetchFinished(payload.GlobalpingMeasurementID, 30*time.Second)
+		}
+		if err == nil {
+			err = validateMeasurementBinding(m, payload.GlobalpingMeasurementID, candidateIP, payload.IP, payload.Port, payload.FakeSNI, expectedSNI)
 		}
 		if err != nil {
 			verifyErr = err.Error()
@@ -120,6 +140,8 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			measurement = m
 			verifiedRatio = evaluateSuccessRatio(measurement)
 			verifiedOK = verifiedRatio >= 0.5
+			log.Printf("globalping verification of %s for %s accepted: ratio=%.2f ok=%v",
+				payload.GlobalpingMeasurementID, payload.NodeID, verifiedRatio, verifiedOK)
 			if verifiedOK != payload.GlobalpingOK {
 				log.Printf("WARNING: node %s reported globalping_ok=%v but independent verification says %v (ratio=%.2f) — trusting verification",
 					payload.NodeID, payload.GlobalpingOK, verifiedOK, verifiedRatio)
@@ -128,7 +150,25 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	}
 
 	r.mu.Lock()
+	candidate, ok = r.state.Candidates[payload.NodeID]
+	if !ok || candidate.Generation != generation || candidate.IP != candidateIP || reportReplayed(candidate, payload) {
+		r.mu.Unlock()
+		http.Error(w, "candidate changed or report was superseded", http.StatusConflict)
+		return
+	}
+	acceptReport(candidate, payload)
+	r.cfgMu.RLock()
+	quarantineAttempts := r.cfg.QuarantineAttempts
+	failThr := clampThreshold(r.cfg.Healthcheck.FailThreshold)
+	recThr := clampThreshold(r.cfg.Healthcheck.RecoverThreshold)
+	expectedPort := r.cfg.SharedProxy.Port
+	r.cfgMu.RUnlock()
+	if expectedPort == 0 { // tests and legacy in-memory configs created before shared_proxy.port
+		expectedPort = 443
+	}
 	candidate.Port = payload.Port
+	portCompatible := payload.Port == expectedPort
+	candidate.PortCompatible = &portCompatible
 	candidate.ReportsTotal++
 	r.state.Counters.HealthReports++
 	// Отчёт засчитываем как "хороший" только если всё, что он несёт, в норме:
@@ -139,6 +179,8 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		candidate.ReportsOK++
 	}
 	if verifyGP && verifiedKnown {
+		candidate.LastGlobalpingAt = time.Now()
+		candidate.LastGlobalpingRequestAt = time.Time{}
 		prevGP := candidate.GlobalpingOK
 		candidate.GlobalpingOK = verifiedOK
 		candidate.GlobalpingMeasurementID = payload.GlobalpingMeasurementID
@@ -228,7 +270,8 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			candidate.Quarantine.Attempts++
 			candidate.Quarantine.LastRatio = verifiedRatio
 			candidate.Quarantine.LastMeasurementID = payload.GlobalpingMeasurementID
-			if candidate.Quarantine.Attempts >= r.cfg.QuarantineAttempts {
+			if candidate.Quarantine.Attempts >= quarantineAttempts {
+				attempts := candidate.Quarantine.Attempts
 				reverifyFail := candidate.Quarantine.Reverify
 				cause := "карантин исчерпан"
 				if reverifyFail {
@@ -241,12 +284,12 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				}
 				r.mu.Unlock()
 				log.Printf("health report from %s: gp quarantine attempt %d/%d failed — node terminated (ip ban)",
-					payload.NodeID, candidate.Quarantine.Attempts, r.cfg.QuarantineAttempts)
+					payload.NodeID, attempts, quarantineAttempts)
 				w.WriteHeader(http.StatusOK)
 				return
 			}
 			log.Printf("candidate %s gp quarantine: failed attempt %d/%d (ratio=%.2f)",
-				candidate.NodeID, candidate.Quarantine.Attempts, r.cfg.QuarantineAttempts, verifiedRatio)
+				candidate.NodeID, candidate.Quarantine.Attempts, quarantineAttempts, verifiedRatio)
 		case !verifiedOK:
 			candidate.Quarantine = &QuarantineState{
 				EnteredAt: time.Now(), Attempts: 1, LastRatio: verifiedRatio,
@@ -255,10 +298,16 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			r.addEventLocked(Event{
 				Type: EventNodeQuarantined, NodeID: candidate.NodeID, IP: candidate.IP,
 				Detail: fmt.Sprintf("globalping fail verified (ratio %.2f; tcp_ok=%t, metrics_ok=%t) — quarantine, attempt 1/%d",
-					verifiedRatio, candidate.Healthy, candidate.MetricsHealthy, r.cfg.QuarantineAttempts),
+					verifiedRatio, candidate.Healthy, candidate.MetricsHealthy, quarantineAttempts),
 			})
 			log.Printf("candidate %s entered gp quarantine (verified fail; tcp_ok=%t metrics_ok=%t) — attempt 1/%d",
-				candidate.NodeID, candidate.Healthy, candidate.MetricsHealthy, r.cfg.QuarantineAttempts)
+				candidate.NodeID, candidate.Healthy, candidate.MetricsHealthy, quarantineAttempts)
+			if quarantineAttempts == 1 {
+				r.terminateNodeLocked(candidate, time.Now(), BanReasonIPBan, "карантин исчерпан на первой подтвержденной проверке")
+				r.mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 		}
 	}
 	candidate.MetricsOK = payload.MetricsOK
@@ -271,8 +320,6 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	// локального /metrics). Отдельно существует dead-man's switch:
 	// report_freshness_min без единого отчёта гасит ноду независимо от серий.
 	{
-		failThr := clampThreshold(r.cfg.Healthcheck.FailThreshold)
-		recThr := clampThreshold(r.cfg.Healthcheck.RecoverThreshold)
 		var changed bool
 		candidate.MetricsHealthy, candidate.MetricsFailStreak, candidate.MetricsOKStreak, changed =
 			streakStep(candidate.MetricsHealthy, candidate.MetricsFailStreak, candidate.MetricsOKStreak,
@@ -292,7 +339,19 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			log.Printf("candidate %s metrics unhealthy: %s", candidate.NodeID, detail)
 		}
 	}
-	if payload.MetricsSnapshot != nil {
+	// GP reports carry a cached metrics snapshot. Only the dedicated metrics
+	// report advances cumulative traffic baselines; otherwise an older cached
+	// counter racing a newer metrics report looks like a telemt reset.
+	if payload.MetricsSnapshot != nil && !verifyGP {
+		if r.db != nil {
+			sameUsers := candidate.MetricsSnapshot[trafficUsersMetric] == payload.MetricsSnapshot[trafficUsersMetric]
+			ingress, egress := int64(0), int64(0)
+			if sameUsers {
+				ingress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficIngressMetric)
+				egress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficEgressMetric)
+			}
+			r.db.recordTraffic(time.Now(), candidate.NodeID, ingress, egress)
+		}
 		candidate.MetricsSnapshot = payload.MetricsSnapshot
 	}
 	// История metrics-отчётов (клиенты/райтеры) для страницы ноды
@@ -324,6 +383,57 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
+func trafficCounterDelta(previous, current map[string]float64, key string) int64 {
+	curr, ok := current[key]
+	if !ok || curr < 0 {
+		return 0
+	}
+	prev, hadPrevious := previous[key]
+	if !hadPrevious {
+		return 0 // first observation is a baseline, not traffic in this window
+	}
+	if curr < prev {
+		return int64(curr) // telemt counter reset: count only bytes since reset
+	}
+	return int64(curr - prev)
+}
+
+func reportReplayed(c *Candidate, payload HealthReportPayload) bool {
+	if !payload.CheckedAt.IsZero() {
+		last := c.LastMetricsCheckedAt
+		if payload.GlobalpingMeasurementID != "" {
+			last = c.LastGPCheckedAt
+		}
+		if !last.IsZero() && !payload.CheckedAt.After(last) {
+			return true
+		}
+	}
+	if payload.GlobalpingMeasurementID != "" {
+		for _, id := range c.UsedMeasurementIDs {
+			if id == payload.GlobalpingMeasurementID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func acceptReport(c *Candidate, payload HealthReportPayload) {
+	if !payload.CheckedAt.IsZero() {
+		if payload.CheckedAt.After(c.LastAcceptedCheckedAt) {
+			c.LastAcceptedCheckedAt = payload.CheckedAt
+		}
+		if payload.GlobalpingMeasurementID != "" {
+			c.LastGPCheckedAt = payload.CheckedAt
+		} else {
+			c.LastMetricsCheckedAt = payload.CheckedAt
+		}
+	}
+	if payload.GlobalpingMeasurementID != "" {
+		c.UsedMeasurementIDs = pushRing(c.UsedMeasurementIDs, payload.GlobalpingMeasurementID, usedMeasurementIDsCap)
+	}
+}
+
 func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 	if !c.Healthy {
 		return false
@@ -336,6 +446,9 @@ func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 	if !c.GlobalpingOK || !c.MetricsHealthy {
 		return false
 	}
+	if c.PortCompatible != nil && !*c.PortCompatible {
+		return false
+	}
 	if c.LastReportAt.IsZero() || time.Since(c.LastReportAt) > freshnessTTL {
 		return false
 	}
@@ -346,6 +459,8 @@ func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 // healthy. Используется в журнале событий (queue_left) и панели.
 func (c *Candidate) unhealthyReason(freshnessTTL time.Duration) string {
 	switch {
+	case c.PortCompatible != nil && !*c.PortCompatible:
+		return fmt.Sprintf("proxy port %d differs from registry shared port", c.Port)
 	case c.Quarantine != nil: //
 		return fmt.Sprintf("gp quarantine: failed verified attempt %d (last ratio %.2f) — awaiting ban verdict or recovery",
 			c.Quarantine.Attempts, c.Quarantine.LastRatio)

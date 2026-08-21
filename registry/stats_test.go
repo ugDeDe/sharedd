@@ -190,6 +190,21 @@ func TestStatsListSanitization(t *testing.T) {
 	}
 }
 
+func TestStatsListIncludesSanitizedQuarantine(t *testing.T) {
+	r := statsFixtureRegistry(t)
+	c := r.state.Candidates["node-abcdef1234567890"]
+	c.Quarantine = &QuarantineState{EnteredAt: time.Now().Add(-time.Minute), Attempts: 1, LastRatio: .25, LastMeasurementID: "m-SECRET-Q", Stale: true}
+	rec := httptest.NewRecorder()
+	r.handleStatsList(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/list", nil))
+	body := rec.Body.String()
+	if strings.Contains(body, "203.0.113.7") || strings.Contains(body, "m-SECRET-Q") || strings.Contains(body, "last_measurement_id") {
+		t.Fatalf("quarantine leaked sensitive data: %s", body)
+	}
+	if !strings.Contains(body, `"quarantine":[{`) || !strings.Contains(body, "203.0.x.x") || !strings.Contains(body, `"stale":true`) {
+		t.Fatalf("sanitized quarantine missing: %s", body)
+	}
+}
+
 // #1: публичный список несёт обратный отсчёт принудительной
 // ротации мастера (master_ttl_remaining_sec), и только для мастеров.
 func TestStatsListMasterTTLCountdown(t *testing.T) {

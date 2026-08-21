@@ -26,7 +26,7 @@ func TestPushRing(t *testing.T) {
 // Отчёт с measurement_id: независимая верификация через мок Globalping API,
 // записывает GP-историю и деталь по площадкам; metrics-отчёт пишет ReportHist.
 func TestHealthReportRecordsHistory(t *testing.T) {
-	measurementJSON := `{"id":"m-1","status":"finished","results":[
+	measurementJSON := `{"id":"m-1","type":"http","target":"1.2.3.4","measurementOptions":{"protocol":"HTTPS","port":443,"request":{"host":"front.example.com"}},"status":"finished","results":[
 		{"probe":{"continent":"EU","country":"DE","city":"Berlin","network":"AS123 Net","asn":123},
 		 "result":{"status":"finished","statusCode":200}},
 		{"probe":{"continent":"EU","country":"PL","city":"Warsaw","network":"AS456 ISP","asn":456},
@@ -54,7 +54,7 @@ func TestHealthReportRecordsHistory(t *testing.T) {
 	}
 
 	// отчёт с measurement_id → верификация, GPLast/GPHist/ReportHist
-	rec := postReport(`{"node_id":"node-gp","ip":"1.2.3.4","port":443,"globalping_ok":true,` +
+	rec := postReport(`{"node_id":"node-gp","ip":"1.2.3.4","port":443,"fake_sni":"front.example.com","globalping_ok":true,` +
 		`"globalping_measurement_id":"m-1","metrics_ok":true,` +
 		`"metrics_snapshot":{"telemt_user_unique_ips_current":42,"telemt_me_writers_active_current":3}}`)
 	if rec.Code != http.StatusOK {

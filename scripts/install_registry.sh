@@ -59,6 +59,7 @@ BINARY=""
 DOMAIN=""
 EMAIL=""
 PANEL_TOKEN=""
+NODE_TOKEN=""
 CF_TOKEN=""
 CF_ZONE=""
 CF_DOMAINS=""
@@ -81,6 +82,8 @@ while [ $# -gt 0 ]; do
         --email=*)       EMAIL="${1#*=}"; shift ;;
         --panel-token)   PANEL_TOKEN="${2:?}"; shift 2 ;;
         --panel-token=*) PANEL_TOKEN="${1#*=}"; shift ;;
+        --node-token)    NODE_TOKEN="${2:?}"; shift 2 ;;
+        --node-token=*)  NODE_TOKEN="${1#*=}"; shift ;;
         --cf-token)      CF_TOKEN="${2:?}"; shift 2 ;;
         --cf-token=*)    CF_TOKEN="${1#*=}"; shift ;;
         --cf-zone)       CF_ZONE="${2:?}"; shift 2 ;;
@@ -138,6 +141,58 @@ ask() { # ask <varname> <prompt> [default] [secret]
 rand_hex() {
     if command -v openssl &>/dev/null; then openssl rand -hex "$1"
     else head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
+}
+
+read_toml_string() { # read_toml_string <file> <section> <key>
+    awk -v wanted_section="$2" -v wanted_key="$3" '
+        /^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
+            section=$0
+            gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", section)
+            next
+        }
+        section == wanted_section && $0 ~ "^[[:space:]]*" wanted_key "[[:space:]]*=" {
+            value=$0
+            sub("^[[:space:]]*" wanted_key "[[:space:]]*=[[:space:]]*", "", value)
+            if (substr(value, 1, 1) == "\"") {
+                sub(/^\"/, "", value)
+                sub(/\".*$/, "", value)
+            } else {
+                sub(/[[:space:]#].*$/, "", value)
+            }
+            print value
+            exit
+        }
+    ' "$1"
+}
+
+shell_quote() { printf '%q' "$1"; }
+
+set_node_install_command() { # URL or a clear placeholder for bare installs
+    local registry_url="$1"
+    NODE_INSTALL_COMMAND="curl -fsSL $(shell_quote 'https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_node_web.sh') | sudo bash -s -- --registry=$(shell_quote "$registry_url") --registry-token=$(shell_quote "$NODE_TOKEN")"
+}
+
+write_credentials() {
+    local cred_file="$ETC_DIR/credentials.txt" tmp line
+    local have_panel=0 have_node=0 have_command=0
+    tmp="$(mktemp "${ETC_DIR}/.credentials.XXXXXX")"
+    if [ -f "$cred_file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                panel_token\ =*) printf 'panel_token = %s\n' "$PANEL_TOKEN" >>"$tmp"; have_panel=1 ;;
+                node_token\ =*) printf 'node_token = %s\n' "$NODE_TOKEN" >>"$tmp"; have_node=1 ;;
+                node_install_command\ =*) printf 'node_install_command = %s\n' "$NODE_INSTALL_COMMAND" >>"$tmp"; have_command=1 ;;
+                *) printf '%s\n' "$line" >>"$tmp" ;;
+            esac
+        done <"$cred_file"
+    else
+        printf '# sharedd registry — доступы (%s)\n' "$(date -Iseconds)" >>"$tmp"
+    fi
+    [ "$have_panel" -eq 1 ] || printf 'panel_token = %s\n' "$PANEL_TOKEN" >>"$tmp"
+    [ "$have_node" -eq 1 ] || printf 'node_token = %s\n' "$NODE_TOKEN" >>"$tmp"
+    [ "$have_command" -eq 1 ] || printf 'node_install_command = %s\n' "$NODE_INSTALL_COMMAND" >>"$tmp"
+    chmod 0600 "$tmp"
+    mv -f "$tmp" "$cred_file"
 }
 
 # ---------------------------------------------------------------- пакетный менеджер
@@ -338,6 +393,13 @@ NEED_CONFIG=0
 [ "$ONLY_CADDY" -eq 0 ] && [ ! -f "$ETC_DIR/registry.toml" ] && NEED_CONFIG=1
 [ "$RECONFIGURE" -eq 1 ] && NEED_CONFIG=1
 
+# Существующий registry.toml — источник истины. Без явных --*-token повторная
+# установка обязана использовать работающие токены, а не печатать новые.
+if [ -f "$ETC_DIR/registry.toml" ]; then
+    [ -n "$PANEL_TOKEN" ] || PANEL_TOKEN="$(read_toml_string "$ETC_DIR/registry.toml" panel token)"
+    [ -n "$NODE_TOKEN" ] || NODE_TOKEN="$(read_toml_string "$ETC_DIR/registry.toml" security node_token)"
+fi
+
 if [ "$ONLY_CADDY" -eq 0 ] && [ "$NEED_CONFIG" -eq 1 ]; then
     hline
     echo -e "  ${BOLD}Параметры регистратора${NC}"
@@ -352,6 +414,17 @@ elif [ "$ONLY_CADDY" -eq 0 ]; then
 fi
 
 [ -n "$PANEL_TOKEN" ] || PANEL_TOKEN="$(rand_hex 24)"
+[ -n "$NODE_TOKEN" ] || NODE_TOKEN="$(rand_hex 32)"
+
+PUBLIC_URL=""
+if [ "$BARE" -eq 0 ] && [ "$SKIP_CADDY" -eq 0 ] && [ -n "$DOMAIN" ]; then
+    PUBLIC_URL="https://${DOMAIN}"
+fi
+if [ -n "$PUBLIC_URL" ]; then
+    set_node_install_command "$PUBLIC_URL"
+else
+    set_node_install_command "http://REGISTRY_IP:${REG_PORT}"
+fi
 
 # ---------------------------------------------------------------- установка регистратора
 install_registry() {
@@ -362,6 +435,16 @@ install_registry() {
 
     say "Устанавливаю sharedd-registry..."
     install -m 0755 "$BINARY" /usr/local/bin/sharedd-registry
+
+    # Fail before systemd is enabled if the downloaded binary cannot execute
+    # on this host. This makes architecture/loader problems visible during
+    # installation instead of producing an opaque restart loop.
+    if ! /usr/local/bin/sharedd-registry --version >/dev/null 2>&1; then
+        local bin_status=$?
+        file /usr/local/bin/sharedd-registry >>"$INSTALL_LOG" 2>&1 || true
+        ldd /usr/local/bin/sharedd-registry >>"$INSTALL_LOG" 2>&1 || true
+        die "sharedd-registry не запускается на этом сервере (код $bin_status). Проверьте архитектуру: tail -n 30 $INSTALL_LOG"
+    fi
 
     ensure_user "$SVC_USER" || die "не удалось создать системного пользователя $SVC_USER"
 
@@ -393,6 +476,9 @@ install_registry() {
         cat > "$ETC_DIR/registry.toml" <<REG_TOML
 # sharedd registry (сгенерировано install_registry.sh $(date -Iseconds))
 # Секции shared_proxy/cloudflare/node_defaults/globalping/panel правятся из панели.
+[security]
+node_token = "${NODE_TOKEN}"
+
 [http]
 addr = "${listen_addr}"
 
@@ -403,6 +489,7 @@ file = "${STATE_DIR}/registry_state.json"
 enabled = true
 token = "${PANEL_TOKEN}"
 events_max = 500
+public_url = "${PUBLIC_URL}"
 
 [healthcheck]
 probe_interval_ms = 5000
@@ -417,6 +504,7 @@ heartbeat_ttl_sec = 60
 fail_threshold = 3
 recover_threshold = 2
 report_freshness_min = 15
+globalping_validity_min = 15
 # Нода, непрерывно нездоровая дольше стольких минут, удаляется из пула
 # (явный 0 = выключить рипер; ключ не задан = 60). После prune нода ещё
 # и в карантине — регистрация отклоняется 429, серия карантинов растёт
@@ -460,6 +548,7 @@ api_base = "https://api.globalping.io/v1"
 
 [shared_proxy]
 tls_domain = "${TLS_DOMAIN}"
+port = 443
 
 [shared_proxy.users]
 # mtproto secret: 32 hex; форматы с ee-префиксом — см. README
@@ -474,18 +563,11 @@ REG_TOML
         chmod 0660 "$ETC_DIR/registry.toml" 2>/dev/null || true
     fi
 
-    local cred_file=$ETC_DIR/credentials.txt
-    if [ ! -f "$cred_file" ]; then
-        {
-            echo "# sharedd registry — доступы ($(date -Iseconds))"
-            echo "panel_token = ${PANEL_TOKEN}"
-            [ "${USER_SECRET:-}" != "" ] && echo "mtproto_user1_secret = ${USER_SECRET}"
-        } > "$cred_file"
-        chmod 0600 "$cred_file"
-        ok "доступы: ${cred_file} (0600)"
-    else
-        warn "credentials.txt уже есть — не трогаю (токен панели смотрите там)"
+    write_credentials
+    if [ -n "${USER_SECRET:-}" ] && ! grep -q '^mtproto_user1_secret = ' "$ETC_DIR/credentials.txt"; then
+        printf 'mtproto_user1_secret = %s\n' "$USER_SECRET" >>"$ETC_DIR/credentials.txt"
     fi
+    ok "доступы и команда ноды: ${ETC_DIR}/credentials.txt (0600)"
 
     cat > /etc/systemd/system/sharedd-registry.service <<'REG_UNIT'
 [Unit]
@@ -494,6 +576,7 @@ After=network.target
 
 [Service]
 ExecStart=/usr/local/bin/sharedd-registry -config /etc/sharedd/registry.toml
+Environment=GOTRACEBACK=all
 Restart=always
 RestartSec=5
 User=sharedd-registry
@@ -505,10 +588,14 @@ WantedBy=multi-user.target
 REG_UNIT
     systemctl daemon-reload
     systemctl enable sharedd-registry.service >>"$INSTALL_LOG" 2>&1
+    systemctl reset-failed sharedd-registry.service 2>/dev/null || true
     systemctl restart sharedd-registry.service
-    sleep 1
-    systemctl is-active --quiet sharedd-registry.service && ok "sharedd-registry запущен" \
-        || die "sharedd-registry не стартовал: journalctl -u sharedd-registry -n 50"
+    sleep 2
+    if ! systemctl is-active --quiet sharedd-registry.service; then
+        journalctl -u sharedd-registry.service -n 80 --no-pager >>"$INSTALL_LOG" 2>&1 || true
+        die "sharedd-registry не стартовал. Диагностика сохранена: $INSTALL_LOG; команда: journalctl -u sharedd-registry -n 80 --no-pager"
+    fi
+    ok "sharedd-registry запущен"
 }
 
 # ---------------------------------------------------------------- Caddyfile + запуск
@@ -625,17 +712,26 @@ hline
 echo -e "  ${GREEN}${BOLD}Установка завершена${NC}"
 hline
 PANEL_URL=""
+NODE_BASE_URL="http://REGISTRY_IP:${REG_PORT}"
 if [ "$CADDY_STATUS" = "ok" ]; then
     PANEL_URL="https://${DOMAIN}/panel"
+    NODE_BASE_URL="https://${DOMAIN}"
 elif [ "$CADDY_STATUS" = "failed" ]; then
     PANEL_URL="http://<ip>:${REG_PORT}/panel (Caddy не встал — см. выше)"
 elif [ "$CADDY_STATUS" = "bare" ]; then
     PANEL_URL="http://<ip>:${REG_PORT}/panel"
 fi
+[ "$ONLY_CADDY" -eq 1 ] || { set_node_install_command "$NODE_BASE_URL"; write_credentials; }
 [ -n "$PANEL_URL" ] && echo -e "  Панель:          ${BOLD}${PANEL_URL}${NC}"
-echo -e "  Токен панели:    ${BOLD}${PANEL_TOKEN}${NC}"
+[ "$ONLY_CADDY" -eq 1 ] || echo -e "  Токен панели:    ${BOLD}${PANEL_TOKEN}${NC}"
+[ "$ONLY_CADDY" -eq 1 ] || echo -e "  Node API token:  ${BOLD}${NODE_TOKEN}${NC}"
 [ "${USER_SECRET:-}" != "" ] && echo -e "  MTProto user1:   ${BOLD}${USER_SECRET}${NC}"
-echo -e "  Доступы также в: ${ETC_DIR}/credentials.txt"
+[ "$ONLY_CADDY" -eq 1 ] || echo -e "  Доступы также в: ${ETC_DIR}/credentials.txt"
+if [ "$ONLY_CADDY" -eq 0 ]; then
+    echo ""
+    echo -e "  ${BOLD}Подключить ноду одной командой:${NC}"
+    echo "  ${NODE_INSTALL_COMMAND}"
+fi
 echo ""
 echo -e "  ${DIM}Управление:${NC}"
 echo "    journalctl -u sharedd-registry -f       # логи регистратора"

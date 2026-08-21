@@ -58,7 +58,7 @@ func runApplyOnce(cfg *NodeConfig) int {
 	var shared SharedConfig
 	var ferr error
 	for attempt := 1; attempt <= applyOnceFetchAttempts; attempt++ {
-		shared, ferr = fetchSharedConfig(cfg.Registry.URL)
+		shared, ferr = fetchSharedConfig(cfg)
 		if ferr == nil {
 			break
 		}

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -327,8 +329,8 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 		_, ok := sharedUsers[user]
 		return ok
 	}
-	var uniqSum, connSum float64
-	var uniqSeen, connSeen bool
+	var uniqSum, connSum, ingressSum, egressSum float64
+	var uniqSeen, connSeen, ingressSeen, egressSeen bool
 	userSeries := 0
 	for _, s := range samples {
 		switch s.name {
@@ -348,6 +350,16 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 			}
 			connSum += s.value
 			connSeen = true
+		case userOctetsFromMetricName:
+			if counted(promUserLabel(s.labels)) {
+				ingressSum += s.value
+				ingressSeen = true
+			}
+		case userOctetsToMetricName:
+			if counted(promUserLabel(s.labels)) {
+				egressSum += s.value
+				egressSeen = true
+			}
 		}
 	}
 	if uniqSeen {
@@ -356,7 +368,30 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 	if connSeen {
 		snapshot[userConnsMetricName] = connSum
 	}
+	if ingressSeen {
+		snapshot[trafficIngressMetricName] = ingressSum
+	}
+	if egressSeen {
+		snapshot[trafficEgressMetricName] = egressSum
+	}
+	if ingressSeen || egressSeen {
+		snapshot[trafficUsersMetricName] = trafficUsersFingerprint(sharedUsers)
+	}
 	return snapshot, values
+}
+
+func trafficUsersFingerprint(users map[string]string) float64 {
+	names := make([]string, 0, len(users))
+	for name := range users {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	h := fnv.New64a()
+	for _, name := range names {
+		_, _ = h.Write([]byte(name))
+		_, _ = h.Write([]byte{0})
+	}
+	return float64(h.Sum64() & ((1 << 53) - 1))
 }
 
 // ---- health reports ----
@@ -548,10 +583,10 @@ func parseTerminateBody(body []byte) (*TerminatedError, bool) {
 	return &TerminatedError{Reason: p.Reason, Message: p.Message}, true
 }
 
-func SendReport(registryURL string, report HealthReport) error {
+func SendReport(cfg *NodeConfig, report HealthReport) error {
 	data, _ := json.Marshal(report)
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(registryURL+"/report", "application/json", bytes.NewReader(data))
+	resp, err := registryRequest(client, cfg, http.MethodPost, "/report", bytes.NewReader(data))
 	if err != nil {
 		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
 		return err

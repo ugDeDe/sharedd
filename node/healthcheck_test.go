@@ -84,6 +84,10 @@ func TestBuildMetricsSnapshotSharedSecretOnly(t *testing.T) {
 		{name: uniqueIPsMetricName, labels: `user="localguy"`, value: 1000},
 		{name: userConnsMetricName, labels: `user="u0cb271"`, value: 500},
 		{name: userConnsMetricName, labels: `user="localguy"`, value: 7},
+		{name: userOctetsFromMetricName, labels: `user="u0cb271"`, value: 1000},
+		{name: userOctetsFromMetricName, labels: `user="localguy"`, value: 9000},
+		{name: userOctetsToMetricName, labels: `user="shared2"`, value: 2000},
+		{name: userOctetsToMetricName, labels: `user="localguy"`, value: 8000},
 	}
 	shared := map[string]string{
 		"u0cb271": "0123456789abcdef0123456789abcdef",
@@ -95,6 +99,12 @@ func TestBuildMetricsSnapshotSharedSecretOnly(t *testing.T) {
 	}
 	if snapshot[userConnsMetricName] != 500 {
 		t.Fatalf("conns aggregate must count shared users only (500), got %v", snapshot[userConnsMetricName])
+	}
+	if snapshot[trafficIngressMetricName] != 1000 || snapshot[trafficEgressMetricName] != 2000 {
+		t.Fatalf("traffic must include shared users only: %+v", snapshot)
+	}
+	if snapshot[trafficUsersMetricName] == 0 {
+		t.Fatal("traffic user-set fingerprint must accompany counters")
 	}
 	if _, ok := snapshot[`telemt_user_unique_ips_current{user="localguy"}`]; ok {
 		t.Fatal("local user series must not leak into the snapshot")

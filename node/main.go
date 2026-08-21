@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -44,6 +45,28 @@ func kickGlobalping() {
 var lastNodeType string
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" || arg == "--version" {
+			fmt.Println("sharedd-node-agent")
+			return
+		}
+	}
+	for i, arg := range os.Args[1:] {
+		path := ""
+		if strings.HasPrefix(arg, "--telemt-port=") {
+			path = strings.TrimPrefix(arg, "--telemt-port=")
+		} else if arg == "--telemt-port" && i+2 < len(os.Args) {
+			path = os.Args[i+2]
+		}
+		if path != "" {
+			cfg, err := loadTelemtConfig(path)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(telemtProxyPort(cfg))
+			return
+		}
+	}
 	cfg, err := loadNodeConfig()
 	if err != nil {
 		log.Fatalf("config error: %v", err)
@@ -88,13 +111,14 @@ func main() {
 		register(client, cfg, ip)
 	}
 
-	if shared, err := fetchSharedConfig(cfg.Registry.URL); err == nil {
+	if shared, err := fetchSharedConfig(cfg); err == nil {
 		applySharedConfig(cfg, shared)
 	} else {
 		log.Printf("initial shared config fetch failed: %v (will retry in background)", err)
 	}
 
 	go syncLoop(cfg)
+	go antiscanLoop(cfg)
 	go heartbeatLoop(client, cfg, ipr)
 	go globalpingLoop(cfg, ipr)
 	metricsLoop(cfg, ipr) // блокирующий, в main goroutine
@@ -112,7 +136,7 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	nt := detectNodeType()
 	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt}
 	data, _ := json.Marshal(payload)
-	resp, err := client.Post(cfg.Registry.URL+"/register", "application/json", bytes.NewReader(data))
+	resp, err := registryRequest(client, cfg, http.MethodPost, "/register", bytes.NewReader(data))
 	if err != nil {
 		log.Printf("register error: %v", err)
 		netw.noteFail() // сброс keep-alive; при смене исходящего IP — кэша IP/рестарт
@@ -207,7 +231,7 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 
 		payload := map[string]string{"node_id": nodeID}
 		data, _ := json.Marshal(payload)
-		resp, err := client.Post(cfg.Registry.URL+"/heartbeat", "application/json", bytes.NewReader(data))
+		resp, err := registryRequest(client, cfg, http.MethodPost, "/heartbeat", bytes.NewReader(data))
 		if err != nil {
 			log.Printf("heartbeat error: %v, re-registering", err)
 			// Сетевой сбой: сбросить протухшие keep-alive и перечитать
@@ -273,12 +297,14 @@ func globalpingLoop(cfg *NodeConfig, ipr *ipResolver) {
 			waitGlobalpingTick()
 			continue
 		}
-		if err := SendReport(cfg.Registry.URL, report); err != nil {
+		if err := SendReport(cfg, report); err != nil {
 			var te *TerminatedError
 			if errors.As(err, &te) { // kill-сигнал при ответе на отчёт
 				selfTerminate(cfg, te.Reason, te.Message, ip)
 			}
 			log.Printf("failed to send globalping report: %v", err)
+		} else {
+			log.Printf("globalping report accepted by registry: measurement=%s", report.GlobalpingMeasurementID)
 		}
 		waitGlobalpingTick()
 	}
@@ -322,7 +348,7 @@ func metricsLoop(cfg *NodeConfig, ipr *ipResolver) {
 			time.Sleep(intervals.Metrics())
 			continue
 		}
-		if err := SendReport(cfg.Registry.URL, report); err != nil {
+		if err := SendReport(cfg, report); err != nil {
 			var te *TerminatedError
 			if errors.As(err, &te) { // kill-сигнал при ответе на отчёт
 				selfTerminate(cfg, te.Reason, te.Message, ip)

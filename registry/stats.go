@@ -21,7 +21,7 @@ var statsHTML []byte
 //
 //	GET /statistics — HTML-оболочка (список нод или страница ноды,
 //	 клиент разбирает id из URL сам);
-//	GET /statistics/<node_id> — та же оболочка (node_id или hex-суффикс);
+//	GET /statistics/<node_id> — та же оболочка (node_id или 5-символьный суффикс);
 //	GET /statistics/api/list — JSON всех нод (обезличенный);
 //	GET /statistics/api/node — JSON одной ноды (обезличенный), ?id=...
 //
@@ -126,8 +126,7 @@ func (r *Registry) mountStats(mux *http.ServeMux) {
 		return
 	}
 	serveStats := func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
+		setPublicHTMLHeaders(w)
 		w.Write(statsHTML)
 	}
 	mux.HandleFunc("GET /statistics", serveStats)
@@ -140,6 +139,15 @@ func (r *Registry) mountStats(mux *http.ServeMux) {
 
 	// публичные прокси-ссылки (tg://proxy) по доменам с живыми мастерами
 	mux.HandleFunc("GET /proxylinks", r.handleProxyLinks)
+}
+
+func setPublicHTMLHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
 }
 
 // ── Публичные прокси-ссылки — /proxylinks ────────────────────────────────
@@ -217,14 +225,13 @@ func (r *Registry) handleProxyLinks(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"links": links})
 }
 
-// resolvePublicNodeLocked — точный node_id или его hex-суффикс (без «node-»).
+// resolvePublicNodeLocked — точный node_id или его пятисимвольный суффикс.
 func (r *Registry) resolvePublicNodeLocked(seg string) *Candidate {
 	if c := r.state.Candidates[seg]; c != nil {
 		return c
 	}
-	seg = strings.TrimPrefix(seg, "node-")
 	for id, c := range r.state.Candidates {
-		if strings.TrimPrefix(id, "node-") == seg {
+		if i := strings.LastIndexByte(id, '-'); i >= 0 && id[i+1:] == seg {
 			return c
 		}
 	}
@@ -381,6 +388,18 @@ type publicNodeListItem struct {
 	NodeType              string   `json:"node_type,omitempty"`
 }
 
+type publicQuarantineItem struct {
+	NodeID      string    `json:"node_id"`
+	IPMasked    string    `json:"ip"`
+	EnteredAt   time.Time `json:"entered_at"`
+	AgeSec      int64     `json:"age_sec"`
+	Attempts    int       `json:"attempts"`
+	MaxAttempts int       `json:"max_attempts"`
+	LastRatio   float64   `json:"last_ratio"`
+	Stale       bool      `json:"stale"`
+	Reverify    bool      `json:"reverify"`
+}
+
 // handleStatsList — GET /statistics/api/list: все ноды (обезличенные).
 func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	now := time.Now()
@@ -391,10 +410,17 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Strings(ids)
 	out := make([]publicNodeListItem, 0, len(ids))
+	quarantine := make([]publicQuarantineItem, 0)
 	for _, id := range ids {
 		c := r.state.Candidates[id]
 		if c.Quarantine != nil {
-			continue // карантин — нода не обслуживает, из публичной статы убрана
+			quarantine = append(quarantine, publicQuarantineItem{
+				NodeID: c.NodeID, IPMasked: maskPublicIP(c.IP), EnteredAt: c.Quarantine.EnteredAt,
+				AgeSec:   max(int64(0), int64(now.Sub(c.Quarantine.EnteredAt).Seconds())),
+				Attempts: c.Quarantine.Attempts, MaxAttempts: r.cfg.QuarantineAttempts,
+				LastRatio: c.Quarantine.LastRatio, Stale: c.Quarantine.Stale, Reverify: c.Quarantine.Reverify,
+			})
+			continue
 		}
 		it := publicNodeListItem{
 			NodeID:          c.NodeID,
@@ -420,7 +446,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, it)
 	}
-	resp := map[string]any{"nodes": out}
+	resp := map[string]any{"nodes": out, "quarantine": quarantine}
 	r.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")

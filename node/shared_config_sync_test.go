@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,23 @@ import (
 )
 
 func splitLines(s string) []string { return strings.Split(s, "\n") }
+
+func TestApplySharedConfigTriggersRequestedGlobalping(t *testing.T) {
+	for {
+		select {
+		case <-gpKick:
+		default:
+			goto drained
+		}
+	}
+drained:
+	applySharedConfig(&NodeConfig{}, SharedConfig{ForceGlobalping: true})
+	select {
+	case <-gpKick:
+	case <-time.After(time.Second):
+		t.Fatal("force_globalping did not wake the GP loop")
+	}
+}
 
 // Конфиг, где [access.users] нет вообще (типичный случай из репорта: секрет
 // уезжал в конец файла). Теперь секция создаётся сразу после [access].
@@ -382,7 +400,7 @@ func TestApplySharedConfigMaskFalse(t *testing.T) {
 	}
 }
 
-func TestEnsureUserAddsOnlyWhenMissing(t *testing.T) {
+func TestEnsureUserAddsAndUpdates(t *testing.T) {
 	lines := splitLines("[access.users]\nhello = \"aaaa\"\n\n[server]\nport = 443")
 	out, changed := ensureUser(lines, "bob", "bbbb")
 	if !changed {
@@ -397,11 +415,62 @@ func TestEnsureUserAddsOnlyWhenMissing(t *testing.T) {
 	}
 
 	out2, changed2 := ensureUser(out, "bob", "cccc")
-	if changed2 {
-		t.Fatalf("existing username must never be replaced, got changed output:\n%s", strings.Join(out2, "\n"))
+	if !changed2 {
+		t.Fatal("changed secret for an existing username must be replaced")
 	}
-	if !strings.Contains(strings.Join(out2, "\n"), `bob = "bbbb"`) {
-		t.Fatal("existing secret must be preserved")
+	if joined2 := strings.Join(out2, "\n"); !strings.Contains(joined2, `bob = "cccc"`) || strings.Contains(joined2, `bob = "bbbb"`) {
+		t.Fatalf("existing secret was not replaced:\n%s", joined2)
+	}
+	if _, changed3 := ensureUser(out2, "bob", "cccc"); changed3 {
+		t.Fatal("identical secret must be a no-op")
+	}
+}
+
+func TestApplySharedConfigManagedRestartsForChangedSecret(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telemt.toml")
+	original := "[server]\nport = 443\nmetrics_listen = \"127.0.0.1:9090\"\n\n[access.users]\nalice = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &NodeConfig{}
+	cfg.Telemt.ConfigPath = path
+
+	oldSystemd, oldUnit := applySystemdAvailable, applyDetectProxyUnit
+	oldPrefer := applyPreferMtproxyl
+	oldCtl, oldWait := applyProxyCtl, applyWaitMetrics
+	defer func() {
+		applySystemdAvailable, applyDetectProxyUnit = oldSystemd, oldUnit
+		applyPreferMtproxyl = oldPrefer
+		applyProxyCtl, applyWaitMetrics = oldCtl, oldWait
+	}()
+	applySystemdAvailable = func() bool { return true }
+	applyDetectProxyUnit = func() string { return "telemt.service" }
+	applyPreferMtproxyl = func() bool { return false }
+	actions := []string{}
+	applyProxyCtl = func(action, unit string) error {
+		actions = append(actions, action+" "+unit)
+		return nil
+	}
+	applyWaitMetrics = func(*NodeConfig, time.Duration) error { return nil }
+
+	shared := SharedConfig{Users: map[string]string{"alice": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+	if err := applySharedConfigManaged(cfg, shared); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(actions, ","); got != "stop telemt.service,start telemt.service" {
+		t.Fatalf("changed secret must restart proxy, actions=%q", got)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(data), `alice = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`) {
+		t.Fatalf("new secret not written: err=%v content=%s", err, data)
+	}
+
+	actions = nil
+	if err := applySharedConfigManaged(cfg, shared); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("identical secret must not restart proxy, actions=%v", actions)
 	}
 }
 
@@ -623,6 +692,66 @@ func TestWriteLinesPreservesOwnerAndMode(t *testing.T) {
 	// temp-файл не должен остаться
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Fatal("temp file must be renamed away")
+	}
+}
+
+func TestApplySharedConfigManagedRollsBackRestartFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		mtproxyl bool
+	}{
+		{name: "mtproxyl", mtproxyl: true},
+		{name: "blind systemd", mtproxyl: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "telemt.toml")
+			original := "[server]\nport = 443\n"
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg := &NodeConfig{}
+			cfg.Telemt.ConfigPath = path
+
+			oldSystemd, oldUnit := applySystemdAvailable, applyDetectProxyUnit
+			oldPrefer, oldType := applyPreferMtproxyl, applyDetectNodeType
+			oldMT, oldBlind := applyMtproxylRestart, applyBlindRestart
+			defer func() {
+				applySystemdAvailable, applyDetectProxyUnit = oldSystemd, oldUnit
+				applyPreferMtproxyl, applyDetectNodeType = oldPrefer, oldType
+				applyMtproxylRestart, applyBlindRestart = oldMT, oldBlind
+			}()
+			applySystemdAvailable = func() bool { return false }
+			applyDetectProxyUnit = func() string { return "" }
+			applyPreferMtproxyl = func() bool { return tc.mtproxyl }
+			applyDetectNodeType = func() string {
+				if tc.mtproxyl {
+					return NodeTypeMTProxyL
+				}
+				return NodeTypeClassic
+			}
+			calls := 0
+			failThenRecover := func() error {
+				calls++
+				if calls == 1 {
+					return fmt.Errorf("injected restart failure")
+				}
+				return nil
+			}
+			applyMtproxylRestart = failThenRecover
+			applyBlindRestart = func(*NodeConfig) error { return failThenRecover() }
+
+			err := applySharedConfigManaged(cfg, SharedConfig{TLSDomain: "front.example.com"})
+			if err == nil || !strings.Contains(err.Error(), "restart") {
+				t.Fatalf("restart failure must be returned, got %v", err)
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil || string(data) != original {
+				t.Fatalf("config must be rolled back, readErr=%v content=%q", readErr, data)
+			}
+			if calls != 2 {
+				t.Fatalf("restart must be retried after rollback, calls=%d", calls)
+			}
+		})
 	}
 }
 
