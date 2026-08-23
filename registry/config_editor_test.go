@@ -61,7 +61,7 @@ func getNodeFacingConfig(t *testing.T, r *Registry) sharedConfigResponse {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out sharedConfigResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
@@ -228,7 +228,7 @@ func TestConfigEditorGet(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %v (%v)", resp.StatusCode, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/panel/api/config", nil)
 	req.Header.Set("Authorization", "Bearer admintoken")
@@ -241,8 +241,8 @@ func TestConfigEditorGet(t *testing.T) {
 		Static         staticConfigInfo   `json:"static"`
 		NodeOnboarding nodeOnboardingInfo `json:"node_onboarding"`
 	}
-	json.NewDecoder(resp.Body).Decode(&data)
-	resp.Body.Close()
+	_ = json.NewDecoder(resp.Body).Decode(&data)
+	_ = resp.Body.Close()
 
 	if data.Config.SharedProxy == nil || data.Config.SharedProxy.TLSDomain != "www.old-sni.com" {
 		t.Fatalf("GET config: %+v", data.Config.SharedProxy)

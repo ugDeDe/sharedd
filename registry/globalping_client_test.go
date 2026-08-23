@@ -17,14 +17,14 @@ func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if calls.Add(1) < 3 {
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id": "m-wait", "type": "http", "target": "1.2.3.4", "status": "in-progress",
 				"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
 				"results":            []any{},
 			})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "m-wait", "type": "http", "target": "1.2.3.4", "status": "finished",
 			"measurementOptions": map[string]any{
 				"protocol": "HTTPS", "port": 443,
@@ -56,7 +56,7 @@ func TestFetchFinishedWaitsForCompletion(t *testing.T) {
 func TestFetchFinishedTimeoutOnStuckMeasurement(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "m-stuck", "type": "http", "target": "1.2.3.4", "status": "in-progress",
 			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
 			"results":            []any{},
@@ -132,7 +132,7 @@ func TestHealthReportMeasurementBindingMismatchKeepsGPState(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"id": "m-binding", "type": "http", "target": tt.target, "status": "finished",
 					"measurementOptions": map[string]any{
 						"protocol": "HTTPS", "port": tt.port,
@@ -176,7 +176,7 @@ func TestHealthReportMeasurementBindingMismatchKeepsGPState(t *testing.T) {
 func TestHealthReportMeasurementWithoutProtocolIsAccepted(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "m-no-protocol", "type": "http", "target": "1.2.3.4", "status": "finished",
 			"measurementOptions": map[string]any{
 				"port": 443, "request": map[string]any{"host": "front.example.com"},

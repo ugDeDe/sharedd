@@ -432,7 +432,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprintf(w, `{"error":"node was pruned as inactive, re-registration deferred","retry_after_sec":%d}`+"\n", retryAfter)
+			_, _ = fmt.Fprintf(w, `{"error":"node was pruned as inactive, re-registration deferred","retry_after_sec":%d}`+"\n", retryAfter)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -571,7 +571,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})))
 
 	// /status отдаёт всё состояние (включая IP нод) — когда панель защищена
@@ -584,12 +584,12 @@ func (r *Registry) buildMux() *http.ServeMux {
 		r.mu.RLock()
 		defer r.mu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(r.state)
+		_ = json.NewEncoder(w).Encode(r.state)
 	})
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 
 	r.mountPanel(mux)
@@ -607,7 +607,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 func (r *Registry) writeTerminate(w http.ResponseWriter, rec *TerminatedRecord) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"terminate": true,
 		"reason":    rec.Reason,
 		"message":   rec.Message,
@@ -790,7 +790,7 @@ func tcpProbe(ip string, port int, timeout time.Duration) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 

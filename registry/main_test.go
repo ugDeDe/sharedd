@@ -101,7 +101,7 @@ func TestHealthReportIndependentVerification(t *testing.T) {
 	// mock Globalping API: measurement where 1/4 probes succeeded (ratio 0.25 -> NOT ok)
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "m-123", "type": "http", "target": "1.1.1.1", "status": "finished",
 			"measurementOptions": map[string]any{
 				"protocol": "HTTPS", "port": 443,
@@ -201,7 +201,7 @@ func TestHealthReportRejectsStaleAndDuplicateMeasurement(t *testing.T) {
 	}
 
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": strings.TrimPrefix(req.URL.Path, "/measurements/"), "type": "http", "target": "1.1.1.1", "status": "finished",
 			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
 			"results":            []any{},
@@ -230,7 +230,7 @@ func TestNewGlobalpingReportCanFinishAfterNewerMetricsReport(t *testing.T) {
 	}
 
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "new-measurement", "type": "http", "target": "1.1.1.1", "status": "finished",
 			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
 			"results":            []any{},
@@ -254,7 +254,7 @@ func TestHealthReportDoesNotApplyAfterReregistration(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		close(started)
 		<-release
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": strings.TrimPrefix(req.URL.Path, "/measurements/"), "type": "http", "target": "1.1.1.1", "status": "finished",
 			"measurementOptions": map[string]any{"protocol": "HTTPS", "port": 443, "request": map[string]any{"host": "front.example.com"}},
 			"results":            []any{},

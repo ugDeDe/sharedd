@@ -214,7 +214,7 @@ func (r *Registry) mountDashboard(mux *http.ServeMux) {
 	}
 	serveDash := func(w http.ResponseWriter, _ *http.Request) {
 		setPublicHTMLHeaders(w)
-		w.Write(dashboardHTML)
+		_, _ = w.Write(dashboardHTML)
 	}
 	mux.HandleFunc("GET /dashboard", serveDash)
 	mux.HandleFunc("GET /dashboard/", serveDash)
@@ -225,6 +225,6 @@ func (r *Registry) mountDashboard(mux *http.ServeMux) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(r.buildDashboard(name, time.Now()))
+		_ = json.NewEncoder(w).Encode(r.buildDashboard(name, time.Now()))
 	})
 }

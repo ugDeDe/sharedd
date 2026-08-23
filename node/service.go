@@ -225,7 +225,7 @@ func waitMetricsReady(cfg *NodeConfig, timeout time.Duration) error {
 	for {
 		resp, herr := client.Get(url)
 		if herr == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
@@ -247,7 +247,7 @@ func waitProxyTCP(port int, timeout time.Duration) bool {
 	for {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 2*time.Second)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return true
 		}
 		if time.Now().After(deadline) {

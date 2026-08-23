@@ -21,7 +21,7 @@ var linksHTML []byte
 func (r *Registry) mountLinks(mux *http.ServeMux) {
 	serve := func(w http.ResponseWriter, req *http.Request) {
 		setPublicHTMLHeaders(w)
-		w.Write(linksHTML)
+		_, _ = w.Write(linksHTML)
 	}
 	mux.HandleFunc("GET /links", serve)
 	mux.HandleFunc("GET /links/", serve)

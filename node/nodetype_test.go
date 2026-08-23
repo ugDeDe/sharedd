@@ -43,9 +43,9 @@ func TestDetectNodeType(t *testing.T) {
 		t.Fatalf("both dirs -> meko (deterministic priority), got %q", got)
 	}
 	// файл, а не каталог — не детект
-	os.Remove(meko)
-	os.Remove(mtproxyl)
-	os.WriteFile(mtproxyl, []byte("not a dir"), 0644)
+	_ = os.Remove(meko)
+	_ = os.Remove(mtproxyl)
+	_ = os.WriteFile(mtproxyl, []byte("not a dir"), 0644)
 	if got := detectNodeType(); got != NodeTypeClassic {
 		t.Fatalf("plain file is not an install, got %q", got)
 	}

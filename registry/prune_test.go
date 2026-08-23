@@ -146,7 +146,7 @@ func TestHeartbeatUnknownNodeGetsGone(t *testing.T) {
 		if err != nil {
 			t.Fatalf("heartbeat post: %v", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return resp.StatusCode
 	}
 
@@ -303,7 +303,7 @@ func TestRegisterEndpointReturns429DuringBan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("banned register must be 429, got %d", resp.StatusCode)
 	}
@@ -318,7 +318,7 @@ func TestRegisterEndpointReturns429DuringBan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("register after ban expiry must be 200, got %d", resp2.StatusCode)
 	}

@@ -10,18 +10,18 @@ import (
 
 func TestDetectPublicIPFromServices(t *testing.T) {
 	garbage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "<html>not an ip</html>")
+		_, _ = fmt.Fprint(w, "<html>not an ip</html>")
 	}))
 	defer garbage.Close()
 
 	// имитация ifconfig на v6-only машине — должен быть пропущен (нужен IPv4)
 	v6 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "2001:db8::1")
+		_, _ = fmt.Fprint(w, "2001:db8::1")
 	}))
 	defer v6.Close()
 
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "198.51.100.77\n")
+		_, _ = fmt.Fprint(w, "198.51.100.77\n")
 	}))
 	defer good.Close()
 
@@ -52,7 +52,7 @@ func TestIPResolverCachesAndPrefersServices(t *testing.T) {
 	// v6 захардкожен в ядре маршрутизации... упрощённо: проверяем, что при
 	// живом сервисе resolver берёт IP с него, а не с интерфейса.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "203.0.113.9")
+		_, _ = fmt.Fprint(w, "203.0.113.9")
 	}))
 	defer srv.Close()
 

@@ -55,7 +55,7 @@ func detectPublicIPFromServices() (string, error) {
 			continue
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 256))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			errs = append(errs, fmt.Sprintf("%s: status=%d err=%v", svc, resp.StatusCode, err))
 			continue
@@ -78,7 +78,7 @@ func detectOutboundIPv4() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("outbound interface detection failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	addr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok || addr.IP == nil {
 		return "", fmt.Errorf("unexpected local address %v", conn.LocalAddr())

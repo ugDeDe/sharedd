@@ -147,7 +147,7 @@ func TestMasterEventsAndStintAccounting(t *testing.T) {
 func TestBlockedEventOnHealthReport(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "m-x", "type": "http", "target": "1.2.3.4", "status": "finished",
 			"measurementOptions": map[string]any{
 				"protocol": "HTTPS", "port": 443,
@@ -227,7 +227,7 @@ func TestPanelEndpoints(t *testing.T) {
 		t.Fatalf("GET /panel: %v status=%v", err, resp.StatusCode)
 	}
 	htmlBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(htmlBody), "sharedd") {
 		t.Fatal("panel HTML must contain title")
 	}
@@ -247,7 +247,7 @@ func TestPanelEndpoints(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("overview without token must be 401, got %v (%v)", resp.StatusCode, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// API с токеном -> 200 и корректные поля
 	req2, _ := http.NewRequest(http.MethodGet, srv.URL+"/panel/api/overview", nil)
@@ -257,8 +257,8 @@ func TestPanelEndpoints(t *testing.T) {
 		t.Fatalf("overview with token must be 200, got %v (%v)", resp.StatusCode, err)
 	}
 	var ov panelOverview
-	json.NewDecoder(resp.Body).Decode(&ov)
-	resp.Body.Close()
+	_ = json.NewDecoder(resp.Body).Decode(&ov)
+	_ = resp.Body.Close()
 
 	if len(ov.Masters) != 1 || ov.Masters[0].Domain != "d1.example.com" ||
 		ov.Masters[0].NodeID != "A" || ov.Masters[0].IP != "1.1.1.1" || ov.Masters[0].Dead {
@@ -296,8 +296,8 @@ func TestPanelEndpoints(t *testing.T) {
 	var evResp struct {
 		Events []Event `json:"events"`
 	}
-	json.NewDecoder(resp.Body).Decode(&evResp)
-	resp.Body.Close()
+	_ = json.NewDecoder(resp.Body).Decode(&evResp)
+	_ = resp.Body.Close()
 	if len(evResp.Events) == 0 {
 		t.Fatal("events must be non-empty after registration+election")
 	}
@@ -325,7 +325,7 @@ func TestBuildMuxNoConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/panel" {
 		t.Fatalf("GET / must redirect to /panel, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
@@ -334,7 +334,7 @@ func TestBuildMuxNoConflicts(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("GET /healthz must be 200, got %v (%v)", resp.StatusCode, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // Журнал и счётчики переживают персист/загрузку state-файла.

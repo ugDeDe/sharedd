@@ -15,7 +15,7 @@ func TestRegister429CarriesRetryAfter(t *testing.T) {
 		w.Header().Set("Retry-After", "900")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"error":"node was pruned as inactive, re-registration deferred","retry_after_sec":900}`))
+		_, _ = w.Write([]byte(`{"error":"node was pruned as inactive, re-registration deferred","retry_after_sec":900}`))
 	}))
 	defer srv.Close()
 

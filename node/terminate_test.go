@@ -119,7 +119,7 @@ func TestTombstoneRoundTrip(t *testing.T) {
 func bootReverifyEnv(t *testing.T, regHandler http.HandlerFunc) (*NodeConfig, *http.Client) {
 	t.Helper()
 	isrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("5.6.7.8")) // текущий публичный ip == забаненному
+		_, _ = w.Write([]byte("5.6.7.8")) // текущий публичный ip == забаненному
 	}))
 	t.Cleanup(isrv.Close)
 	oldSvc := ipEchoServices
@@ -170,7 +170,7 @@ func TestBootCheckIPBanSameIPReverifyDenied(t *testing.T) {
 	cfg, client := bootReverifyEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"terminate":true,"reason":"ip_ban","message":"` + msgIPBan + `"}`))
+		_, _ = w.Write([]byte(`{"terminate":true,"reason":"ip_ban","message":"` + msgIPBan + `"}`))
 	})
 	writeTombstone(termination{Reason: reasonIPBan, IP: "5.6.7.8"})
 	checkTerminationTombstone(cfg, newIPResolver(), client)
@@ -226,7 +226,7 @@ func TestBootCheckIPBanLiftedOnIPChange(t *testing.T) {
 	p := useTempTombstone(t)
 	died := stubExit(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("9.10.11.12"))
+		_, _ = w.Write([]byte("9.10.11.12"))
 	}))
 	t.Cleanup(srv.Close)
 	oldSvc := ipEchoServices
@@ -389,7 +389,7 @@ func TestAwaitIPChangeReturnsOnNewIP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		w.Write([]byte(current))
+		_, _ = w.Write([]byte(current))
 	}))
 	t.Cleanup(srv.Close)
 	oldSvc := ipEchoServices

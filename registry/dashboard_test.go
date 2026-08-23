@@ -208,8 +208,11 @@ func TestTrafficHistoryAndCounterReset(t *testing.T) {
 	r.db = openHistoryDB(filepath.Join(t.TempDir(), "traffic.db"))
 	defer r.db.Close()
 	now := time.Now()
-	r.db.recordTraffic(now.Add(-time.Hour), "n1", 100, 900)
-	r.db.recordTraffic(now.Add(-30*time.Minute), "n2", 50, 450)
+	// Метки внутри «сегодня» независимо от времени запуска: окно «day» —
+	// от полуночи, поэтому now-1h после 00:59 выпало бы из окна (флейк).
+	base := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
+	r.db.recordTraffic(base.Add(-time.Hour), "n1", 100, 900)
+	r.db.recordTraffic(base.Add(-30*time.Minute), "n2", 50, 450)
 	d := r.buildDashboard("day", now)
 	if d.KPI.TrafficIngress != 150 || d.KPI.TrafficEgress != 1350 || d.KPI.TrafficTotal != 1500 {
 		t.Fatalf("traffic KPI mismatch: %+v", d.KPI)

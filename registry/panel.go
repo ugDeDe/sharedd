@@ -55,7 +55,7 @@ func (r *Registry) mountPanel(mux *http.ServeMux) {
 	serveIndex := func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Write(panelHTML)
+		_, _ = w.Write(panelHTML)
 	}
 	// пустой path-суффикс отдаёт index; /panel/api/* регистрируется ниже
 	// и побеждает по right-longest-match
@@ -76,7 +76,7 @@ func (r *Registry) mountPanel(mux *http.ServeMux) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(r.buildOverview())
+		_ = json.NewEncoder(w).Encode(r.buildOverview())
 	})
 
 	// редактор конфигурации + ручной DNS-push + детальная статистика ноды
@@ -113,7 +113,7 @@ func (r *Registry) mountPanel(mux *http.ServeMux) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(map[string]any{"events": out})
+		_ = json.NewEncoder(w).Encode(map[string]any{"events": out})
 	})
 }
 
@@ -740,5 +740,5 @@ func (r *Registry) handlePanelNode(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

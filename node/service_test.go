@@ -15,7 +15,7 @@ func TestWaitProxyTCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	port := ln.Addr().(*net.TCPAddr).Port
 
 	if !waitProxyTCP(port, 2*time.Second) {
@@ -28,7 +28,7 @@ func TestWaitProxyTCP(t *testing.T) {
 		t.Fatalf("listen2: %v", err)
 	}
 	closedPort := ln2.Addr().(*net.TCPAddr).Port
-	ln2.Close()
+	_ = ln2.Close()
 
 	start := time.Now()
 	if waitProxyTCP(closedPort, 500*time.Millisecond) {
@@ -44,14 +44,14 @@ func TestWaitProxyTCP(t *testing.T) {
 		t.Fatalf("listen3: %v", err)
 	}
 	latePort := ln3.Addr().(*net.TCPAddr).Port
-	ln3.Close()
+	_ = ln3.Close()
 
 	go func() {
 		time.Sleep(700 * time.Millisecond)
 		ln4, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(latePort)))
 		if err == nil {
 			time.Sleep(2 * time.Second) // подержать listen до конца проверки
-			ln4.Close()
+			_ = ln4.Close()
 		}
 	}()
 	if !waitProxyTCP(latePort, 4*time.Second) {

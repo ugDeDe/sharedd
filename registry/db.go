@@ -109,14 +109,14 @@ CREATE TABLE IF NOT EXISTS traffic (
 CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic(ts);`
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("history db %s: schema failed: %v — continuing WITHOUT persistent history", path, err)
-		db.Close()
+		_ = db.Close()
 		return nil
 	}
 	log.Printf("history db: %s (sqlite, WAL)", path)
 	return &historyDB{sql: db}
 }
 
-func (d *historyDB) Close() { d.sql.Close() }
+func (d *historyDB) Close() { _ = d.sql.Close() }
 
 // recordBan — терминальная блокировка ноды. ОДИН IP пишется как бан только
 // ОДИН РАЗ: строка по адресу уже есть (ноду перепроверили и забанили снова,
@@ -193,7 +193,7 @@ func (d *historyDB) trafficSince(since time.Time) ([]trafficRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []trafficRow{}
 	for rows.Next() {
 		var r trafficRow
@@ -237,7 +237,7 @@ func (d *historyDB) bansSince(since time.Time, reasonFilter string) ([]banRow, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []banRow{}
 	for rows.Next() {
 		var b banRow

@@ -41,7 +41,7 @@ var antiscanFetch = func(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
@@ -132,9 +132,8 @@ func applyAntiscan(cfg *NodeConfig) error {
 		return err
 	}
 	_ = runAntiscan(ctx, nil, "ipset", "destroy", antiscanTempSet)
-	if _, err := antiscanRun(ctx, nil, "iptables", "-N", antiscanChain); err != nil {
-		// Existing chain is expected and harmless.
-	}
+	// Существующая цепочка — норма, ошибка создания игнорируется.
+	_, _ = antiscanRun(ctx, nil, "iptables", "-N", antiscanChain)
 	if _, err := antiscanRun(ctx, nil, "iptables", "-C", antiscanChain, "-m", "set", "--match-set", antiscanSet, "src", "-j", "DROP"); err != nil {
 		if err := runAntiscan(ctx, nil, "iptables", "-A", antiscanChain, "-m", "set", "--match-set", antiscanSet, "src", "-j", "DROP"); err != nil {
 			return err

@@ -79,7 +79,7 @@ func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement,
 	if err != nil {
 		return nil, fmt.Errorf("globalping fetch error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("globalping fetch failed: status=%d body=%s", resp.StatusCode, string(body))

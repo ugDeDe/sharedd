@@ -67,7 +67,7 @@ func (r *Registry) applyDNSTarget(domain, nodeID, ip string) {
 	r.enqueueDNSDesiredLocked(domain, "A", ip, nodeID)
 	r.persistStateLocked()
 	r.mu.Unlock()
-	r.reconcileDNSDomain(domain, true)
+	_ = r.reconcileDNSDomain(domain, true)
 }
 
 func (r *Registry) enqueueDNSDesiredLocked(domain, typ, target, nodeID string) bool {
@@ -173,7 +173,7 @@ func (r *Registry) reconcileDNSDue() {
 		wg.Add(1)
 		go func(d string) {
 			defer wg.Done()
-			r.reconcileDNSDomain(d, false)
+			_ = r.reconcileDNSDomain(d, false)
 		}(domain)
 	}
 	wg.Wait()
@@ -427,7 +427,7 @@ func (r *Registry) sweepOrphans() {
 			r.persistStateLocked()
 			r.mu.Unlock()
 			if removed > 0 {
-				r.reconcileDNSDomain(d, true)
+				_ = r.reconcileDNSDomain(d, true)
 			}
 			continue
 		}

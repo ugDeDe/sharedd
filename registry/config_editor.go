@@ -342,7 +342,7 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 	r.cfgMu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding})
+	_ = json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding})
 }
 
 func mapsClone(m map[string]string) map[string]string {
@@ -500,7 +500,7 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 
 	if len(changed) == 0 {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "changed": []string{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "changed": []string{}})
 		return
 	}
 
@@ -547,7 +547,7 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 	for k, v := range push {
 		resp[k] = v
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // pushAssignments — немедленная запись A-записей всех managed-доменов, КАЖДОГО
@@ -628,7 +628,7 @@ func (r *Registry) handleDNSPush(w http.ResponseWriter, req *http.Request) {
 	}
 	updated, errs := r.pushAssignments()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"updated": updated, "errors": errs})
+	_ = json.NewEncoder(w).Encode(map[string]any{"updated": updated, "errors": errs})
 }
 
 // persistConfigLocked перезаписывает TOML-файл конфигурации текущим состоянием.
@@ -660,11 +660,11 @@ func (r *Registry) persistConfigLocked() error {
 		return fmt.Errorf("write tmp config: %w", err)
 	}
 	if err := os.Chmod(tmp, mode); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("chmod tmp config: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename config: %w", err)
 	}
 	return nil

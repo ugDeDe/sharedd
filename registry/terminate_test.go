@@ -38,7 +38,7 @@ func newGPMock(t *testing.T) *gpMock {
 		targetWithTimestamp := strings.TrimPrefix(id, "m-test-")
 		target := targetWithTimestamp[:strings.LastIndex(targetWithTimestamp, "-")]
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": id, "type": "http", "target": target, "status": "finished",
 			"measurementOptions": map[string]any{
 				"protocol": "HTTPS", "port": 443,

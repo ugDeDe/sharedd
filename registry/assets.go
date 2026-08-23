@@ -35,6 +35,6 @@ func mountAssets(mux *http.ServeMux) {
 		}
 		w.Header().Set("Content-Type", "font/woff2")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		w.Write(data)
+		_, _ = w.Write(data)
 	})
 }

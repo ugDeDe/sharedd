@@ -55,7 +55,7 @@ func writeLines(path string, lines []string) error {
 		return err
 	}
 	if err := preserveFileAttrs(tmp, info); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -427,7 +427,7 @@ func fetchSharedConfig(cfg *NodeConfig) (SharedConfig, error) {
 		return SharedConfig{}, fmt.Errorf("fetch /config error: %w", err)
 	}
 	netw.noteOK()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return SharedConfig{}, fmt.Errorf("fetch /config failed: status=%d body=%s", resp.StatusCode, string(body))

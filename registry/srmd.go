@@ -576,7 +576,7 @@ type srmdDomainRequest struct {
 func srmdRespondJSON(w http.ResponseWriter, code int, body map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(body)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 // handleSRMDDomain — POST /panel/api/srmd-domain: насильный перевод домена

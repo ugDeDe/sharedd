@@ -210,7 +210,7 @@ func selfTerminate(cfg *NodeConfig, reason, message, ip string) {
 		if err != nil {
 			log.Printf("retire notice to registry failed: %v (ban history may miss this node)", err)
 		} else {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 	// ip_ban НЕ терминален для службы: агент остаётся жить и сам ждёт

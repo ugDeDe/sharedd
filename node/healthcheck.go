@@ -152,7 +152,7 @@ func (g *GlobalpingChecker) CreateAndAwait(ip string, port int, fakeSNI string) 
 	if err != nil {
 		return "", 0, fmt.Errorf("globalping create error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return "", 0, fmt.Errorf("globalping create failed: status=%d body=%s", resp.StatusCode, string(body))
@@ -197,7 +197,7 @@ func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement,
 	if err != nil {
 		return nil, fmt.Errorf("globalping fetch error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("globalping fetch failed: status=%d body=%s", resp.StatusCode, string(body))
@@ -520,7 +520,7 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 	resp, err := client.Get(url)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		// Клиенты считаются только по общему секрету — в агрегат
 		// входят лишь пользователи из shared-конфига регистратора.
 		snapshot, values := buildMetricsSnapshot(parsePrometheusSamples(string(body)), sharedConfigCache.Get().Users)
@@ -538,7 +538,7 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 		return report
 	}
 	if resp != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	// /metrics недоступен — нода нездорова, без обходных путей:
@@ -592,7 +592,7 @@ func SendReport(cfg *NodeConfig, report HealthReport) error {
 		return err
 	}
 	netw.noteOK()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		if te, ok := parseTerminateBody(body); ok {

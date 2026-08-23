@@ -144,7 +144,7 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	}
 	netw.noteOK()
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	// Терминальный бан — регистрация запрещена навсегда; завершаемся
 	// (сообщение регистратора уходит в лог дословно). Функция не возвращается.
 	if resp.StatusCode == http.StatusForbidden {
@@ -245,7 +245,7 @@ func heartbeatLoop(client *http.Client, cfg *NodeConfig, ipr *ipResolver) {
 		} else {
 			netw.noteOK()
 			hbBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			// Kill-сигнал — нода терминально убита, завершаемся.
 			if resp.StatusCode == http.StatusForbidden {
 				if te, ok := parseTerminateBody(hbBody); ok {

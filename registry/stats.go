@@ -127,7 +127,7 @@ func (r *Registry) mountStats(mux *http.ServeMux) {
 	}
 	serveStats := func(w http.ResponseWriter, _ *http.Request) {
 		setPublicHTMLHeaders(w)
-		w.Write(statsHTML)
+		_, _ = w.Write(statsHTML)
 	}
 	mux.HandleFunc("GET /statistics", serveStats)
 	mux.HandleFunc("GET /statistics/", serveStats)
@@ -222,7 +222,7 @@ func (r *Registry) handleProxyLinks(w http.ResponseWriter, req *http.Request) {
 	r.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]any{"links": links})
+	_ = json.NewEncoder(w).Encode(map[string]any{"links": links})
 }
 
 // resolvePublicNodeLocked — точный node_id или его пятисимвольный суффикс.
@@ -364,7 +364,7 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // publicNodeListItem — строка публичного списка нод.
@@ -451,5 +451,5 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
