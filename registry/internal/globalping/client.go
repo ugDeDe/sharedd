@@ -1,4 +1,4 @@
-package server
+package globalping
 
 import (
 	"encoding/json"
@@ -9,14 +9,14 @@ import (
 	"time"
 )
 
-type globalpingProbeResult struct {
+type ProbeResult struct {
 	Status     string `json:"status"`
 	StatusCode int    `json:"statusCode"`
 }
 
 // GlobalpingProbeInfo — площадка, откуда выполнялась проба (показываем
 // на странице ноды, откуда именно светит/не светит прокси).
-type globalpingProbeInfo struct {
+type ProbeInfo struct {
 	Continent string `json:"continent"`
 	Country   string `json:"country"`
 	City      string `json:"city"`
@@ -24,28 +24,28 @@ type globalpingProbeInfo struct {
 	ASN       int    `json:"asn"`
 }
 
-type globalpingProbeMeasurement struct {
-	Probe  globalpingProbeInfo   `json:"probe"`
-	Result globalpingProbeResult `json:"result"`
+type ProbeMeasurement struct {
+	Probe  ProbeInfo   `json:"probe"`
+	Result ProbeResult `json:"result"`
 }
 
-type globalpingHTTPRequest struct {
+type HTTPRequest struct {
 	Host string `json:"host"`
 }
 
-type globalpingMeasurementOptions struct {
-	Protocol string                `json:"protocol"`
-	Port     int                   `json:"port"`
-	Request  globalpingHTTPRequest `json:"request"`
+type MeasurementOptions struct {
+	Protocol string      `json:"protocol"`
+	Port     int         `json:"port"`
+	Request  HTTPRequest `json:"request"`
 }
 
-type globalpingMeasurement struct {
-	ID                 string                       `json:"id"`
-	Type               string                       `json:"type"`
-	Target             string                       `json:"target"`
-	MeasurementOptions globalpingMeasurementOptions `json:"measurementOptions"`
-	Status             string                       `json:"status"`
-	Results            []globalpingProbeMeasurement `json:"results"`
+type Measurement struct {
+	ID                 string             `json:"id"`
+	Type               string             `json:"type"`
+	Target             string             `json:"target"`
+	MeasurementOptions MeasurementOptions `json:"measurementOptions"`
+	Status             string             `json:"status"`
+	Results            []ProbeMeasurement `json:"results"`
 }
 
 type GlobalpingChecker struct {
@@ -59,7 +59,7 @@ type GlobalpingChecker struct {
 // относятся к СОЗДАНИЮ measurement'ов (это делают ноды анонимно со своих IP),
 // а на GET действует лишь burst-лимит 2 req/s на measurement — при нашем
 // темпе (1 GET на GP-отчёт ноды) он недостижим, и токен его не поднимает.
-func NewGlobalpingChecker(apiBase string) *GlobalpingChecker {
+func New(apiBase string) *GlobalpingChecker {
 	if apiBase == "" {
 		apiBase = "https://api.globalping.io/v1"
 	}
@@ -69,7 +69,7 @@ func NewGlobalpingChecker(apiBase string) *GlobalpingChecker {
 	}
 }
 
-func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement, error) {
+func (g *GlobalpingChecker) FetchMeasurement(id string) (*Measurement, error) {
 	req, err := http.NewRequest(http.MethodGet, g.APIBase+"/measurements/"+id, nil)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement,
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("globalping fetch failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
-	var m globalpingMeasurement
+	var m Measurement
 	if err := json.Unmarshal(body, &m); err != nil {
 		return nil, fmt.Errorf("globalping fetch parse error: %w", err)
 	}
@@ -98,7 +98,7 @@ func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement,
 // пишет 0». Поллим раз в 2 с (burst-лимит API — 2 req/s на measurement, нам
 // хватает). По таймауту возвращаем ПОСЛЕДНИЙ снапшот + ошибку — вызывающий
 // код решает, считать ли верификацию несостоявшейся.
-func (g *GlobalpingChecker) FetchFinished(id string, timeout time.Duration) (*globalpingMeasurement, error) {
+func (g *GlobalpingChecker) FetchFinished(id string, timeout time.Duration) (*Measurement, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		m, err := g.FetchMeasurement(id)
@@ -116,25 +116,25 @@ func (g *GlobalpingChecker) FetchFinished(id string, timeout time.Duration) (*gl
 	}
 }
 
-// probeResultOK — проба успешна: измерение завершилось ответом 2xx/3xx.
-func probeResultOK(r globalpingProbeMeasurement) bool {
+// ProbeResultOK — проба успешна: измерение завершилось ответом 2xx/3xx.
+func ProbeResultOK(r ProbeMeasurement) bool {
 	return r.Result.Status == "finished" && r.Result.StatusCode >= 200 && r.Result.StatusCode < 400
 }
 
-func evaluateSuccessRatio(m *globalpingMeasurement) float64 {
+func EvaluateSuccessRatio(m *Measurement) float64 {
 	if m == nil || len(m.Results) == 0 {
 		return 0
 	}
 	success := 0
 	for _, r := range m.Results {
-		if probeResultOK(r) {
+		if ProbeResultOK(r) {
 			success++
 		}
 	}
 	return float64(success) / float64(len(m.Results))
 }
 
-func validateMeasurementBinding(m *globalpingMeasurement, requestedID, candidateIP, reportIP string, reportPort int, reportSNI, expectedSNI string) error {
+func ValidateBinding(m *Measurement, requestedID, candidateIP, reportIP string, reportPort int, reportSNI, expectedSNI string) error {
 	if m == nil {
 		return fmt.Errorf("missing measurement")
 	}
