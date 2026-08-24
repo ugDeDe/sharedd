@@ -134,28 +134,6 @@ func Run() {
 	}
 }
 
-type registerRequest struct {
-	NodeID string `json:"node_id"`
-	IP     string `json:"ip"`
-	// NodeType: classic/mtproxyl/meko — информационный бейдж в панели.
-	NodeType string `json:"node_type,omitempty"`
-}
-
-type nodeIntervals struct {
-	HeartbeatMs  int `json:"heartbeat_ms"`
-	GlobalpingMs int `json:"globalping_ms"`
-	MetricsMs    int `json:"metrics_ms"`
-	SyncMs       int `json:"sync_ms"`
-}
-
-type sharedConfigResponse struct {
-	TLSDomain       string            `json:"tls_domain"`
-	ProxyPort       int               `json:"proxy_port"`
-	Users           map[string]string `json:"users"`
-	Intervals       nodeIntervals     `json:"intervals"`
-	ForceGlobalping bool              `json:"force_globalping,omitempty"`
-}
-
 const shutdownTimeout = 10 * time.Second
 
 func (r *Registry) httpServer() *http.Server {

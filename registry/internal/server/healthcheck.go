@@ -11,21 +11,6 @@ import (
 
 const usedMeasurementIDsCap = 64
 
-type HealthReportPayload struct {
-	NodeID                  string             `json:"node_id"`
-	IP                      string             `json:"ip"`
-	Port                    int                `json:"port"`
-	FakeSNI                 string             `json:"fake_sni"`
-	GlobalpingOK            bool               `json:"globalping_ok"`
-	GlobalpingMeasurementID string             `json:"globalping_measurement_id"`
-	GlobalpingSuccessRatio  float64            `json:"globalping_success_ratio"`
-	MetricsOK               bool               `json:"metrics_ok"`
-	MetricsSnapshot         map[string]float64 `json:"metrics_snapshot,omitempty"`
-	Healthy                 bool               `json:"healthy"`
-	CheckedAt               time.Time          `json:"checked_at"`
-	Error                   string             `json:"error,omitempty"`
-}
-
 // streakStep — один шаг анти-флап защёлки «failK подряд плохих гасит,
 // recoverK подряд хороших возвращает» (TCP-пробы и metrics-отчёты — одна и
 // та же машина; до существовала в двух рукописных копиях). Счётчики
