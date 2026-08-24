@@ -1,4 +1,4 @@
-package server
+package history
 
 // Персистентная история: SQLite рядом с JSON-стейтом.
 //
@@ -38,13 +38,14 @@ package server
 import (
 	"database/sql"
 	"log"
+	"sharedd/registry/internal/state"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-// banRow — одна терминальная блокировка ноды.
-type banRow struct {
+// BanRow — одна терминальная блокировка ноды.
+type BanRow struct {
 	TS          time.Time `json:"ts"`
 	NodeID      string    `json:"node_id"`
 	IP          string    `json:"ip"`
@@ -53,13 +54,13 @@ type banRow struct {
 	GapSec      int64     `json:"gap_sec"`      // интервал от предыдущего бана любого типа; -1 = первый
 }
 
-type historyDB struct {
+type DB struct {
 	sql *sql.DB
 }
 
-// openHistoryDB — открыть (создать) файл истории и гарантировать схему.
+// Open — открыть (создать) файл истории и гарантировать схему.
 // Ошибка → nil БД (регистратор работает без истории), причина в логе.
-func openHistoryDB(path string) *historyDB {
+func Open(path string) *DB {
 	if path == "" {
 		return nil
 	}
@@ -107,10 +108,10 @@ CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic(ts);`
 		return nil
 	}
 	log.Printf("history db: %s (sqlite, WAL)", path)
-	return &historyDB{sql: db}
+	return &DB{sql: db}
 }
 
-func (d *historyDB) Close() { _ = d.sql.Close() }
+func (d *DB) Close() { _ = d.sql.Close() }
 
 // recordBan — терминальная блокировка ноды. ОДИН IP пишется как бан только
 // ОДИН РАЗ: строка по адресу уже есть (ноду перепроверили и забанили снова,
@@ -119,7 +120,7 @@ func (d *historyDB) Close() { _ = d.sql.Close() }
 // когда адрес восстанавливается (liftBanIP) — после этого его новый бан
 // снова пишется как первый. gap считается от предыдущего бана любого типа
 // (периодичность «между событиями блокировки любых нод»).
-func (d *historyDB) recordBan(b banRow) {
+func (d *DB) RecordBan(b BanRow) {
 	if b.IP != "" {
 		var exists int
 		if err := d.sql.QueryRow(`SELECT COUNT(*) FROM bans WHERE ip = ?`, b.IP).Scan(&exists); err == nil && exists > 0 {
@@ -141,7 +142,7 @@ func (d *historyDB) recordBan(b banRow) {
 
 // liftBanIP — адрес ВОССТАНОВИЛСЯ (например, gp re-verify после бана прошёл):
 // запись о его бане убирается из статистики. Возвращает число удалённых строк.
-func (d *historyDB) liftBanIP(ip string) int {
+func (d *DB) LiftBanIP(ip string) int {
 	if ip == "" {
 		return 0
 	}
@@ -158,7 +159,7 @@ func (d *historyDB) liftBanIP(ip string) int {
 }
 
 // recordEvent — зеркало события журнала (вызывается из addEventLocked).
-func (d *historyDB) recordEvent(ev Event) {
+func (d *DB) RecordEvent(ev state.Event) {
 	if _, err := d.sql.Exec(
 		`INSERT INTO events (ts, type, node_id, ip, domain, detail) VALUES (?,?,?,?,?,?)`,
 		ev.At.Unix(), ev.Type, ev.NodeID, ev.IP, ev.Domain, ev.Detail); err != nil {
@@ -166,13 +167,13 @@ func (d *historyDB) recordEvent(ev Event) {
 	}
 }
 
-type trafficRow struct {
+type TrafficRow struct {
 	TS      time.Time
 	Ingress int64
 	Egress  int64
 }
 
-func (d *historyDB) recordTraffic(ts time.Time, nodeID string, ingress, egress int64) {
+func (d *DB) RecordTraffic(ts time.Time, nodeID string, ingress, egress int64) {
 	if ingress <= 0 && egress <= 0 {
 		return
 	}
@@ -182,15 +183,15 @@ func (d *historyDB) recordTraffic(ts time.Time, nodeID string, ingress, egress i
 	}
 }
 
-func (d *historyDB) trafficSince(since time.Time) ([]trafficRow, error) {
+func (d *DB) TrafficSince(since time.Time) ([]TrafficRow, error) {
 	rows, err := d.sql.Query(`SELECT ts, ingress_bytes, egress_bytes FROM traffic WHERE ts >= ? ORDER BY ts ASC, id ASC`, since.Unix())
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := []trafficRow{}
+	out := []TrafficRow{}
 	for rows.Next() {
-		var r trafficRow
+		var r TrafficRow
 		var ts int64
 		if err := rows.Scan(&ts, &r.Ingress, &r.Egress); err != nil {
 			return nil, err
@@ -203,7 +204,7 @@ func (d *historyDB) trafficSince(since time.Time) ([]trafficRow, error) {
 
 // pruneEvents — ротация журнала в БД. bans НЕ трогаем никогда: три метрики
 // дашборда (баны/периодичность/время жизни) должны жить постоянно.
-func (d *historyDB) pruneEvents(olderThan time.Time) {
+func (d *DB) PruneEvents(olderThan time.Time) {
 	res, err := d.sql.Exec(`DELETE FROM events WHERE ts < ?`, olderThan.Unix())
 	if err != nil {
 		log.Printf("history db: events retention: %v", err)
@@ -219,7 +220,7 @@ func (d *historyDB) pruneEvents(olderThan time.Time) {
 
 // bansSince — блокировки новее since, по возрастанию времени. reasonFilter:
 // "" — все, иначе только этого типа.
-func (d *historyDB) bansSince(since time.Time, reasonFilter string) ([]banRow, error) {
+func (d *DB) BansSince(since time.Time, reasonFilter string) ([]BanRow, error) {
 	q := `SELECT ts, node_id, ip, reason, lifetime_sec, gap_sec FROM bans WHERE ts >= ?`
 	args := []any{since.Unix()}
 	if reasonFilter != "" {
@@ -232,9 +233,9 @@ func (d *historyDB) bansSince(since time.Time, reasonFilter string) ([]banRow, e
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := []banRow{}
+	out := []BanRow{}
 	for rows.Next() {
-		var b banRow
+		var b BanRow
 		var ts int64
 		if err := rows.Scan(&ts, &b.NodeID, &b.IP, &b.Reason, &b.LifetimeSec, &b.GapSec); err != nil {
 			return nil, err
@@ -245,15 +246,5 @@ func (d *historyDB) bansSince(since time.Time, reasonFilter string) ([]banRow, e
 	return out, rows.Err()
 }
 
-// historyDBLoop — ротация событий раз в сутки (+ прогон на старте).
-func (r *Registry) historyDBLoop() {
-	if r.db == nil {
-		return
-	}
-	r.db.pruneEvents(time.Now().Add(-r.cfg.EventsRetention))
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for range ticker.C {
-		r.db.pruneEvents(time.Now().Add(-r.cfg.EventsRetention))
-	}
-}
+// SQL — прямой доступ к *sql.DB (для тестов и административных запросов).
+func (d *DB) SQL() *sql.DB { return d.sql }

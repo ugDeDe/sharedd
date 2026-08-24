@@ -93,7 +93,7 @@ func (r *Registry) terminateNodeLocked(c *Candidate, now time.Time, reason, caus
 	// ip в recordBan дополнительно гарантирует «один адрес — одна строка»,
 	// даже если ре-бан случился после нового мастерства на перепроверке.
 	if r.db != nil && c.HadMasterTime(now) {
-		r.db.recordBan(banRow{
+		r.db.RecordBan(banRow{
 			TS: now, NodeID: c.NodeID, IP: c.IP, Reason: reason,
 			LifetimeSec: int64(now.Sub(c.RegisteredAt).Seconds()),
 		})
@@ -206,7 +206,7 @@ func reverifyOpenLocked(rec *TerminatedRecord, now time.Time) bool {
 func (r *Registry) quarantineIPChangeLocked(c *Candidate, newIP string, now time.Time) {
 	oldIP := c.IP
 	if r.db != nil && c.HadMasterTime(now) {
-		r.db.recordBan(banRow{
+		r.db.RecordBan(banRow{
 			TS: now, NodeID: c.NodeID, IP: oldIP, Reason: BanReasonIPBan,
 			LifetimeSec: int64(now.Sub(c.RegisteredAt).Seconds()),
 		})

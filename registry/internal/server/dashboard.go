@@ -106,12 +106,12 @@ func (r *Registry) buildDashboard(name string, now time.Time) dashResponse {
 		return resp // HistoryOK=false — страница покажет «история недоступна»
 	}
 	// окно снапшотим под коротким db-запросом (sql.DB сам сериализует)
-	all, err := r.db.bansSince(from, "")
+	all, err := r.db.BansSince(from, "")
 	if err != nil {
 		return resp
 	}
 	resp.HistoryOK = true
-	traffic, err := r.db.trafficSince(from)
+	traffic, err := r.db.TrafficSince(from)
 	if err != nil {
 		resp.HistoryOK = false
 		return resp

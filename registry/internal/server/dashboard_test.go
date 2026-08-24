@@ -28,11 +28,11 @@ func TestHistoryDBGapChainAndRotation(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	db.recordBan(banRow{TS: now.Add(-3 * time.Hour), NodeID: "n1", IP: "1.1.1.1", Reason: BanReasonIPBan, LifetimeSec: 100})
-	db.recordBan(banRow{TS: now.Add(-2 * time.Hour), NodeID: "n2", IP: "2.2.2.2", Reason: BanReasonDead, LifetimeSec: -1})
-	db.recordBan(banRow{TS: now.Add(-1 * time.Hour), NodeID: "n3", IP: "3.3.3.3", Reason: BanReasonIPBan, LifetimeSec: 200})
+	db.RecordBan(banRow{TS: now.Add(-3 * time.Hour), NodeID: "n1", IP: "1.1.1.1", Reason: BanReasonIPBan, LifetimeSec: 100})
+	db.RecordBan(banRow{TS: now.Add(-2 * time.Hour), NodeID: "n2", IP: "2.2.2.2", Reason: BanReasonDead, LifetimeSec: -1})
+	db.RecordBan(banRow{TS: now.Add(-1 * time.Hour), NodeID: "n3", IP: "3.3.3.3", Reason: BanReasonIPBan, LifetimeSec: 200})
 
-	rows, err := db.bansSince(now.Add(-4*time.Hour), "")
+	rows, err := db.BansSince(now.Add(-4*time.Hour), "")
 	if err != nil || len(rows) != 3 {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
@@ -43,7 +43,7 @@ func TestHistoryDBGapChainAndRotation(t *testing.T) {
 		t.Fatalf("gap chain broken: %+v", rows)
 	}
 	// фильтр по типу
-	gp, _ := db.bansSince(now.Add(-4*time.Hour), BanReasonIPBan)
+	gp, _ := db.BansSince(now.Add(-4*time.Hour), BanReasonIPBan)
 	if len(gp) != 2 || gp[0].NodeID != "n1" || gp[1].NodeID != "n3" {
 		t.Fatalf("reason filter broken: %+v", gp)
 	}
@@ -51,15 +51,15 @@ func TestHistoryDBGapChainAndRotation(t *testing.T) {
 	// события: зеркалирование + ротация; баны ротация НЕ трогает
 	old := Event{At: now.Add(-40 * 24 * time.Hour), Type: EventNodeRegistered, NodeID: "old", IP: "9.9.9.9"}
 	fresh := Event{At: now, Type: EventNodeRegistered, NodeID: "fresh", IP: "9.9.9.8"}
-	db.recordEvent(old)
-	db.recordEvent(fresh)
-	db.pruneEvents(now.Add(-30 * 24 * time.Hour))
+	db.RecordEvent(old)
+	db.RecordEvent(fresh)
+	db.PruneEvents(now.Add(-30 * 24 * time.Hour))
 	var evLeft int
-	if err := db.sql.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&evLeft); err != nil || evLeft != 1 {
+	if err := db.SQL().QueryRow(`SELECT COUNT(*) FROM events`).Scan(&evLeft); err != nil || evLeft != 1 {
 		t.Fatalf("retention must keep only the fresh event, left=%d err=%v", evLeft, err)
 	}
 	var bansLeft int
-	if err := db.sql.QueryRow(`SELECT COUNT(*) FROM bans`).Scan(&bansLeft); err != nil || bansLeft != 3 {
+	if err := db.SQL().QueryRow(`SELECT COUNT(*) FROM bans`).Scan(&bansLeft); err != nil || bansLeft != 3 {
 		t.Fatalf("bans must NEVER rotate, left=%d err=%v", bansLeft, err)
 	}
 }
@@ -75,29 +75,29 @@ func TestHistoryDBOneBanPerIP(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	db.recordBan(banRow{TS: now.Add(-3 * time.Hour), NodeID: "n1", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 100})
+	db.RecordBan(banRow{TS: now.Add(-3 * time.Hour), NodeID: "n1", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 100})
 	// перепроверка: тот же ip забанили снова (даже под новым node_id и с
 	// новым мастер-временем) — вторая строка НЕ появляется
-	db.recordBan(banRow{TS: now.Add(-2 * time.Hour), NodeID: "n1-retry", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 300})
-	db.recordBan(banRow{TS: now.Add(-2*time.Hour + time.Minute), NodeID: "n2", IP: "8.8.8.8", Reason: BanReasonIPBan, LifetimeSec: 50})
+	db.RecordBan(banRow{TS: now.Add(-2 * time.Hour), NodeID: "n1-retry", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 300})
+	db.RecordBan(banRow{TS: now.Add(-2*time.Hour + time.Minute), NodeID: "n2", IP: "8.8.8.8", Reason: BanReasonIPBan, LifetimeSec: 50})
 
-	rows, _ := db.bansSince(now.Add(-4*time.Hour), "")
+	rows, _ := db.BansSince(now.Add(-4*time.Hour), "")
 	if len(rows) != 2 {
 		t.Fatalf("one ip = one ban row: want 2 rows, got %+v", rows)
 	}
 
 	// адрес восстановился — его бан из статистики убирается
-	if n := db.liftBanIP("7.7.7.7"); n != 1 {
+	if n := db.LiftBanIP("7.7.7.7"); n != 1 {
 		t.Fatalf("lift must remove exactly one row, got %d", n)
 	}
-	rows, _ = db.bansSince(now.Add(-4*time.Hour), "")
+	rows, _ = db.BansSince(now.Add(-4*time.Hour), "")
 	if len(rows) != 1 || rows[0].IP != "8.8.8.8" {
 		t.Fatalf("after lift only 8.8.8.8 must remain, got %+v", rows)
 	}
 
 	// …и следующий бан восстановленного адреса снова считается первым
-	db.recordBan(banRow{TS: now, NodeID: "n1-again", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 10})
-	rows, _ = db.bansSince(now.Add(-4*time.Hour), "")
+	db.RecordBan(banRow{TS: now, NodeID: "n1-again", IP: "7.7.7.7", Reason: BanReasonIPBan, LifetimeSec: 10})
+	rows, _ = db.BansSince(now.Add(-4*time.Hour), "")
 	if len(rows) != 2 {
 		t.Fatalf("re-ban after recovery must be recorded again, got %+v", rows)
 	}
@@ -125,12 +125,12 @@ func TestDashboardAggregates(t *testing.T) {
 		{today.Add(6*time.Hour + 40*time.Minute), 1800, "n3", "10.0.0.17"},
 	}
 	for _, s := range seed {
-		r.db.recordBan(banRow{TS: s.at, NodeID: s.node, IP: s.ip, Reason: BanReasonIPBan, LifetimeSec: s.life})
+		r.db.RecordBan(banRow{TS: s.at, NodeID: s.node, IP: s.ip, Reason: BanReasonIPBan, LifetimeSec: s.life})
 	}
 	// dead-бан не участвует в метриках GP
-	r.db.recordBan(banRow{TS: today.Add(8 * time.Hour), NodeID: "nd", IP: "10.0.0.9", Reason: BanReasonDead, LifetimeSec: 600})
+	r.db.RecordBan(banRow{TS: today.Add(8 * time.Hour), NodeID: "nd", IP: "10.0.0.9", Reason: BanReasonDead, LifetimeSec: 600})
 	// бан вчера — за окном today
-	r.db.recordBan(banRow{TS: today.Add(-time.Hour), NodeID: "old", IP: "10.0.0.1", Reason: BanReasonIPBan, LifetimeSec: 5})
+	r.db.RecordBan(banRow{TS: today.Add(-time.Hour), NodeID: "old", IP: "10.0.0.1", Reason: BanReasonIPBan, LifetimeSec: 5})
 
 	d := r.buildDashboard("day", now)
 	if !d.HistoryOK {
@@ -211,8 +211,8 @@ func TestTrafficHistoryAndCounterReset(t *testing.T) {
 	// Метки внутри «сегодня» независимо от времени запуска: окно «day» —
 	// от полуночи, поэтому now-1h после 00:59 выпало бы из окна (флейк).
 	base := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
-	r.db.recordTraffic(base.Add(-time.Hour), "n1", 100, 900)
-	r.db.recordTraffic(base.Add(-30*time.Minute), "n2", 50, 450)
+	r.db.RecordTraffic(base.Add(-time.Hour), "n1", 100, 900)
+	r.db.RecordTraffic(base.Add(-30*time.Minute), "n2", 50, 450)
 	d := r.buildDashboard("day", now)
 	if d.KPI.TrafficIngress != 150 || d.KPI.TrafficEgress != 1350 || d.KPI.TrafficTotal != 1500 {
 		t.Fatalf("traffic KPI mismatch: %+v", d.KPI)
@@ -234,7 +234,7 @@ func TestDashboardGapClusterFilter(t *testing.T) {
 		today.Add(31 * time.Minute), today.Add(2*time.Hour + 40*time.Minute),
 	}
 	for i, ts := range seed {
-		r.db.recordBan(banRow{TS: ts, NodeID: "n", IP: fmt.Sprintf("10.1.0.%d", i+1), Reason: BanReasonIPBan, LifetimeSec: 60 + int64(i)})
+		r.db.RecordBan(banRow{TS: ts, NodeID: "n", IP: fmt.Sprintf("10.1.0.%d", i+1), Reason: BanReasonIPBan, LifetimeSec: 60 + int64(i)})
 	}
 	d := r.buildDashboard("day", now)
 	if d.KPI.Bans != 4 {
@@ -257,8 +257,8 @@ func TestDashboardGapClusterFilter(t *testing.T) {
 	r2 := newTestRegistry(t)
 	r2.db = openHistoryDB(filepath.Join(t.TempDir(), "hist.db"))
 	defer r2.db.Close()
-	r2.db.recordBan(banRow{TS: today.Add(time.Hour), NodeID: "a", IP: "10.0.0.2", Reason: BanReasonIPBan, LifetimeSec: 10})
-	r2.db.recordBan(banRow{TS: today.Add(time.Hour + 90*time.Second), NodeID: "b", IP: "10.0.0.3", Reason: BanReasonIPBan, LifetimeSec: 10})
+	r2.db.RecordBan(banRow{TS: today.Add(time.Hour), NodeID: "a", IP: "10.0.0.2", Reason: BanReasonIPBan, LifetimeSec: 10})
+	r2.db.RecordBan(banRow{TS: today.Add(time.Hour + 90*time.Second), NodeID: "b", IP: "10.0.0.3", Reason: BanReasonIPBan, LifetimeSec: 10})
 	d2 := r2.buildDashboard("day", now)
 	if d2.KPI.AvgGapSec != nil {
 		t.Fatalf("all gaps <2min must yield nil avg, got %+v", *d2.KPI.AvgGapSec)

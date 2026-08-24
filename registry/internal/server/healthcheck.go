@@ -264,7 +264,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				// адрес восстановился — запись о его бане убирается из
 				// статистики (один ip = один бан, до восстановления)
 				if r.db != nil {
-					r.db.liftBanIP(candidate.IP)
+					r.db.LiftBanIP(candidate.IP)
 				}
 			}
 		case !verifiedOK && candidate.Quarantine != nil:
@@ -351,7 +351,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				ingress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficIngressMetric)
 				egress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficEgressMetric)
 			}
-			r.db.recordTraffic(time.Now(), candidate.NodeID, ingress, egress)
+			r.db.RecordTraffic(time.Now(), candidate.NodeID, ingress, egress)
 		}
 		candidate.MetricsSnapshot = payload.MetricsSnapshot
 	}

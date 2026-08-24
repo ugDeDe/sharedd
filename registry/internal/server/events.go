@@ -26,7 +26,7 @@ func (r *Registry) addEventLocked(ev Event) {
 	// Вечная история — зеркалим событие в SQLite (см. db.go).
 	// Запись sub-мс и под r.mu укладывается рядом с persistStateLocked.
 	if r.db != nil {
-		r.db.recordEvent(ev)
+		r.db.RecordEvent(ev)
 	}
 }
 

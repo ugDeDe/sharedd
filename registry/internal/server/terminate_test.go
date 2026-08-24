@@ -162,7 +162,7 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 	if !c.GlobalpingOK {
 		t.Fatal("recovered node must be GlobalpingOK again")
 	}
-	bans, err := r.db.bansSince(time.Now().Add(-time.Hour), "")
+	bans, err := r.db.BansSince(time.Now().Add(-time.Hour), "")
 	if err != nil || len(bans) != 0 {
 		t.Fatalf("recovered node must NOT be banned, bans=%v err=%v", bans, err)
 	}
@@ -194,7 +194,7 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 	if rec.Message != "Бан по ip, запустите службу заново после его смены" {
 		t.Fatalf("message must be the exact TZ line, got %q", rec.Message)
 	}
-	bans, _ = r.db.bansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
+	bans, _ = r.db.BansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
 	if len(bans) != 1 || bans[0].NodeID != "node-q" || bans[0].LifetimeSec < 0 {
 		t.Fatalf("ip_ban row missing/invalid in history: %+v", bans)
 	}
@@ -347,11 +347,11 @@ func TestQuarantineDropoutCountsAsBan(t *testing.T) {
 			t.Fatalf("%s dropout from quarantine must be an ip_ban, got %+v", id, rec)
 		}
 	}
-	bans, _ := r.db.bansSince(now.Add(-2*time.Hour), BanReasonIPBan)
+	bans, _ := r.db.BansSince(now.Add(-2*time.Hour), BanReasonIPBan)
 	if len(bans) != 1 || bans[0].NodeID != "node-exp" {
 		t.Fatalf("only the master-time dropout must reach ban history, got %+v", bans)
 	}
-	if dead, _ := r.db.bansSince(now.Add(-2*time.Hour), BanReasonDead); len(dead) != 0 {
+	if dead, _ := r.db.BansSince(now.Add(-2*time.Hour), BanReasonDead); len(dead) != 0 {
 		t.Fatalf("quarantined dead must NOT be counted as dead reason: %+v", dead)
 	}
 	for _, ev := range r.state.Events {
@@ -409,7 +409,7 @@ func TestReverifyLifecycle(t *testing.T) {
 	if !rec2.ReverifyFailed {
 		t.Fatal("failed re-verify must mark the record ReverifyFailed")
 	}
-	bans, _ := r.db.bansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
+	bans, _ := r.db.BansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
 	if len(bans) != 1 { // ре-бан по итогам reverify НЕ кладёт вторую строку — бан адреса уже учтён
 		t.Fatalf("failed re-verify must NOT add a second ip_ban row, got %+v", bans)
 	}
@@ -469,7 +469,7 @@ func TestReverifyLifecycle(t *testing.T) {
 	if !lifted {
 		t.Fatal("ban_lifted event expected after passed re-verify")
 	}
-	bans, _ = r.db.bansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
+	bans, _ = r.db.BansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
 	// остался только бан node-w (ip 1.1.1.1 не восстанавливался): бан node-v
 	// убран из статистики — адрес восстановился через reverify; ре-баны и
 	// конверсия ip без мастерства строк не плодят (один ip — одна строка)
@@ -612,7 +612,7 @@ func TestRetireEndpoint(t *testing.T) {
 	if tr := r.state.Terminated["node-r"]; tr == nil || tr.Reason != BanReasonDead {
 		t.Fatalf("termination record missing: %+v", tr)
 	}
-	bans, _ := r.db.bansSince(now.Add(-time.Hour), BanReasonDead)
+	bans, _ := r.db.BansSince(now.Add(-time.Hour), BanReasonDead)
 	if len(bans) != 1 || bans[0].LifetimeSec != int64((30*time.Minute).Seconds()) {
 		t.Fatalf("dead ban row mismatch: %+v", bans)
 	}
@@ -626,7 +626,7 @@ func TestRetireEndpoint(t *testing.T) {
 	if tr := r.state.Terminated["node-gone"]; tr == nil {
 		t.Fatal("retired-after-expiry node must be terminated-recorded")
 	}
-	bans, _ = r.db.bansSince(now.Add(-time.Hour), BanReasonDead)
+	bans, _ = r.db.BansSince(now.Add(-time.Hour), BanReasonDead)
 	if len(bans) != 1 {
 		t.Fatalf("retire with unknown master time must NOT add a ban row, got %+v", bans)
 	}
@@ -660,7 +660,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 		t.Fatalf("quarantine must be dropped after the ip change: %+v", c.Quarantine)
 	}
 	// старый ip — в истории как бан (в статистику «без восстановления»)
-	bans, _ := r.db.bansSince(now.Add(-2*time.Hour), BanReasonIPBan)
+	bans, _ := r.db.BansSince(now.Add(-2*time.Hour), BanReasonIPBan)
 	if len(bans) != 1 || bans[0].IP != "10.0.0.5" || bans[0].LifetimeSec != int64(time.Hour.Seconds()) {
 		t.Fatalf("quarantine ip change must record an ip_ban row for the OLD ip: %+v", bans)
 	}
@@ -717,7 +717,7 @@ func TestQuarantineIPChangeCountsAsBan(t *testing.T) {
 	if rec := r.state.Terminated["node-mv2"]; rec == nil || !rec.StaleIP || rec.IP != "10.0.0.9" {
 		t.Fatalf("node-mv2 old ip must still get the stale record: %+v", rec)
 	}
-	bans, _ = r.db.bansSince(now.Add(-2*time.Hour), BanReasonIPBan)
+	bans, _ = r.db.BansSince(now.Add(-2*time.Hour), BanReasonIPBan)
 	if len(bans) != 1 {
 		t.Fatalf("ip change without master time must NOT add a ban row, got %+v", bans)
 	}
@@ -751,7 +751,7 @@ func TestBanStatsRequireMasterTime(t *testing.T) {
 	if !sawTerm {
 		t.Fatal("node_terminated event must fire regardless of master time")
 	}
-	bans, _ := r.db.bansSince(now.Add(-time.Hour), "")
+	bans, _ := r.db.BansSince(now.Add(-time.Hour), "")
 	if len(bans) != 0 {
 		t.Fatalf("ban without master time must NOT reach history: %+v", bans)
 	}
@@ -763,7 +763,7 @@ func TestBanStatsRequireMasterTime(t *testing.T) {
 		MasterStints: 2, MasterSeconds: 3600,
 	}, now, BanReasonDead, "")
 	r.mu.Unlock()
-	bans, _ = r.db.bansSince(now.Add(-time.Hour), "")
+	bans, _ = r.db.BansSince(now.Add(-time.Hour), "")
 	if len(bans) != 1 || bans[0].NodeID != "node-master" || bans[0].Reason != BanReasonDead ||
 		bans[0].LifetimeSec != int64((2*time.Hour).Seconds()) {
 		t.Fatalf("master-time ban must be recorded: %+v", bans)
@@ -776,7 +776,7 @@ func TestBanStatsRequireMasterTime(t *testing.T) {
 		MasterStints: 1, MasterSince: now.Add(-5 * time.Minute),
 	}, now, BanReasonIPBan, "")
 	r.mu.Unlock()
-	bans, _ = r.db.bansSince(now.Add(-time.Hour), "")
+	bans, _ = r.db.BansSince(now.Add(-time.Hour), "")
 	if len(bans) != 2 {
 		t.Fatalf("open-stint master ban must be recorded: %+v", bans)
 	}
@@ -789,7 +789,7 @@ func TestBanStatsRequireMasterTime(t *testing.T) {
 	if r.state.Terminated["node-gone2"] == nil {
 		t.Fatal("retired node must still get the termination record")
 	}
-	bans, _ = r.db.bansSince(now.Add(-time.Hour), "")
+	bans, _ = r.db.BansSince(now.Add(-time.Hour), "")
 	if len(bans) != 2 {
 		t.Fatalf("retire with unknown master time must NOT add a ban row: %+v", bans)
 	}
