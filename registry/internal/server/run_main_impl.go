@@ -652,7 +652,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// --- 1. очередь по непрерывному здоровью (как в) ---
+	// --- 1. очередь по непрерывному здоровью ---
 	list := make([]*Candidate, 0, len(r.state.Candidates))
 	joined := make([]*Candidate, 0, len(r.state.Candidates))
 	for _, c := range r.state.Candidates {
@@ -676,43 +676,23 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			log.Printf("candidate %s left healthy queue (unhealthy) — position reset", c.NodeID)
 		}
 		if !full && c.UnhealthySince.IsZero() {
-			// lazy-arm: нода была нездорова на момент апгрейда (поля в
-			// state не существовало) или регистрируется заранее больной —
-			// окно рипера стартует с ближайшего evaluate.
+			// lazy-arm: нода была нездорова на момент апгрейда или регистрируется
+			// заранее больной — окно рипера стартует с ближайшего evaluate.
 			c.UnhealthySince = now
 		}
 		if full {
 			list = append(list, c)
 		}
 	}
-	sort.Slice(list, func(i, j int) bool {
-		a, b := list[i], list[j]
-		if !a.QueuedAt.Equal(b.QueuedAt) {
-			return a.QueuedAt.Before(b.QueuedAt)
-		}
-		if !a.RegisteredAt.Equal(b.RegisteredAt) {
-			return a.RegisteredAt.Before(b.RegisteredAt)
-		}
-		return a.NodeID < b.NodeID
-	})
+	sortQueue(list)
 	for _, c := range joined {
-		pos := 0
-		for i, x := range list {
-			if x == c {
-				pos = i + 1
-				break
-			}
-		}
 		r.addEventLocked(Event{
 			Type: EventQueueJoined, NodeID: c.NodeID, IP: c.IP,
-			Detail: fmt.Sprintf("queue position %d of %d", pos, len(list)),
+			Detail: fmt.Sprintf("queue position %d of %d", positionInQueue(list, c), len(list)),
 		})
 	}
 
 	// --- 1.5. СРМД: масштабирование числа доменов под очередь ---
-	// Обновляет таблицу клиентов по доменам; при включённом [srmd] enabled —
-	// создаёт/разворачивает/сворачивает домены по лимиту нод на домен.
-	// DNS-записи свёрнутых доменов (CNAME) напишет selectionLoop вне локов.
 	srmdChanged := r.srmdRebalanceLocked(now, list)
 
 	// --- 2. эффективный список доменов (hot-edit из панели — под cfgMu) ---
@@ -732,7 +712,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		}
 		domains = append(domains, d)
 	}
-	sort.Strings(domains) // детерминированный обход: воспроизводимые раскладки
+	sort.Strings(domains)
 
 	if r.state.Assignments == nil {
 		r.state.Assignments = make(map[string]string)
@@ -746,7 +726,6 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	for d := range r.state.Assignments {
 		if !seen[d] {
 			// домен вычеркнули из конфига — назначение silently сгорает
-			// (DNS-запись не трогаем: именем может завладеть кто-то другой)
 			delete(r.state.Assignments, d)
 			delete(r.state.AssignmentsSince, d)
 			delete(r.ttlOverdue, d)
@@ -757,199 +736,34 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	for _, c := range list {
 		healthyByID[c.NodeID] = c
 	}
-	holds := make(map[string][]string, len(r.state.Assignments)) // nodeID → его домены
+	holds := make(map[string][]string, len(r.state.Assignments))
 	for d, id := range r.state.Assignments {
 		holds[id] = append(holds[id], d)
 	}
 
-	changes := make([]domainChange, 0, len(domains))
-
-	// наименее загруженный из очереди; при равенстве — раньше в очереди.
-	// exclude (может быть "") — держатель, которого нельзя выбирать (TTL).
-	pickLeastLoaded := func(exclude string) *Candidate {
-		var best *Candidate
-		for _, c := range list {
-			if c.NodeID == exclude {
-				continue
-			}
-			if best == nil || len(holds[c.NodeID]) < len(holds[best.NodeID]) {
-				best = c
-			}
-		}
-		return best
+	view := &selectionView{
+		queue:            list,
+		healthy:          healthyByID,
+		all:              r.state.Candidates,
+		holds:            holds,
+		Assignments:      r.state.Assignments,
+		AssignmentsSince: r.state.AssignmentsSince,
+		TTLOverdue:       r.ttlOverdue,
 	}
+	var sink selectionSink
 
-	// --- 3. pass 0: принудительная ротация по TTL мастерства ---
-	// Здоровый держатель, у которого истёк лимит, сдаёт домен наименее
-	// загруженной ноде очереди (кроме себя). Замены нет — домен остаётся на
-	// нём: OVERDUE лог один раз на эпизод, панель покажет «TTL истёк».
-	// Сдавший домен уходит в КОНЕЦ очереди (QueuedAt=now + хвост
-	// list). Без этого pickLeastLoaded при равной загрузке всегда брал
-	// раннего в очереди — домен ходил между двумя старшими нодами, даже
-	// когда здоровых больше.
-	if ttl := r.masterTTL(); ttl > 0 && len(list) > 0 {
-		for _, d := range domains {
-			holderID := r.state.Assignments[d]
-			if holderID == "" || healthyByID[holderID] == nil {
-				delete(r.ttlOverdue, d)
-				continue // мёртвых раздаст pass 1
-			}
-			since := r.state.AssignmentsSince[d]
-			if since.IsZero() {
-				// назначение досталось из старой версии — отсчёт отныне
-				r.state.AssignmentsSince[d] = now
-				continue
-			}
-			age := now.Sub(since)
-			if age < ttl {
-				continue
-			}
-			target := pickLeastLoaded(holderID)
-			if target == nil {
-				if !r.ttlOverdue[d] {
-					r.ttlOverdue[d] = true
-					log.Printf("domain %s: master TTL %s exceeded (%s old) but no healthy replacement — keeping %q",
-						d, ttl, age.Round(time.Second), holderID)
-				}
-				continue
-			}
-			reason := fmt.Sprintf("master TTL %s expired (was %s) — forced rotation", ttl, age.Round(time.Second))
-			holderIP := r.state.Candidates[holderID].IP
-			r.addEventLocked(Event{Type: EventMasterLost, NodeID: holderID, IP: holderIP, Domain: d, Detail: reason})
-			holds[holderID] = dropDomain(holds[holderID], d)
-			holds[target.NodeID] = append(holds[target.NodeID], d)
-			r.state.Assignments[d] = target.NodeID
-			r.state.AssignmentsSince[d] = now
-			delete(r.ttlOverdue, d)
-			r.state.Counters.MasterSwitches++
-			r.state.Counters.MasterTTLRotations++
-			// Истёкший держатель — в конец очереди (и персистентный
-			// QueuedAt, и живой порядок list для остатка этого тика).
-			if holder := r.state.Candidates[holderID]; holder != nil {
-				holder.QueuedAt = now
-			}
-			for i, x := range list {
-				if x.NodeID == holderID {
-					copy(list[i:], list[i+1:])
-					list[len(list)-1] = x
-					break
-				}
-			}
-			pos := 0
-			for i, x := range list {
-				if x == target {
-					pos = i + 1
-					break
-				}
-			}
-			r.addEventLocked(Event{
-				Type: EventMasterElected, NodeID: target.NodeID, IP: target.IP, Domain: d,
-				Detail: fmt.Sprintf("forced rotation (TTL %s), queue #%d, was %q", ttl, pos, holderID),
-			})
-			changes = append(changes, domainChange{Domain: d, FromID: holderID, ToID: target.NodeID, ToIP: target.IP})
-			log.Printf("domain %s: master %q -> %q (%s)", d, holderID, target.NodeID, reason)
-		}
-	}
+	// --- 3–5. проходы селекции (чистые функции над view) ---
+	rotateByTTL(view, domains, r.masterTTL(), now, &sink)
+	reassignDead(view, domains, r.cfg.ReportFreshnessTTL, now, &sink)
+	fillEmpty(view, now, &sink)
+	reconcileStints(r.state.Candidates, healthyByID, holds, now, &sink)
 
-	// --- 4. pass 1: переназначение мёртвых/отсутствующих мастеров ---
-	if len(list) > 0 {
-		for _, d := range domains {
-			holderID := r.state.Assignments[d]
-			if holderID != "" && healthyByID[holderID] != nil {
-				continue // держатель жив — домен не трогаем
-			}
-			var reason, holderIP string
-			switch holder := r.state.Candidates[holderID]; {
-			case holderID == "":
-				reason = "domain had no master"
-			case holder == nil:
-				reason = "assignee removed from pool"
-			default:
-				reason = holder.UnhealthyReason(r.cfg.ReportFreshnessTTL)
-				holderIP = holder.IP
-			}
-			if holderID != "" {
-				r.addEventLocked(Event{Type: EventMasterLost, NodeID: holderID, IP: holderIP, Domain: d, Detail: reason})
-				holds[holderID] = dropDomain(holds[holderID], d)
-			}
-			target := pickLeastLoaded("")
-			holds[target.NodeID] = append(holds[target.NodeID], d)
-			r.state.Assignments[d] = target.NodeID
-			r.state.AssignmentsSince[d] = now
-			delete(r.ttlOverdue, d)
-			r.state.Counters.MasterSwitches++
-			pos := 0
-			for i, x := range list {
-				if x == target {
-					pos = i + 1
-					break
-				}
-			}
-			r.addEventLocked(Event{
-				Type: EventMasterElected, NodeID: target.NodeID, IP: target.IP, Domain: d,
-				Detail: fmt.Sprintf("queue #%d (was %q: %s)", pos, holderID, reason),
-			})
-			changes = append(changes, domainChange{Domain: d, FromID: holderID, ToID: target.NodeID, ToIP: target.IP})
-			log.Printf("domain %s: master %q -> %q (%s)", d, holderID, target.NodeID, reason)
-		}
-
-		// --- 4. pass 2: fill-empty — сироты перетекают к нодам без доменов ---
-		for {
-			var idle *Candidate
-			for _, c := range list {
-				if len(holds[c.NodeID]) == 0 {
-					idle = c
-					break
-				}
-			}
-			if idle == nil {
-				break
-			}
-			var donor *Candidate
-			for _, c := range list {
-				if len(holds[c.NodeID]) > 1 && (donor == nil || len(holds[c.NodeID]) > len(holds[donor.NodeID])) {
-					donor = c
-				}
-			}
-			if donor == nil {
-				break
-			}
-			sort.Strings(holds[donor.NodeID])
-			d := holds[donor.NodeID][0] // лексикографически первый у самого нагруженного
-			holds[donor.NodeID] = holds[donor.NodeID][1:]
-			holds[idle.NodeID] = append(holds[idle.NodeID], d)
-			r.state.Assignments[d] = idle.NodeID
-			r.state.AssignmentsSince[d] = now
-			delete(r.ttlOverdue, d)
-			r.state.Counters.MasterSwitches++
-			r.addEventLocked(Event{Type: EventMasterLost, NodeID: donor.NodeID, IP: donor.IP, Domain: d,
-				Detail: "rebalance: domain moved to a node with zero domains"})
-			r.addEventLocked(Event{Type: EventMasterElected, NodeID: idle.NodeID, IP: idle.IP, Domain: d,
-				Detail: fmt.Sprintf("rebalance from %q", donor.NodeID)})
-			changes = append(changes, domainChange{Domain: d, FromID: donor.NodeID, ToID: idle.NodeID, ToIP: idle.IP})
-			log.Printf("domain %s: rebalanced %q -> %q (idle node)", d, donor.NodeID, idle.NodeID)
-		}
-	}
-
-	// --- 5. stint reconcile: мастерство = держишь ≥1 домен, будучи здоровым ---
-	for _, c := range r.state.Candidates {
-		holdsDomains := len(holds[c.NodeID]) > 0
-		healthyNow := healthyByID[c.NodeID] != nil
-		switch {
-		case holdsDomains && healthyNow && c.MasterSince.IsZero():
-			c.MasterSince = now
-			c.MasterStints++
-		case (!holdsDomains || !healthyNow) && !c.MasterSince.IsZero():
-			closeMasterStintLocked(c, now)
-			if holdsDomains && !healthyNow && len(list) == 0 {
-				// держатель нездоров, а заменить некем (пустая очередь): записи
-				// остаются на нём, но мастерство фиксируем как потерянное
-				r.addEventLocked(Event{
-					Type: EventMasterLost, NodeID: c.NodeID, IP: c.IP,
-					Detail: "unhealthy, no healthy replacement — A-records left on it (" + strings.Join(holds[c.NodeID], ", ") + ")",
-				})
-			}
-		}
+	// сброс побочных эффектов проходов под локом
+	r.state.Counters.MasterSwitches += sink.switches
+	r.state.Counters.MasterTTLRotations += sink.ttlRotations
+	changes := sink.changes
+	for _, ev := range sink.events {
+		r.addEventLocked(ev)
 	}
 
 	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
@@ -961,6 +775,16 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		r.persistStateLocked()
 	}
 	return changes
+}
+
+// positionInQueue — 1-based позиция кандидата в очереди (0 — нет в очереди).
+func positionInQueue(list []*Candidate, c *Candidate) int {
+	for i, x := range list {
+		if x == c {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // dropDomain убирает домен из списка (лениво: без сохранения порядка).
