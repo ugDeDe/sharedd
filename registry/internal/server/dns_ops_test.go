@@ -323,7 +323,7 @@ func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
 
 	r.applyDNSTarget("d1.example.com", "node-a", "1.2.3.4")
 	op := r.state.DNSOperations["d1.example.com"]
-	if op == nil || op.Attempts != 1 || op.LastError == "" || op.NextAttempt.IsZero() || !op.drifted() {
+	if op == nil || op.Attempts != 1 || op.LastError == "" || op.NextAttempt.IsZero() || !op.Drifted() {
 		t.Fatalf("failed operation was not persisted for retry: %+v", op)
 	}
 	fc.failOp["list"] = false
@@ -331,7 +331,7 @@ func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
 	r.reconcileDNSDue()
 
 	op = r.state.DNSOperations["d1.example.com"]
-	if op.Attempts != 2 || op.LastError != "" || op.AppliedType != "A" || op.AppliedTarget != "1.2.3.4" || op.LastSuccess.IsZero() || op.drifted() {
+	if op.Attempts != 2 || op.LastError != "" || op.AppliedType != "A" || op.AppliedTarget != "1.2.3.4" || op.LastSuccess.IsZero() || op.Drifted() {
 		t.Fatalf("successful retry did not converge: %+v", op)
 	}
 	if got := fc.find("d1.example.com", "A"); len(got) != 1 || got[0].Content != "1.2.3.4" {

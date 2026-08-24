@@ -27,23 +27,6 @@ const (
 	dnsRetryMax          = 5 * time.Minute
 )
 
-type DNSOperation struct {
-	DesiredType   string    `json:"desired_type,omitempty"`
-	DesiredTarget string    `json:"desired_target,omitempty"`
-	DesiredNode   string    `json:"desired_node,omitempty"`
-	AppliedType   string    `json:"applied_type,omitempty"`
-	AppliedTarget string    `json:"applied_target,omitempty"`
-	Attempts      int       `json:"attempts,omitempty"`
-	NextAttempt   time.Time `json:"next_attempt,omitempty"`
-	LastError     string    `json:"last_error,omitempty"`
-	LastSuccess   time.Time `json:"last_success,omitempty"`
-	Generation    uint64    `json:"generation,omitempty"`
-}
-
-func (op *DNSOperation) drifted() bool {
-	return op.DesiredType != op.AppliedType || op.DesiredTarget != op.AppliedTarget
-}
-
 // cfDNSAPI — минимально используемый срез Cloudflare API; *cloudflare.API
 // удовлетворяет интерфейсу напрямую, в тестах подсовывается фейк.
 type cfDNSAPI interface {
@@ -107,7 +90,7 @@ func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
 		r.dnsInFlight = make(map[string]bool)
 	}
 	op := r.state.DNSOperations[domain]
-	if op == nil || !op.drifted() || (!force && now.Before(op.NextAttempt)) || r.dnsInFlight[domain] || !r.domainInConfigLocked(domain) {
+	if op == nil || !op.Drifted() || (!force && now.Before(op.NextAttempt)) || r.dnsInFlight[domain] || !r.domainInConfigLocked(domain) {
 		r.mu.Unlock()
 		return nil
 	}

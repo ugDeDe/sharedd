@@ -465,7 +465,7 @@ func (r *Registry) buildOverview() panelOverview {
 			continue
 		}
 		ov.DNS.Operations++
-		drifted := op.drifted()
+		drifted := op.Drifted()
 		if drifted {
 			ov.DNS.Drifted++
 		}
@@ -645,7 +645,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		n.ReportAgeSec = int64(now.Sub(c.LastReportAt).Seconds())
 	}
 	if n.QueuePosition == 0 {
-		n.UnhealthyReason = c.unhealthyReason(freshnessTTL)
+		n.UnhealthyReason = c.UnhealthyReason(freshnessTTL)
 	}
 	if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
 		vv := v

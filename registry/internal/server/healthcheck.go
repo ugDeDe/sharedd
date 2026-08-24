@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sharedd/registry/internal/state"
 	"time"
 )
 
@@ -232,7 +233,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				ProbesTotal: probesTotal, Probes: lines,
 			}
 		}
-		candidate.GPHist = pushRing(candidate.GPHist, GPPoint{
+		candidate.GPHist = state.PushRing(candidate.GPHist, GPPoint{
 			At: time.Now(), OK: verifiedOK, Ratio: verifiedRatio,
 			ProbesOK: probesOK, ProbesTotal: probesTotal,
 		}, gpHistCap)
@@ -360,7 +361,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		if v, ok := payload.MetricsSnapshot[uniqueIPsMetric]; ok {
 			clients = int(v)
 		}
-		candidate.ReportHist = pushRing(candidate.ReportHist, ReportPoint{
+		candidate.ReportHist = state.PushRing(candidate.ReportHist, ReportPoint{
 			At: time.Now(), MetricsOK: payload.MetricsOK,
 			Clients: clients, Writers: int(payload.MetricsSnapshot[writersMetric]),
 		}, reportHistCap)
@@ -430,85 +431,6 @@ func acceptReport(c *Candidate, payload HealthReportPayload) {
 		}
 	}
 	if payload.GlobalpingMeasurementID != "" {
-		c.UsedMeasurementIDs = pushRing(c.UsedMeasurementIDs, payload.GlobalpingMeasurementID, usedMeasurementIDsCap)
+		c.UsedMeasurementIDs = state.PushRing(c.UsedMeasurementIDs, payload.GlobalpingMeasurementID, usedMeasurementIDsCap)
 	}
-}
-
-func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
-	if !c.Healthy {
-		return false
-	}
-	// Вместо сырого MetricsOK последнего отчёта — защёлка
-	// MetricsHealthy (fail/recover-пороги). GlobalpingOK остаётся
-	// мгновенным: это НЕЗАВИСИМАЯ верификация регистратора, нода её
-	// подделать не может, а подтверждённо заблокированный мастер —
-	// мёртвый груз для домена, задержка ротации тут только вредит.
-	if !c.GlobalpingOK || !c.MetricsHealthy {
-		return false
-	}
-	if c.PortCompatible != nil && !*c.PortCompatible {
-		return false
-	}
-	if c.LastReportAt.IsZero() || time.Since(c.LastReportAt) > freshnessTTL {
-		return false
-	}
-	return true
-}
-
-// unhealthyReason — человекочитаемая первопричина того, что нода НЕ fully
-// healthy. Используется в журнале событий (queue_left) и панели.
-func (c *Candidate) unhealthyReason(freshnessTTL time.Duration) string {
-	switch {
-	case c.PortCompatible != nil && !*c.PortCompatible:
-		return fmt.Sprintf("proxy port %d differs from registry shared port", c.Port)
-	case c.Quarantine != nil: //
-		return fmt.Sprintf("gp quarantine: failed verified attempt %d (last ratio %.2f) — awaiting ban verdict or recovery",
-			c.Quarantine.Attempts, c.Quarantine.LastRatio)
-	case !c.Healthy:
-		return "tcp probe failing (port unreachable)"
-	case !c.GlobalpingOK:
-		reason := "globalping verification failed (blocked/unreachable from outside)"
-		if c.GlobalpingMeasurementID != "" {
-			reason += fmt.Sprintf(", ratio %.2f", c.GlobalpingVerifiedRatio)
-		}
-		return reason
-	case !c.MetricsHealthy:
-		// Сюда попадаем только после серии плохих отчётов (защёлка)
-		reason := fmt.Sprintf("telemt metrics failing (%d consecutive bad reports hit fail_threshold)", c.MetricsFailStreak)
-		if c.ReportError != "" {
-			reason += ": " + c.ReportError
-		}
-		return reason
-	case c.LastReportAt.IsZero():
-		return "no health report received yet"
-	case time.Since(c.LastReportAt) > freshnessTTL:
-		return fmt.Sprintf("health report stale (%s ago)", time.Since(c.LastReportAt).Round(time.Second))
-	default:
-		return "unknown"
-	}
-}
-
-// AvailabilityPct — доля успешных health-отчётов ноды за всё время (0..100).
-func (c *Candidate) AvailabilityPct() float64 {
-	if c.ReportsTotal == 0 {
-		return 0
-	}
-	return float64(c.ReportsOK) * 100 / float64(c.ReportsTotal)
-}
-
-// GPVerifiedPct — доля успешных НЕЗАВИСИМЫХ проверок Globalping (0..100).
-func (c *Candidate) GPVerifiedPct() float64 {
-	if c.GPChecksTotal == 0 {
-		return 0
-	}
-	return float64(c.GPChecksOK) * 100 / float64(c.GPChecksTotal)
-}
-
-// MasterTimeSec — полное время в роли мастера: закрытые stint'ы + текущий.
-func (c *Candidate) MasterTimeSec(now time.Time) int64 {
-	total := c.MasterSeconds
-	if !c.MasterSince.IsZero() {
-		total += int64(now.Sub(c.MasterSince).Seconds())
-	}
-	return total
 }

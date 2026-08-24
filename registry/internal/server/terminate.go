@@ -63,61 +63,16 @@ const (
 	MsgDead  = "Регистратор не достучался до порта и/или не получил метрики"
 )
 
-// TerminatedRecord — терминальная запись по убитой ноде. Персистится в
-// State (registry_state.json): рестарт регистратора блок не отменяет.
-// Вечная история — в БД (bans), State — только оперативный блок-лист.
-type TerminatedRecord struct {
-	NodeID  string    `json:"node_id"`
-	IP      string    `json:"ip"`
-	Reason  string    `json:"reason"`  // BanReasonIPBan | BanReasonDead
-	Message string    `json:"message"` // точный текст для лога агента
-	At      time.Time `json:"at"`
-	// ReverifyFailed — нода уже получала перепроверку старого ip
-	// и провалила её: повторная попытка — только по кулдауну
-	// reverifyCooldown (иначе цикл 410→register→карантин→бан вечен).
-	ReverifyFailed bool `json:"reverify_failed,omitempty"`
-	// StaleIP — запись поставлена автоматически при выходе ноды
-	// из карантина со сменённым ip: блок привязан к СТАРОМУ ip, а нода жива
-	// на новом. Такую запись не снимает terminateLiftIfIPChangedLocked
-	// (нода ничьих инструкций не выполняла — она просто бросила плохой ip).
-	StaleIP bool `json:"stale_ip,omitempty"`
-}
-
 // reverifyCooldown — минимальный зазор между проваленной GP-перепроверкой
 // и следующей: внутри окна register со старого ip → 403 kill, после —
 // шанс снова даётся («надолго не блокируем», но и не флапим).
 const reverifyCooldown = 15 * time.Minute
-
-// QuarantineState — нода в GP-карантине (всё зелёное, кроме globalping).
-// Живёт внутри Candidate (персистится со state). Attempts — подряд
-// неудачных НЕЗАВИСИМО верифицированных GP-проверок, включая ту, что
-// привела в карантин; достиг cfg.QuarantineAttempts → бан.
-type QuarantineState struct {
-	EnteredAt         time.Time `json:"entered_at"`
-	Attempts          int       `json:"attempts"`
-	LastRatio         float64   `json:"last_ratio"`
-	LastMeasurementID string    `json:"last_measurement_id,omitempty"`
-	Stale             bool      `json:"stale,omitempty"`
-	// Reverify — карантин посажен переподключением СТАРОГО
-	// забаненного ip: попытка одна (Attempts посеяны как max-1), ok
-	// снимает бан (ban_lifted), fail возвращает в бан навсегда
-	// (запись получит ReverifyFailed — второй перепроверки не будет).
-	Reverify bool `json:"reverify,omitempty"`
-}
 
 func banMessage(reason string) string {
 	if reason == BanReasonDead {
 		return MsgDead
 	}
 	return MsgIPBan
-}
-
-// hadMasterTime — успела ли нода поработать мастером: есть/был stint
-// (закрытые секунды либо открытый MasterSince). Это условие записи бана
-// в статистику: бан ноды, не задевшей пользователей, счётчики
-// не двигает.
-func (c *Candidate) hadMasterTime(now time.Time) bool {
-	return c.MasterStints > 0 || c.MasterTimeSec(now) > 0
 }
 
 // terminateNodeLocked — окончательное завершение ноды: терминальная запись
@@ -137,7 +92,7 @@ func (r *Registry) terminateNodeLocked(c *Candidate, now time.Time, reason, caus
 	// В историю — только бан ноды со временем мастерства; дедупликация по
 	// ip в recordBan дополнительно гарантирует «один адрес — одна строка»,
 	// даже если ре-бан случился после нового мастерства на перепроверке.
-	if r.db != nil && c.hadMasterTime(now) {
+	if r.db != nil && c.HadMasterTime(now) {
 		r.db.recordBan(banRow{
 			TS: now, NodeID: c.NodeID, IP: c.IP, Reason: reason,
 			LifetimeSec: int64(now.Sub(c.RegisteredAt).Seconds()),
@@ -250,7 +205,7 @@ func reverifyOpenLocked(rec *TerminatedRecord, now time.Time) bool {
 // проверяет обычный цикл. Под write-lock.
 func (r *Registry) quarantineIPChangeLocked(c *Candidate, newIP string, now time.Time) {
 	oldIP := c.IP
-	if r.db != nil && c.hadMasterTime(now) {
+	if r.db != nil && c.HadMasterTime(now) {
 		r.db.recordBan(banRow{
 			TS: now, NodeID: c.NodeID, IP: oldIP, Reason: BanReasonIPBan,
 			LifetimeSec: int64(now.Sub(c.RegisteredAt).Seconds()),

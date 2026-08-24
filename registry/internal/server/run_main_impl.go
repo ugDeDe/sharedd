@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sharedd/registry/internal/state"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,191 +23,13 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 )
 
-type Candidate struct {
-	NodeID          string    `json:"node_id"`
-	IP              string    `json:"ip"`
-	RegisteredAt    time.Time `json:"registered_at"`
-	LastHeartbeat   time.Time `json:"last_heartbeat"`
-	Healthy         bool      `json:"healthy"`
-	ConsecutiveFail int       `json:"-"`
-	ConsecutiveOK   int       `json:"-"`
-
-	// Очередь мастерства считается по НЕПРЕРЫВНОМУ здоровью, а не по RegisteredAt:
-	// QueuedAt — момент последнего входа в fully-healthy состояние; пока нода
-	// здорова, позиция не меняется. Выпала из fully-healthy по любой причине
-	// (telemt умер, globalping упал, отчёты протухли, TCP не отвечает) — при
-	// возврате встаёт в конец очереди. См. evaluateAssignments.
-	FullyHealthy bool      `json:"fully_healthy"`
-	QueuedAt     time.Time `json:"queued_at"`
-
-	// UnhealthySince — момент последнего выхода из очереди здоровых
-	// (= старт непрерывного «всё красное» эпизода). Ноль — нода в очереди.
-	// Используется рипером prune (sweepExpired): непрерывно вне очереди
-	// дольше PruneUnhealthyTTL → удаление из пула. Персистится в state.
-	// Вооружается в evaluateAssignments (lazy-arm для нод, бывших
-	// нездоровыми на момент апгрейда, и свежезарегистрированных).
-	UnhealthySince time.Time `json:"unhealthy_since,omitempty"`
-
-	// DeadBothSince — старт непрерывного окна класса dead:
-	// TCP-защёлка красная И метрик нет (отчёты протухли или красные).
-	// Достиг TerminateDeadTTL → терминальное завершение (sweepExpired).
-	DeadBothSince time.Time `json:"dead_both_since,omitempty"`
-	// Quarantine — нода в GP-карантине («всё зелёное, кроме
-	// globalping»): панель показывает отдельной таблицей, prune-рипер не
-	// трогает; вердикт — счётчик попыток → бан по IP или восстановление.
-	Quarantine *QuarantineState `json:"quarantine,omitempty"`
-
-	GlobalpingOK            bool      `json:"globalping_ok"`
-	GlobalpingMeasurementID string    `json:"globalping_measurement_id"`
-	GlobalpingVerifiedRatio float64   `json:"globalping_verified_ratio"`
-	LastGlobalpingAt        time.Time `json:"last_globalping_at,omitempty"`
-	LastGlobalpingRequestAt time.Time `json:"-"`
-	MetricsOK               bool      `json:"metrics_ok"` // сырой вердикт ПОСЛЕДНЕГО отчёта (мигает от любого чиха)
-	// MetricsHealthy — защёлка metrics-здоровья по fail/recover-
-	// порогам, полный аналог TCP-защёлки Healthy: в fully-healthy входит
-	// ИМЕННО она, а не MetricsOK последнего отчёта. false — только после
-	// FailThreshold ПОДРЯД неудачных отчётов; обратно true — после
-	// RecoverThreshold подряд удачных. Одиночный сбойный отчёт мастерство
-	// больше не роняет. Серии персистить не нужно (как ConsecutiveFail —
-	// рестарт регистратора честно обнуляет серию).
-	MetricsHealthy    bool               `json:"metrics_healthy"`
-	MetricsFailStreak int                `json:"-"`
-	MetricsOKStreak   int                `json:"-"`
-	MetricsSnapshot   map[string]float64 `json:"metrics_snapshot,omitempty"`
-	LastReportAt      time.Time          `json:"last_report_at"`
-	ReportError       string             `json:"report_error,omitempty"`
-	// Generation changes whenever registration refreshes the candidate. Report
-	// verification may perform a slow network fetch and must not update a
-	// re-registered or replaced candidate afterwards.
-	Generation            uint64    `json:"generation,omitempty"`
-	LastAcceptedCheckedAt time.Time `json:"last_accepted_checked_at,omitempty"`
-	LastMetricsCheckedAt  time.Time `json:"last_metrics_checked_at,omitempty"`
-	LastGPCheckedAt       time.Time `json:"last_gp_checked_at,omitempty"`
-	UsedMeasurementIDs    []string  `json:"used_measurement_ids,omitempty"`
-
-	Port int `json:"port"`
-	// nil keeps legacy persisted candidates compatible until their next report.
-	PortCompatible *bool `json:"port_compatible,omitempty"`
-
-	// NodeType: classic/mtproxyl/meko — тип менеджера прокси на ноде,
-	// информационный бейдж в панели.
-	NodeType string `json:"node_type,omitempty"`
-
-	// Накопительная статистика ноды (для панели/доступности).
-	HeartbeatsTotal int `json:"heartbeats_total"`
-	ReportsTotal    int `json:"reports_total"`
-	ReportsOK       int `json:"reports_ok"`
-	GPChecksTotal   int `json:"gp_checks_total"` // сколько раз независимо проверяли Globalping
-	GPChecksOK      int `json:"gp_checks_ok"`
-
-	// Учёт времени в роли мастера: MasterSince — начало текущего stint'а,
-	// MasterSeconds — сумма закрытых stint'ов (сек).
-	MasterStints  int       `json:"master_stints"`
-	MasterSeconds int64     `json:"master_seconds"`
-	MasterSince   time.Time `json:"master_since,omitempty"`
-
-	// История для детальной страницы ноды: кольцевые буферы точек,
-	// персистятся вместе с State. GPLast — деталь последнего measurement'а
-	// Globalping (результаты по площадкам), заполняется только при прохождении
-	// независимой верификации (measurement успешно скачан и распарсен).
-	TCPHist    []TCPPoint    `json:"tcp_hist,omitempty"`
-	GPHist     []GPPoint     `json:"gp_hist,omitempty"`
-	ReportHist []ReportPoint `json:"report_hist,omitempty"`
-	GPLast     *GPDetail     `json:"gp_last,omitempty"`
-}
-
-// ── история точек проверок ───────────────────────────────────────
+// ── история точек проверок: ёмкости колец ────────────────────────
 
 const (
 	tcpHistCap    = 360 // тик probeLoop = ProbeInterval (10с по дефолту) → ~1 час
 	gpHistCap     = 288 // globalping_ms (5 мин) → ~24 часа
 	reportHistCap = 360 // metrics_ms (60с) → ~6 часов
 )
-
-type TCPPoint struct {
-	At time.Time `json:"at"`
-	OK bool      `json:"ok"`
-}
-
-type GPPoint struct {
-	At          time.Time `json:"at"`
-	OK          bool      `json:"ok"`
-	Ratio       float64   `json:"ratio"`
-	ProbesOK    int       `json:"probes_ok"`
-	ProbesTotal int       `json:"probes_total"`
-}
-
-type ReportPoint struct {
-	At        time.Time `json:"at"`
-	MetricsOK bool      `json:"metrics_ok"`
-	Clients   int       `json:"clients"` // -1 = метрики нет (старый агент / user_enabled=false)
-	Writers   int       `json:"writers"`
-}
-
-type GPProbeLine struct {
-	Country  string `json:"country"`
-	City     string `json:"city,omitempty"`
-	Network  string `json:"network,omitempty"`
-	ASN      int    `json:"asn,omitempty"`
-	OK       bool   `json:"ok"`
-	Status   string `json:"status"`
-	HTTPCode int    `json:"http_code,omitempty"`
-}
-
-type GPDetail struct {
-	At            time.Time     `json:"at"`
-	MeasurementID string        `json:"measurement_id"`
-	OK            bool          `json:"ok"`
-	Ratio         float64       `json:"ratio"`
-	ProbesOK      int           `json:"probes_ok"`
-	ProbesTotal   int           `json:"probes_total"`
-	Probes        []GPProbeLine `json:"probes,omitempty"`
-}
-
-// pushRing — append в кольцевой буфер с лимитом длины (старшие точки вытесняются).
-func pushRing[T any](s []T, v T, limit int) []T {
-	s = append(s, v)
-	if n := len(s) - limit; n > 0 {
-		copy(s, s[n:])
-		s = s[:limit]
-	}
-	return s
-}
-
-type State struct {
-	Candidates    map[string]*Candidate    `json:"candidates"`
-	DNSOperations map[string]*DNSOperation `json:"dns_operations,omitempty"`
-	// Assignments — per-domain мастера, domain → node_id. Каждый managed-
-	// домен держит свою ноду; при дефиците нод мастера забирают «сиротские»
-	// домены (fill-empty), при появлении свободной ноды сирота отдаётся ей.
-	Assignments map[string]string `json:"assignments,omitempty"`
-	// AssignmentsSince — domain → момент текущего назначения. База TTL
-	// мастерства ([rotation] master_ttl_minutes); персистится — отсчёт не
-	// сбрасывается рестартом регистратора. Назначениям, доставшимся от версий
-	// до, поле инициализируется лениво на ближайшем evaluate (с этого
-	// момента и начнётся отсчёт лимита).
-	AssignmentsSince map[string]time.Time `json:"assignments_since,omitempty"`
-	Events           []Event              `json:"events,omitempty"`
-	Counters         Counters             `json:"counters"`
-	// PruneStrikes — карантин вычищенных рипером нод (node_id →
-	// запись). До BannedUntil /register отклоняется 429; серия strikes
-	// наращивает карантин, вход ноды в очередь здоровых серию обнуляет.
-	PruneStrikes map[string]*PruneTombstone `json:"prune_strikes,omitempty"`
-	// ManagedDomains — все домены, которыми регистратор когда-либо
-	// управлял (бывшие домены конфига ∪ ключи назначений). Только для них
-	// разрешена зачистка DNS при удалении из конфига — чужие записи зоны
-	// (другие сервисы) сюда не попадают и не трогаются никогда.
-	ManagedDomains []string `json:"managed_domains,omitempty"`
-	// Terminated — оперативный блок-лист убитых нод (node_id →
-	// запись). Обращение под таким id получает 403+terminate (нода пишет
-	// Message в лог и останавливается); ip_ban с НОВОГО ip не блокируется.
-	// Вечная история всех банов — в SQLite (bans), сюда она не нужна.
-	Terminated map[string]*TerminatedRecord `json:"terminated,omitempty"`
-	// SRMD — Система Распределения и Масштабирования Доменов
-	// (см. srmd.go): таблица последних значений клиентов по доменам,
-	// свёрнутые в CNAME домены и память созданных инкрементов.
-	SRMD SRMDState `json:"srmd,omitempty"`
-}
 
 type Registry struct {
 	cfg   *resolvedRegistryConfig
@@ -774,7 +597,7 @@ func (r *Registry) probeLoop() {
 					})
 					log.Printf("candidate %s marked unhealthy (tcp)", c.NodeID)
 				}
-				c.TCPHist = pushRing(c.TCPHist, TCPPoint{At: time.Now(), OK: ok}, tcpHistCap)
+				c.TCPHist = state.PushRing(c.TCPHist, TCPPoint{At: time.Now(), OK: ok}, tcpHistCap)
 				r.mu.Unlock()
 			}(c)
 		}
@@ -870,7 +693,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			c.UnhealthySince = now // старт окна непрерывного нездоровья
 			r.addEventLocked(Event{
 				Type: EventQueueLeft, NodeID: c.NodeID, IP: c.IP,
-				Detail: c.unhealthyReason(r.cfg.ReportFreshnessTTL),
+				Detail: c.UnhealthyReason(r.cfg.ReportFreshnessTTL),
 			})
 			log.Printf("candidate %s left healthy queue (unhealthy) — position reset", c.NodeID)
 		}
@@ -1064,7 +887,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 			case holder == nil:
 				reason = "assignee removed from pool"
 			default:
-				reason = holder.unhealthyReason(r.cfg.ReportFreshnessTTL)
+				reason = holder.UnhealthyReason(r.cfg.ReportFreshnessTTL)
 				holderIP = holder.IP
 			}
 			if holderID != "" {
@@ -1173,12 +996,7 @@ func dropDomain(list []string, d string) []string {
 }
 
 func (r *Registry) persistStateLocked() {
-	data, err := json.MarshalIndent(r.state, "", " ")
-	if err != nil {
-		log.Printf("marshal state error: %v", err)
-		return
-	}
-	if err := atomicWriteFile(r.cfg.State.File, data, 0600); err != nil {
+	if err := state.Save(r.cfg.State.File, &r.state); err != nil {
 		log.Printf("write state error: %v — проверьте владельца каталога: chown -R sharedd-registry:sharedd-registry %s",
 			err, filepath.Dir(r.cfg.State.File))
 		return
@@ -1186,85 +1004,16 @@ func (r *Registry) persistStateLocked() {
 	r.eventsDirty = false
 }
 
-func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	ok := false
-	defer func() {
-		_ = tmp.Close()
-		if !ok {
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err := tmp.Chmod(mode); err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return err
-	}
-	ok = true
-	if d, err := os.Open(dir); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
-	}
-	return nil
-}
-
 func (r *Registry) loadState() {
-	data, err := os.ReadFile(r.cfg.State.File)
+	st, err := state.Load(r.cfg.State.File)
 	if err != nil {
-		log.Printf("no existing state file, starting fresh")
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("no existing state file, starting fresh")
+			return
+		}
+		log.Printf("failed to load state file: %v", err)
 		return
 	}
-	var st State
-	if err := json.Unmarshal(data, &st); err != nil {
-		log.Printf("failed to parse state file: %v", err)
-		return
-	}
-	if st.Candidates == nil {
-		st.Candidates = make(map[string]*Candidate)
-	}
-	if st.Assignments == nil {
-		st.Assignments = make(map[string]string)
-	}
-	if st.AssignmentsSince == nil {
-		st.AssignmentsSince = make(map[string]time.Time)
-	}
-	if st.DNSOperations == nil {
-		st.DNSOperations = make(map[string]*DNSOperation)
-	}
-	if st.Terminated == nil {
-		st.Terminated = make(map[string]*TerminatedRecord)
-	}
-	// миграция: metrics-защёлки (MetricsHealthy) в старых state нет —
-	// после апгрейда нельзя ронять всё здоровое: переносим текущее MetricsOK
-	// (вердикт последнего отчёта до выключения) в защёлку. Транзиентно
-	// сфейлившая нода теперь должна доказать восстановление recover-порогом —
-	// это и есть задуманная гистерезисная семантика.
-	for _, c := range st.Candidates {
-		// Не доверяем state-файлу: старый/частично записанный JSON может
-		// содержать null в map candidates. Такая запись не должна ронять
-		// registry ещё до запуска HTTP-сервера.
-		if c == nil {
-			continue
-		}
-		if c.MetricsOK && !c.MetricsHealthy {
-			c.MetricsHealthy = true
-		}
-	}
-	r.state = st
+	r.state = *st
 	log.Printf("loaded state: %d candidates, %d domain assignments", len(st.Candidates), len(st.Assignments))
 }

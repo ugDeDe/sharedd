@@ -12,7 +12,7 @@ func TestProxyPortCompatibilityBlocksMasterEligibility(t *testing.T) {
 	if c.IsFullyHealthy(time.Minute) {
 		t.Fatal("node on a port different from registry must not enter the healthy queue")
 	}
-	if reason := c.unhealthyReason(time.Minute); !strings.Contains(reason, "proxy port 8443") {
+	if reason := c.UnhealthyReason(time.Minute); !strings.Contains(reason, "proxy port 8443") {
 		t.Fatalf("unexpected reason: %q", reason)
 	}
 	c.PortCompatible = &ok

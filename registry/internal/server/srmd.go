@@ -60,23 +60,6 @@ const (
 	srmdMaxDomains = 50
 )
 
-// SRMDState — персистентная часть СРМД (внутри State).
-type SRMDState struct {
-	// DomainClients — ПОСЛЕДНИЕ известные активные клиенты (уникальные IP по
-	// общему секрету) на домене: снимается с живого мастера, а при его
-	// потере значение НЕ стирается — на этих числах стоит балансировка
-	// сворачивания и таблица панели.
-	DomainClients map[string]int `json:"domain_clients,omitempty"`
-	// CNames — свёрнутые домены: domain → цель CNAME. Свёрнутый домен не
-	// участвует в выборе мастеров; его DNS-запись — CNAME на цель.
-	CNames map[string]string `json:"cnames,omitempty"`
-	// Created — созданные СРМД домены в ПОРЯДКЕ СОЗДАНИЯ (инкременты
-	// shared1, shared2, …). Порядок определяет очередь на сворачивание
-	// (последние созданные сворачиваются первыми) и на разворачивание
-	// (ранние разворачиваются первыми).
-	Created []string `json:"created,omitempty"`
-}
-
 // srmdDNSAction preserves the immediate flush between SRMD selection and the
 // durable DNS reconciler. Retry state itself is stored in State.DNSOperations.
 type srmdDNSAction struct {

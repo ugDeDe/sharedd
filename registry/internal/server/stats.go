@@ -289,7 +289,7 @@ func (r *Registry) buildPublicNodeLocked(c *Candidate, queuePos int, domains []s
 	}
 	if n.QueuePosition == 0 {
 		// причина может содержать адреса/ошибки ноды — санитизируем
-		n.UnhealthyReason = sanitizePublicDetail(c.unhealthyReason(r.cfg.ReportFreshnessTTL))
+		n.UnhealthyReason = sanitizePublicDetail(c.UnhealthyReason(r.cfg.ReportFreshnessTTL))
 	}
 	if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
 		vv := v

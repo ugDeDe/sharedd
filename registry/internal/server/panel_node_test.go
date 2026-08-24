@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sharedd/registry/internal/state"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 func TestPushRing(t *testing.T) {
 	var s []int
 	for i := 0; i < tcpHistCap+40; i++ {
-		s = pushRing(s, i, tcpHistCap)
+		s = state.PushRing(s, i, tcpHistCap)
 	}
 	if len(s) != tcpHistCap {
 		t.Fatalf("ring must be capped at %d, got %d", tcpHistCap, len(s))

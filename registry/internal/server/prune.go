@@ -45,16 +45,6 @@ const (
 	pruneMaxStrikes = 16
 )
 
-// PruneTombstone — карантинная запись по вычищенной рипером ноде. Персистится
-// в state: рестарт регистратора карантин не отменяет.
-type PruneTombstone struct {
-	NodeID      string    `json:"node_id"`
-	IP          string    `json:"ip,omitempty"`
-	Strikes     int       `json:"strikes"` // серия prune подряд (→ длина карантина)
-	LastPruned  time.Time `json:"last_pruned"`
-	BannedUntil time.Time `json:"banned_until"` // до этого момента /register отклоняется 429
-}
-
 // pruneBanFor — длина карантина для k-го strike (k >= 1): 15m, 30m, 1h, 2h,
 // 3h, 3h, … — потолок pruneBanCap.
 func pruneBanFor(strikes int) time.Duration {
@@ -221,7 +211,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 				Type: EventNodePruned, NodeID: id, IP: c.IP,
 				Detail: fmt.Sprintf("unhealthy for %s (%s) — pruned; re-register banned for %s (strike %d)",
 					now.Sub(c.UnhealthySince).Round(time.Second),
-					c.unhealthyReason(r.cfg.ReportFreshnessTTL),
+					c.UnhealthyReason(r.cfg.ReportFreshnessTTL),
 					pruneBanFor(tb.Strikes), tb.Strikes),
 			})
 			delete(r.state.Candidates, id)

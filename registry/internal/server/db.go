@@ -43,12 +43,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// ban reasons (см. terminate.go — там же тексты сообщений агенту).
-const (
-	BanReasonIPBan = "ip_ban" // блокировка по IP (финал GP-карантина)
-	BanReasonDead  = "dead"   // регистратор не достучался до порта/метрик >N мин
-)
-
 // banRow — одна терминальная блокировка ноды.
 type banRow struct {
 	TS          time.Time `json:"ts"`
