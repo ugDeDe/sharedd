@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -234,29 +235,51 @@ type promSample struct {
 	value  float64
 }
 
+// splitMetricLine разбирает строку exposition-формата: имя, содержимое {...}
+// и хвост. Закрывающая скобка ищется С УЧЁТОМ кавычек и backslash-escape:
+// значение label'а может содержать '}' и ',' (пути, ASN-строки), поэтому
+// LastIndexByte('}') здесь ломает парсинг.
+func splitMetricLine(line string) (name, labels, rest string, ok bool) {
+	i := strings.IndexByte(line, '{')
+	sp := strings.IndexAny(line, " \t")
+	if i < 0 {
+		if sp < 0 {
+			return "", "", "", false
+		}
+		return line[:sp], "", strings.TrimSpace(line[sp:]), true
+	}
+	if sp >= 0 && sp < i {
+		return line[:sp], "", strings.TrimSpace(line[sp:]), true
+	}
+	name = line[:i]
+	inQuote := false
+	esc := false
+	for j := i + 1; j < len(line); j++ {
+		ch := line[j]
+		switch {
+		case esc:
+			esc = false
+		case ch == '\\' && inQuote:
+			esc = true
+		case ch == '"':
+			inQuote = !inQuote
+		case ch == '}' && !inQuote:
+			return name, line[i+1 : j], strings.TrimSpace(line[j+1:]), true
+		}
+	}
+	return "", "", "", false // незакрытые labels — битая строка
+}
+
 func parsePrometheusSamples(text string) []promSample {
 	var out []promSample
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		var name, labels, rest string
-		if i := strings.IndexByte(line, '{'); i >= 0 {
-			j := strings.LastIndexByte(line, '}')
-			if j < i {
-				continue
-			}
-			name = line[:i]
-			labels = line[i+1 : j]
-			rest = strings.TrimSpace(line[j+1:])
-		} else {
-			sp := strings.IndexAny(line, " \t")
-			if sp < 0 {
-				continue
-			}
-			name = line[:sp]
-			rest = strings.TrimSpace(line[sp:])
+		name, labels, rest, ok := splitMetricLine(line)
+		if !ok {
+			continue
 		}
 		fields := strings.Fields(rest)
 		if len(fields) == 0 {
@@ -276,10 +299,30 @@ func parsePrometheusSamples(text string) []promSample {
 const snapshotMaxUserSeries = 64
 
 // promUserLabel — значение label'а user из строки labels prom-серии
-// (`user="u0cb271"` → «u0cb271», `user="a",x="b"` → «a»). Пусто — label'а
-// нет или он не распознан.
+// (`user="u0cb271"` → «u0cb271», `user="a",x="b"` → «a»). Разбор уважает
+// кавычки и backslash-escape: запятая внутри значения — не разделитель.
+// Пусто — label'а нет или он не распознан.
 func promUserLabel(labels string) string {
-	for _, part := range strings.Split(labels, ",") {
+	var parts []string
+	start := 0
+	inQuote := false
+	esc := false
+	for i := 0; i < len(labels); i++ {
+		ch := labels[i]
+		switch {
+		case esc:
+			esc = false
+		case ch == '\\' && inQuote:
+			esc = true
+		case ch == '"':
+			inQuote = !inQuote
+		case ch == ',' && !inQuote:
+			parts = append(parts, labels[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, labels[start:])
+	for _, part := range parts {
 		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
 		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "user" {
 			continue
@@ -530,6 +573,7 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 		if !ok {
 			report.Error = fmt.Sprintf("metrics: metric %s not found in %s output", healthMetricName, url)
 			report.MetricsOK = false
+			noteTelemtCompatSuspicion(body)
 		} else {
 			report.MetricsOK = v > 0
 		}
@@ -601,4 +645,30 @@ func SendReport(cfg *NodeConfig, report HealthReport) error {
 		return fmt.Errorf("report rejected: status=%d body=%s", resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// ── совместимость с telemt ──────────────────────────────────────
+
+// telemtCompatWarnAt — анти-спам: внятное сообщение о несовместимости
+// печатается не чаще раза в час (и один раз за эпизод отсутствия метрики).
+var telemtCompatWarnAt time.Time
+
+// noteTelemtCompatSuspicion — /metrics отвечает 200, но ключевой метрики нет.
+// Почти всегда это другая сборка/версия telemt без телеметрии sharedd:
+// даём оператору диагноз сразу и по-человечески, вместо «not found» в общем
+// потоке лога.
+func noteTelemtCompatSuspicion(body []byte) {
+	if time.Since(telemtCompatWarnAt) < time.Hour {
+		return
+	}
+	looksTelemt := strings.Contains(string(body), "telemt_") || strings.Contains(string(body), "go_info")
+	if looksTelemt {
+		log.Printf("TELEMT COMPATIBILITY: %s not in /metrics — this telemt build lacks sharedd telemetry. "+
+			"Check telemt version/update; agent stays unhealthy until metric appears",
+			healthMetricName)
+	} else {
+		log.Printf("TELEMT COMPATIBILITY: /metrics output has no telemt_* series at all — " +
+			"is the proxy on this port actually telemt? Agent stays unhealthy")
+	}
+	telemtCompatWarnAt = time.Now()
 }

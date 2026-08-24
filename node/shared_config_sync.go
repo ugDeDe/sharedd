@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 // sectionHeaderRe — заголовок TOML-таблицы. Толерантен к пробелам внутри скобок
@@ -573,6 +575,18 @@ func rollbackConfig(path string, orig []string, restart func() error, cause erro
 	return fmt.Errorf("%w; config rolled back", cause)
 }
 
+// validateTOMLText — pre-валидация: пропатченный текст обязан парситься
+// go-toml ДО записи файла. Regex-патчер консервативен, но конфиг мог прийти
+// с нестандартными конструкциями; битый TOML раньше ловился только упавшим
+// рестартом прокси (дорогой rollback), теперь отклоняем мгновенно.
+func validateTOMLText(lines []string) error {
+	var probe map[string]any
+	if err := toml.Unmarshal([]byte(strings.Join(lines, "\n")), &probe); err != nil {
+		return fmt.Errorf("patched config is not valid TOML (refusing to write): %w", err)
+	}
+	return nil
+}
+
 // applySharedConfigManaged — боевой конвейер применения /config к telemt.toml:
 //
 // 1. стоп прокси (systemd-юнит telemt.service и т.п.);
@@ -595,6 +609,9 @@ func applySharedConfigManaged(cfg *NodeConfig, shared SharedConfig) error {
 	}
 	if !changed {
 		return nil
+	}
+	if err := validateTOMLText(newLines); err != nil {
+		return err
 	}
 
 	// исходный файл — для отката, если прокси с новым конфигом не встанет

@@ -768,3 +768,30 @@ func applySharedConfigAdditively(cfg *NodeConfig, shared SharedConfig) (bool, er
 	}
 	return true, nil
 }
+
+// Пропатченный конфиг обязан проходить TOML-валидацию ДО записи: битый
+// результат патча отклоняется ошибкой, а не падением рестарта прокси.
+func TestValidateTOMLText(t *testing.T) {
+	valid := []string{
+		"[access]",
+		`secret = "abcd"`,
+		"",
+		"[access.users]",
+		`hello = "abcd"`,
+	}
+	if err := validateTOMLText(valid); err != nil {
+		t.Fatalf("valid config must pass: %v", err)
+	}
+
+	invalid := []string{
+		"[access.users]",
+		`hello = "abcd`, // незакрытая кавычка
+	}
+	err := validateTOMLText(invalid)
+	if err == nil {
+		t.Fatal("broken TOML must be rejected")
+	}
+	if !strings.Contains(err.Error(), "refusing to write") {
+		t.Fatalf("error must mention refusal to write: %v", err)
+	}
+}
