@@ -34,7 +34,7 @@ import (
 const (
 	pagesDir  = "ui/pages"
 	outDir    = "registry/internal/webassets" // рядом с webassets.go: ограничения //go:embed
-	devOutDir = "dev/preview"        // служебные страницы, вне репозитория
+	devOutDir = "dev/preview"                 // служебные страницы, вне репозитория
 	cssMarker = "<!--{css}-->"
 	jsMarker  = "<!--{js}-->"
 )
