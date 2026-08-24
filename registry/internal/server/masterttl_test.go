@@ -234,7 +234,7 @@ func TestRotationEditorRoundTrip(t *testing.T) {
 	if p := r.cfg.Rotation.MasterTTLMinutes; p == nil || *p != 0 {
 		t.Fatalf("runtime rotation must be explicit 0, got %v", p)
 	}
-	data, err := os.ReadFile(r.cfg.configPath)
+	data, err := os.ReadFile(r.cfg.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}

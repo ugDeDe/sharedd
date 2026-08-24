@@ -1,4 +1,4 @@
-package server
+package config
 
 import (
 	"flag"
@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -151,7 +152,7 @@ type RegistryConfig struct {
 	} `toml:"panel"`
 }
 
-type resolvedRegistryConfig struct {
+type Resolved struct {
 	RegistryConfig
 	ProbeInterval         time.Duration
 	ProbeTimeout          time.Duration
@@ -167,9 +168,9 @@ type resolvedRegistryConfig struct {
 	EventsRetention    time.Duration
 	DBEnabled          bool
 
-	// configPath — путь к исходному TOML; нужен, чтобы правки из панели
+	// ConfigPath — путь к исходному TOML; нужен, чтобы правки из панели
 	// персистить обратно в конфиг (см. config_editor.go).
-	configPath string
+	ConfigPath string
 }
 
 func configPathFlag() string {
@@ -185,7 +186,7 @@ func configPathFlag() string {
 	return "/etc/sharedd/registry.toml"
 }
 
-func loadRegistryConfig() (*resolvedRegistryConfig, error) {
+func Load() (*Resolved, error) {
 	path := configPathFlag()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -197,12 +198,12 @@ func loadRegistryConfig() (*resolvedRegistryConfig, error) {
 		return nil, fmt.Errorf("failed to parse config %s: %w", path, err)
 	}
 
-	applyRegistryDefaults(&cfg)
-	if err := validateRegistryConfig(&cfg); err != nil {
+	ApplyRegistryDefaults(&cfg)
+	if err := ValidateRegistryConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid config %s: %w", path, err)
 	}
 
-	resolved := &resolvedRegistryConfig{
+	resolved := &Resolved{
 		RegistryConfig:        cfg,
 		ProbeInterval:         time.Duration(cfg.Healthcheck.ProbeIntervalMs) * time.Millisecond,
 		ProbeTimeout:          time.Duration(cfg.Healthcheck.ProbeTimeoutMs) * time.Millisecond,
@@ -210,18 +211,18 @@ func loadRegistryConfig() (*resolvedRegistryConfig, error) {
 		HeartbeatTTL:          time.Duration(cfg.Healthcheck.HeartbeatTTLSec) * time.Second,
 		ReportFreshnessTTL:    time.Duration(cfg.Healthcheck.ReportFreshnessMin) * time.Minute,
 		GlobalpingValidityTTL: time.Duration(cfg.Healthcheck.GlobalpingValidityMin) * time.Minute,
-		PruneUnhealthyTTL:     time.Duration(resolvePruneUnhealthyMinutes(cfg.Healthcheck.PruneUnhealthyMin)) * time.Minute,
+		PruneUnhealthyTTL:     time.Duration(ResolvePruneUnhealthyMinutes(cfg.Healthcheck.PruneUnhealthyMin)) * time.Minute,
 		PanelEnabled:          cfg.Panel.Enabled == nil || *cfg.Panel.Enabled,
 		TerminateDeadTTL:      time.Duration(resolveIntDefault(cfg.Healthcheck.TerminateDeadMin, defaultTerminateDeadMinutes)) * time.Minute,
 		QuarantineAttempts:    max(1, cfg.Healthcheck.QuarantineAttempts), // дефолт 3 проставлен в applyRegistryDefaults
 		EventsRetention:       time.Duration(cfg.Database.EventsRetentionDays) * 24 * time.Hour,
 		DBEnabled:             cfg.Database.Enabled == nil || *cfg.Database.Enabled,
-		configPath:            path,
+		ConfigPath:            path,
 	}
 	return resolved, nil
 }
 
-func validateRegistryConfig(cfg *RegistryConfig) error {
+func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if strings.TrimSpace(cfg.Security.NodeToken) == "" {
 		return fmt.Errorf("security.node_token is required")
 	}
@@ -276,8 +277,8 @@ func validateRegistryConfig(cfg *RegistryConfig) error {
 			return fmt.Errorf("%s must be 0..525600", name)
 		}
 	}
-	if cfg.Rotation.MasterTTLMinutes != nil && (*cfg.Rotation.MasterTTLMinutes < 0 || *cfg.Rotation.MasterTTLMinutes > maxMasterTTLMinutes) {
-		return fmt.Errorf("rotation.master_ttl_minutes must be 0..%d", maxMasterTTLMinutes)
+	if cfg.Rotation.MasterTTLMinutes != nil && (*cfg.Rotation.MasterTTLMinutes < 0 || *cfg.Rotation.MasterTTLMinutes > MaxMasterTTLMinutes) {
+		return fmt.Errorf("rotation.master_ttl_minutes must be 0..%d", MaxMasterTTLMinutes)
 	}
 	if cfg.Healthcheck.QuarantineAttempts < 1 || cfg.Healthcheck.QuarantineAttempts > 20 {
 		return fmt.Errorf("healthcheck.quarantine_attempts must be 1..20")
@@ -289,14 +290,14 @@ func validateRegistryConfig(cfg *RegistryConfig) error {
 		return fmt.Errorf("cloudflare.domains is required")
 	}
 	for _, domain := range cfg.Cloudflare.Domains {
-		if !validHostname(strings.TrimSpace(domain)) {
+		if !ValidHostname(strings.TrimSpace(domain)) {
 			return fmt.Errorf("cloudflare.domains: %q is not a domain name", domain)
 		}
 	}
 	if cfg.Cloudflare.DNSTTL != 1 && (cfg.Cloudflare.DNSTTL < 60 || cfg.Cloudflare.DNSTTL > 86400) {
 		return fmt.Errorf("cloudflare.dns_ttl must be 1 or 60..86400")
 	}
-	if !validHostname(strings.TrimSpace(cfg.SharedProxy.TLSDomain)) {
+	if !ValidHostname(strings.TrimSpace(cfg.SharedProxy.TLSDomain)) {
 		return fmt.Errorf("shared_proxy.tls_domain is not a domain name")
 	}
 	if cfg.SharedProxy.Port < 1 || cfg.SharedProxy.Port > 65535 {
@@ -306,11 +307,11 @@ func validateRegistryConfig(cfg *RegistryConfig) error {
 		return fmt.Errorf("shared_proxy.users is required")
 	}
 	for name, secret := range cfg.SharedProxy.Users {
-		if !usernameRe.MatchString(name) || !secretRe.MatchString(secret) {
+		if !UsernameRe.MatchString(name) || !SecretRe.MatchString(secret) {
 			return fmt.Errorf("shared_proxy.users[%q] must have a valid username and 32-hex secret", name)
 		}
 	}
-	if base := strings.TrimSpace(cfg.SRMD.BaseDomain); base != "" && !validHostname(base) {
+	if base := strings.TrimSpace(cfg.SRMD.BaseDomain); base != "" && !ValidHostname(base) {
 		return fmt.Errorf("srmd.base_domain is not a domain name")
 	}
 	if cfg.SRMD.MaxNodesPerDomain < 1 || cfg.SRMD.MaxNodesPerDomain > 1000 {
@@ -334,7 +335,7 @@ func resolveIntDefault(p *int, def int) int {
 	return *p
 }
 
-func applyRegistryDefaults(cfg *RegistryConfig) {
+func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.SharedProxy.Port == 0 {
 		cfg.SharedProxy.Port = 443
 	}
@@ -392,7 +393,7 @@ func applyRegistryDefaults(cfg *RegistryConfig) {
 	// СРМД — лимит нод на домен. enabled по умолчанию ВЫКЛЮЧЕН
 	// (nil → false), базовый домен разрешается лениво (первый из cloudflare).
 	if cfg.SRMD.MaxNodesPerDomain == 0 {
-		cfg.SRMD.MaxNodesPerDomain = defaultSRMDMaxNodesPerDomain
+		cfg.SRMD.MaxNodesPerDomain = DefaultSRMDMaxNodesPerDomain
 	}
 	//
 	if cfg.Healthcheck.QuarantineAttempts == 0 {
@@ -408,3 +409,34 @@ func applyRegistryDefaults(cfg *RegistryConfig) {
 		}
 	}
 }
+
+// ── валидационные хелперы, разделяемые с сервером ────────────────
+
+var (
+	hostnameRe = regexp.MustCompile(`^(?i)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+	UsernameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+	SecretRe   = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
+)
+
+// ValidHostname — доменное имя (без пути/порта), ≤253 символа.
+func ValidHostname(s string) bool {
+	return len(s) <= 253 && hostnameRe.MatchString(s)
+}
+
+// defaultPruneUnhealthyMinutes — дефолт [healthcheck] prune_unhealthy_min.
+const defaultPruneUnhealthyMinutes = 60
+
+// ResolvePruneUnhealthyMinutes — эффективное окно рипера (мин): nil → дефолт,
+// 0 → рипер выключен. Семантика указателя как у master_ttl_minutes.
+func ResolvePruneUnhealthyMinutes(p *int) int {
+	if p == nil {
+		return defaultPruneUnhealthyMinutes
+	}
+	return *p
+}
+
+// MaxMasterTTLMinutes — верхняя граница [rotation] master_ttl_minutes.
+const MaxMasterTTLMinutes = 43200
+
+// DefaultSRMDMaxNodesPerDomain — дефолт [srmd] max_nodes_per_domain.
+const DefaultSRMDMaxNodesPerDomain = 5

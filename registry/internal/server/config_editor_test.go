@@ -22,7 +22,7 @@ func newTestRegistryWithConfigFile(t *testing.T) *Registry {
 	r.cfg.PanelEnabled = true
 	r.cfg.Panel.Token = "admintoken"
 	dir := t.TempDir()
-	r.cfg.configPath = filepath.Join(dir, "registry.toml")
+	r.cfg.ConfigPath = filepath.Join(dir, "registry.toml")
 	r.cfg.SharedProxy.TLSDomain = "www.old-sni.com"
 	r.cfg.SharedProxy.Users = map[string]string{"alice": "0123456789abcdef0123456789abcdef"}
 	r.cfg.Cloudflare.APIToken = "tok-old"
@@ -101,7 +101,7 @@ func TestConfigEditorHotApply(t *testing.T) {
 	}
 
 	// TOML персистится и парсится обратно с теми же значениями
-	data, err := os.ReadFile(r.cfg.configPath)
+	data, err := os.ReadFile(r.cfg.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestConfigEditorHotApply(t *testing.T) {
 	}
 	//.bak появляется при повторной записи
 	putConfig(t, r, `{"node_defaults":{"heartbeat_ms":20000,"globalping_ms":300000,"metrics_ms":60000,"sync_ms":60000}}`, "")
-	if _, err := os.Stat(r.cfg.configPath + ".bak"); err != nil {
+	if _, err := os.Stat(r.cfg.ConfigPath + ".bak"); err != nil {
 		t.Fatal("expected.bak after second write")
 	}
 	nc = getNodeFacingConfig(t, r)
@@ -286,7 +286,7 @@ func TestConfigEditorGetNodeOnboardingUsesConfiguredPublicURL(t *testing.T) {
 // но ответ честно говорит persisted=false (рантайм не обваливается).
 func TestConfigPersistFailureStillApplies(t *testing.T) {
 	r := newTestRegistryWithConfigFile(t)
-	r.cfg.configPath = filepath.Join(t.TempDir(), "no-such-dir", "registry.toml")
+	r.cfg.ConfigPath = filepath.Join(t.TempDir(), "no-such-dir", "registry.toml")
 
 	rec, resp := putConfig(t, r, `{"shared_proxy":{"tls_domain":"www.runtime-only.com","users":{"a":"0123456789abcdef0123456789abcdef"}}}`, "")
 	if rec.Code != http.StatusOK {
@@ -324,7 +324,7 @@ func TestConfigEditorQuarantineAttempts(t *testing.T) {
 	if r.cfg.QuarantineAttempts != 5 || r.cfg.Healthcheck.QuarantineAttempts != 5 {
 		t.Fatalf("hot-apply broken: %+v/%+v", r.cfg.QuarantineAttempts, r.cfg.Healthcheck.QuarantineAttempts)
 	}
-	data, err := os.ReadFile(r.cfg.configPath)
+	data, err := os.ReadFile(r.cfg.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}

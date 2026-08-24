@@ -36,7 +36,7 @@ func srmdTestRegistry(t *testing.T) *Registry {
 	r := newTestRegistry(t)
 	r.cfg.Cloudflare.Domains = []string{"shared.ddproxy.xyz"}
 	r.cfg.SRMD.MaxNodesPerDomain = 3
-	r.cfg.configPath = filepath.Join(t.TempDir(), "registry.toml")
+	r.cfg.ConfigPath = filepath.Join(t.TempDir(), "registry.toml")
 	enabled := true
 	r.cfg.SRMD.Enabled = &enabled
 	r.state.Assignments = make(map[string]string)

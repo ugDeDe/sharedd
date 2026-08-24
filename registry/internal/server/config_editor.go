@@ -636,7 +636,7 @@ func (r *Registry) handleDNSPush(w http.ResponseWriter, req *http.Request) {
 // Атомарно: temp в том же каталоге + rename; mode сохраняется от старого файла.
 // ВЫЗЫВАТЬ под cfgMu (write).
 func (r *Registry) persistConfigLocked() error {
-	path := r.cfg.configPath
+	path := r.cfg.ConfigPath
 	if path == "" {
 		return fmt.Errorf("config path is empty (registry запущен без -config?)")
 	}
