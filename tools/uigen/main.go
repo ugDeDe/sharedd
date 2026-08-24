@@ -1,10 +1,10 @@
 // uigen — сборщик веб-интерфейса sharedd.
 //
-// Исходники интерфейса лежат в ui/, готовые страницы — в registry/*.html.
-// Собранные страницы КОММИТЯТСЯ в репозиторий, поэтому сборка бинарника
-// остаётся такой же, как была:
+// Исходники интерфейса лежат в ui/, готовые страницы — в
+// registry/internal/webassets/*.html. Собранные страницы КОММИТЯТСЯ
+// в репозиторий, поэтому сборка бинарника от uigen не зависит:
 //
-//	go build ./registry            # достаточно, uigen не нужен
+//	cd registry && go build .      # достаточно, uigen не нужен
 //
 // Запускать uigen надо только если правил ui/:
 //
@@ -30,11 +30,11 @@ import (
 )
 
 // Каждая страница — каталог в ui/pages: index.html (каркас), page.css и
-// main.ts (точки входа). Имя каталога = имя файла в registry/.
+// main.ts (точки входа). Имя каталога = имя файла в webassets/.
 const (
 	pagesDir  = "ui/pages"
-	outDir    = "registry"
-	devOutDir = "dev/preview" // служебные страницы, вне репозитория
+	outDir    = "registry/internal/webassets" // рядом с webassets.go: ограничения //go:embed
+	devOutDir = "dev/preview"        // служебные страницы, вне репозитория
 	cssMarker = "<!--{css}-->"
 	jsMarker  = "<!--{js}-->"
 )
