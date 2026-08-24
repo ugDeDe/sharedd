@@ -224,6 +224,28 @@ else
     die "нужен curl или wget (apt install curl)"
 fi
 [ -s "$file" ] || die "скачался пустой файл — проверьте BINARY_URL"
+
+# Контрольная сумма: рядом с бинарником публикуется <имя>.sha256.
+# Расхождение = битая загрузка или подмена — установку прерываем.
+sum_url="${BINARY_URL}.sha256"
+expected_sum="$(mktemp)"
+if command -v curl &>/dev/null; then
+    curl -fsSL --connect-timeout 15 -o "$expected_sum" "$sum_url" 2>/dev/null || expected_sum=""
+else
+    wget -q -O "$expected_sum" "$sum_url" 2>/dev/null || expected_sum=""
+fi
+if [ -n "$expected_sum" ] && [ -s "$expected_sum" ]; then
+    want="$(awk '{print $1}' "$expected_sum")"
+    got="$(sha256sum "$file" | awk '{print $1}')"
+    [ "$got" = "$want" ] || die "sha256 mismatch: ожидалось $want, получено $got — не устанавливаю"
+    ok "sha256 ok: ${want}"
+else
+    warn "не смог скачать ${BOLD}${sum_url}${NC} — ставлю без сверки суммы"
+fi
+
+# ELF-магия: GitHub может вернуть HTML-страницу ошибки вместо бинарника.
+[ "$(head -c4 "$file")" = "$(printf '\\x7fELF')" ] || die "скачанный файл не ELF-бинарник — проверьте ссылку/сеть"
+
 install -m 0755 "$file" "$BIN_DEST"
 ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
 
@@ -348,6 +370,18 @@ Restart=always
 RestartSec=5
 User=root
 StateDirectory=sharedd
+
+# hardening (консервативный): нужны iptables/ipset (модуль xt_set может
+# подгружаться), systemctl-рестарты прокси и запись чужих конфигов —
+# ProtectSystem/ProtectKernelModules не включаем сознательно
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
 
 [Install]
 WantedBy=multi-user.target
