@@ -47,10 +47,12 @@ jobs:
       # Блокирующий после локального прогона v2.13.1 (0 issues по обоим
       # прикладным модулям). Конфиг — дефолтный набор линтеров (errcheck,
       # govet, ineffassign, staticcheck, unused).
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.1
-          args: --timeout 5m
+      # Линтер собираем из исходников тем же тулчейном, что и проект
+      # (setup-go выше): готовый бинарник из релиза собран более старым Go,
+      # чем go.mod (1.26.5), и падает с "language version mismatch"
+      # (exit code 7) на всех модулях сразу.
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+      - run: golangci-lint run --timeout 5m ./...
 
   scripts:
     runs-on: ubuntu-latest
