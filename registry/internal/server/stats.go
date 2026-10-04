@@ -41,17 +41,13 @@ var (
 	measurementTextRe = regexp.MustCompile(`(?i)\bmeasurement(?:_id)?[ :=]*\S+`)
 )
 
-// maskPublicIP оставляет первые два октета IPv4 (203.0.x.x) / две группы IPv6.
+// maskPublicIP оставляет первый и последний октет IPv4 (159.x.x.70):
+// провайдер угадывается по первому октету, узел — по последнему, но
+// подсеть целиком не раскрывается. IPv6 в пуле не существует
+// (/register валидирует только IPv4) — всё прочее полностью маскируется.
 func maskPublicIP(ip string) string {
 	if parts := strings.Split(ip, "."); len(parts) == 4 {
-		return parts[0] + "." + parts[1] + ".x.x"
-	}
-	if strings.Contains(ip, ":") {
-		groups := strings.Split(ip, ":")
-		if len(groups) >= 2 && groups[0] != "" {
-			return groups[0] + ":" + groups[1] + ":…"
-		}
-		return "…"
+		return parts[0] + ".x.x." + parts[3]
 	}
 	return "x.x.x.x"
 }

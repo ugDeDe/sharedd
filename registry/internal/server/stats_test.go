@@ -17,10 +17,10 @@ import (
 
 func TestMaskPublicIP(t *testing.T) {
 	cases := map[string]string{
-		"203.0.113.7":         "203.0.x.x",
-		"1.2.3.4":             "1.2.x.x",
-		"2001:db8:85a3::8a2e": "2001:db8:…",
-		"::1":                 "…", // первая группа пустая — ничего не светим
+		"203.0.113.7":         "203.x.x.7",
+		"1.2.3.4":             "1.x.x.4",
+		"2001:db8:85a3::8a2e": "x.x.x.x", // IPv6 в пуле не существует
+		"::1":                 "x.x.x.x",
 		"garbage":             "x.x.x.x",
 		"":                    "x.x.x.x",
 	}
@@ -34,7 +34,7 @@ func TestMaskPublicIP(t *testing.T) {
 func TestSanitizePublicDetail(t *testing.T) {
 	in := "re-registered, ip changed 203.0.113.7 -> 198.51.100.9"
 	got := sanitizePublicDetail(in)
-	if got != "re-registered, ip changed 203.0.x.x -> 198.51.x.x" {
+	if got != "re-registered, ip changed 203.x.x.7 -> 198.x.x.9" {
 		t.Errorf("ipv4 must be partially masked, got %q", got)
 	}
 	in = "verified ratio 0.25 (measurement m-SECRET1); node self-reported ok"
@@ -100,7 +100,7 @@ func TestStatsNodeSanitization(t *testing.T) {
 	if strings.Contains(body, "198.51.100.9") {
 		t.Fatal("old IP from event details must not appear either")
 	}
-	if !strings.Contains(body, "203.0.x.x") {
+	if !strings.Contains(body, "203.x.x.7") {
 		t.Fatal("masked IP (first two octets) must be present")
 	}
 	// ── measurement id не утёк ни в каком виде ──
@@ -121,7 +121,7 @@ func TestStatsNodeSanitization(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("bad json: %v", err)
 	}
-	if resp.Node["ip"] != "203.0.x.x" {
+	if resp.Node["ip"] != "203.x.x.7" {
 		t.Errorf("node.ip must be masked, got %v", resp.Node["ip"])
 	}
 	if resp.Node["is_master"] != true {
@@ -185,7 +185,7 @@ func TestStatsListSanitization(t *testing.T) {
 	if strings.Contains(body, "203.0.113.7") || strings.Contains(body, "m-SECRET1") {
 		t.Fatal("list payload must be sanitized as well")
 	}
-	if !strings.Contains(body, "node-abcdef1234567890") || !strings.Contains(body, "203.0.x.x") {
+	if !strings.Contains(body, "node-abcdef1234567890") || !strings.Contains(body, "203.x.x.7") {
 		t.Fatalf("list must contain node id and masked ip, got %s", body)
 	}
 }
@@ -200,7 +200,7 @@ func TestStatsListIncludesSanitizedQuarantine(t *testing.T) {
 	if strings.Contains(body, "203.0.113.7") || strings.Contains(body, "m-SECRET-Q") || strings.Contains(body, "last_measurement_id") {
 		t.Fatalf("quarantine leaked sensitive data: %s", body)
 	}
-	if !strings.Contains(body, `"quarantine":[{`) || !strings.Contains(body, "203.0.x.x") || !strings.Contains(body, `"stale":true`) {
+	if !strings.Contains(body, `"quarantine":[{`) || !strings.Contains(body, "203.x.x.7") || !strings.Contains(body, `"stale":true`) {
 		t.Fatalf("sanitized quarantine missing: %s", body)
 	}
 }
