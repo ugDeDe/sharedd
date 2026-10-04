@@ -11,5 +11,19 @@ RestartSec=5
 User=root
 StateDirectory=sharedd
 
+# ── hardening (консервативный): агенту нужны iptables/ipset (модуль xt_set
+# может подгружаться — ProtectKernelModules НЕ включаем), systemctl-рестарты
+# прокси и запись чужих файлов (telemt.toml, superexpert.toml). Полная
+# изоляция файловой системы сломала бы конвейер применения конфига.
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
+
 [Install]
 WantedBy=multi-user.target

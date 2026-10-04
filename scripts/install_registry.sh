@@ -70,7 +70,6 @@ BARE=0
 ONLY_CADDY=0
 SKIP_CADDY=0
 RECONFIGURE=0
-ASSUME_YES=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -99,7 +98,9 @@ while [ $# -gt 0 ]; do
         --only-caddy)    ONLY_CADDY=1; shift ;;
         --skip-caddy)    SKIP_CADDY=1; shift ;;
         --reconfigure)   RECONFIGURE=1; shift ;;
-        -y|--yes)        ASSUME_YES=1; shift ;;
+        # принимается для совместимости с автоустановкой: интерактивных
+        # подтверждений y/N в скрипте нет, ask() читает только параметры
+        -y|--yes)        shift ;;
         -h|--help)       grep '^#' "$0" | head -24 | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "неизвестный аргумент: $1 (см. --help)" ;;
     esac
@@ -583,6 +584,30 @@ User=sharedd-registry
 StateDirectory=sharedd
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
+# hardening: только сеть + свой state (/var/lib/sharedd) + чтение /etc/sharedd
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ReadWritePaths=-/var/lib/sharedd
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=multi-user.target
 REG_UNIT
@@ -683,7 +708,7 @@ hline
 say "Проверка..."
 if [ "$CADDY_STATUS" = "ok" ]; then
     cert_ok=0
-    for i in 1 2 3 4 5 6; do
+    for _ in 1 2 3 4 5 6; do
         if curl -fsS -m 10 "https://${DOMAIN}/healthz" >>"$INSTALL_LOG" 2>&1; then cert_ok=1; break; fi
         sleep 5
     done

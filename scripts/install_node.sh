@@ -436,6 +436,18 @@ RestartSec=5
 User=root
 StateDirectory=sharedd
 
+# hardening (консервативный): нужны iptables/ipset (модуль xt_set может
+# подгружаться), systemctl-рестарты прокси и запись чужих конфигов —
+# ProtectSystem/ProtectKernelModules не включаем сознательно
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
+
 [Install]
 WantedBy=multi-user.target
 NODE_UNIT

@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [registry, node]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go mod download
+      - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build -mod=readonly ./...
+
+  golangci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [registry, node, tools/uigen]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      # Блокирующий после локального прогона v2.13.1 (0 issues по обоим
+      # прикладным модулям). Конфиг — дефолтный набор линтеров (errcheck,
+      # govet, ineffassign, staticcheck, unused).
+      # Линтер собираем из исходников тем же тулчейном, что и проект
+      # (setup-go выше): готовый бинарник из релиза собран более старым Go,
+      # чем go.mod (1.26.5), и падает с "language version mismatch"
+      # (exit code 7) на всех модулях сразу.
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+      - run: golangci-lint run --timeout 5m ./...
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/*.sh
+      # Уровень warning: скрипты чисты под ним локально (shellcheck 0.10.0).
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -yqq shellcheck
+          shellcheck -S warning scripts/*.sh
+      # Критичные функции конфиг-конвейера не должны расходиться между
+      # интерактивным и web-установщиком ноды.
+      - run: bash scripts/check_installer_parity.sh
+
+  ui-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/uigen/go.mod
+          cache-dependency-path: tools/uigen/go.sum
+      - name: Проверка актуальности собранных страниц (ui/ -> registry/*.html)
+        run: cd tools/uigen && go run . -root "$GITHUB_WORKSPACE" -check
+
+  # Публикация релиза по тегу vX.Y.Z / VX.Y.Z (в репо исторически теги
+  # с заглавной V): GitHub-hosted раннер собирает
+  # статические бинарники и кладёт их в release. Сделанный (не draft)
+  # релиз сразу же резолвится по releases/latest/download/... — на этом
+  # построены web-установщики; make_latest гарантирует, что свежий тег
+  # не останется невидимым.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')
+    needs: [go, golangci, scripts, ui-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+          cache-dependency-path: |
+            registry/go.sum
+            node/go.sum
+      - name: Сборка (VERSION из тега, ведущие v/V отрезаются)
+        run: VERSION="${GITHUB_REF_NAME#[vV]}" bash scripts/build_all.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/sharedd-registry
+            dist/sharedd-node-agent
+          make_latest: true

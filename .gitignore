@@ -3,4 +3,3 @@ registry/registry
 node/node
 *.tmp
 registry_state.json
-.github/

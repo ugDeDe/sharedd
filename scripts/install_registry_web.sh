@@ -35,6 +35,18 @@ say "sharedd — установка регистратора (web): ${BOLD}$BINA
 dl "$BINARY_URL" "$TMP/sharedd-registry"   || die "скачивание бинарника не удалось"
 dl "$INSTALLER_URL" "$TMP/install.sh"      || die "скачивание установщика не удалось"
 head -c 4 "$TMP/sharedd-registry" | grep -q $'\x7fELF' || die "по BINARY_URL не ELF-бинарник (проверьте ссылку)"
+
+# Контрольная сумма: <имя>.sha256 публикуется рядом с бинарником.
+expected_sum="$(mktemp)"
+if dl "${BINARY_URL}.sha256" "$expected_sum" 2>/dev/null && [ -s "$expected_sum" ]; then
+    want="$(awk '{print $1}' "$expected_sum")"
+    got="$(sha256sum "$TMP/sharedd-registry" | awk '{print $1}')"
+    [ "$got" = "$want" ] || die "sha256 mismatch: ожидалось $want, получено $got — не устанавливаю"
+    say "sha256 ok: ${want}"
+else
+    say "! не смог скачать ${BINARY_URL}.sha256 — ставлю без сверки суммы"
+fi
+
 chmod +x "$TMP/sharedd-registry" "$TMP/install.sh"
 
 # интерактивные вопросы установщика: stdin может быть пайпом curl — его ask
