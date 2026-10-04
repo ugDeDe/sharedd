@@ -78,13 +78,14 @@ jobs:
       - name: Проверка актуальности собранных страниц (ui/ -> registry/*.html)
         run: cd tools/uigen && go run . -root "$GITHUB_WORKSPACE" -check
 
-  # Публикация релиза по тегу vX.Y.Z: GitHub-hosted раннер собирает
+  # Публикация релиза по тегу vX.Y.Z / VX.Y.Z (в репо исторически теги
+  # с заглавной V): GitHub-hosted раннер собирает
   # статические бинарники и кладёт их в release. Сделанный (не draft)
   # релиз сразу же резолвится по releases/latest/download/... — на этом
   # построены web-установщики; make_latest гарантирует, что свежий тег
   # не останется невидимым.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')
     needs: [go, golangci, scripts, ui-check]
     runs-on: ubuntu-latest
     permissions:
@@ -97,8 +98,8 @@ jobs:
           cache-dependency-path: |
             registry/go.sum
             node/go.sum
-      - name: Сборка (VERSION из тега)
-        run: VERSION="${GITHUB_REF_NAME#v}" bash scripts/build_all.sh
+      - name: Сборка (VERSION из тега, ведущие v/V отрезаются)
+        run: VERSION="${GITHUB_REF_NAME#[vV]}" bash scripts/build_all.sh
       - uses: softprops/action-gh-release@v2
         with:
           files: |
