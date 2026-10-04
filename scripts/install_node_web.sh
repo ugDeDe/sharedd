@@ -258,7 +258,7 @@ else
 fi
 
 # ELF-магия: GitHub может вернуть HTML-страницу ошибки вместо бинарника.
-[ "$(head -c4 "$file")" = "$(printf '\\x7fELF')" ] || die "скачанный файл не ELF-бинарник — проверьте ссылку/сеть"
+head -c 4 "$file" | grep -q $'\x7fELF' || die "скачанный файл не ELF-бинарник — проверьте ссылку/сеть"
 
 install -m 0755 "$file" "$BIN_DEST"
 ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
