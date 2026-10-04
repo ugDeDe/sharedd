@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // Завершение ноды и самостоятельное возвращение в строй: разбор kill-ответа
@@ -53,7 +55,7 @@ func stubDeadWait(t *testing.T) chan struct{} {
 	entered := make(chan struct{}, 4)
 
 	oldWait := awaitLocalRecoveryFn
-	awaitLocalRecoveryFn = func(_ *NodeConfig) { entered <- struct{}{} }
+	awaitLocalRecoveryFn = func(_ *config.NodeConfig) { entered <- struct{}{} }
 	oldOnce := deadOnce
 	deadOnce = new(sync.Once)
 	t.Cleanup(func() {
@@ -109,7 +111,7 @@ func TestSelfTerminateNotifiesRetire(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
 	selfTerminate(cfg, reasonDead, msgDead, "5.6.7.8")
 

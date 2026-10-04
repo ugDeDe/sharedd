@@ -1,8 +1,7 @@
-package main
+package config
 
 import (
 	"crypto/rand"
-	"flag"
 	"fmt"
 	"net"
 	"net/url"
@@ -18,24 +17,8 @@ import (
 // Зашитые дефолты (бесконфиговая нода — настраивается только registry.url,
 // telemt.config_path и sync.apply_to_telemt).
 const (
-	defaultTelemtConfigPath   = "/etc/telemt/telemt.toml"
-	defaultIDStateFile        = "/var/lib/sharedd/node_id"
-	healthMetricName          = "telemt_me_writers_active_current"
-	uniqueIPsMetricName       = "telemt_user_unique_ips_current"
-	userConnsMetricName       = "telemt_user_connections_current"
-	userOctetsFromMetricName  = "telemt_user_octets_from_client"
-	userOctetsToMetricName    = "telemt_user_octets_to_client"
-	trafficIngressMetricName  = "sharedd_traffic_ingress_bytes_total"
-	trafficEgressMetricName   = "sharedd_traffic_egress_bytes_total"
-	trafficUsersMetricName    = "sharedd_traffic_users_fingerprint"
-	globalpingAPIBase         = "https://api.globalping.io/v1"
-	metricsListenKey          = "metrics_listen"
-	metricsListenValue        = "127.0.0.1:9090"
-	metricsPortKey            = "metrics_port"
-	defaultIntervalsHeartbeat = 15000
-	defaultIntervalsGlobal    = 300000
-	defaultIntervalsMetrics   = 60000
-	defaultIntervalsSync      = 60000
+	defaultTelemtConfigPath = "/etc/telemt/telemt.toml"
+	GlobalpingAPIBase       = "https://api.globalping.io/v1"
 )
 
 type NodeConfig struct {
@@ -79,8 +62,8 @@ type NodeConfig struct {
 	} `toml:"globalping"`
 }
 
-// deadKill — эффективное окно dead-килла (0 = выключено).
-func (c *NodeConfig) deadKill() time.Duration {
+// DeadKill — эффективное окно dead-килла (0 = выключено).
+func (c *NodeConfig) DeadKill() time.Duration {
 	if c.Watchdog.DeadKillMs < 0 {
 		return 0
 	}
@@ -90,36 +73,7 @@ func (c *NodeConfig) deadKill() time.Duration {
 	return time.Duration(c.Watchdog.DeadKillMs) * time.Millisecond
 }
 
-func nodeConfigPathFlag() string {
-	fs := flag.NewFlagSet("node", flag.ContinueOnError)
-	path := fs.String("config", "", "path to node agent TOML config file")
-	// объявлен и здесь, чтобы парсер не ругался на неизвестный флаг
-	// (сам флаг читается applyOnceFlag() ручным сканом os.Args)
-	_ = fs.Bool("apply-once", false, "apply shared config once (stop->patch->start->wait) and exit")
-	_ = fs.Parse(os.Args[1:])
-	if *path != "" {
-		return *path
-	}
-	if v := os.Getenv("NODE_CONFIG_PATH"); v != "" {
-		return v
-	}
-	return "/etc/sharedd/node.toml"
-}
-
-// applyOnceFlag — режим one-shot конвейера: -apply-once / --apply-once.
-// Сканируем os.Args ВРУЧНУЮ: nodeConfigPathFlag уже владеет своим FlagSet'ом, а
-// второй FlagSet по тем же аргументам оборвётся на первом неизвестном флаге.
-func applyOnceFlag() bool {
-	for _, a := range os.Args[1:] {
-		if a == "-apply-once" || a == "--apply-once" {
-			return true
-		}
-	}
-	return false
-}
-
-func loadNodeConfig() (*NodeConfig, error) {
-	path := nodeConfigPathFlag()
+func LoadNodeConfig(path string) (*NodeConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config %s: %w", path, err)
@@ -150,7 +104,7 @@ func loadNodeConfig() (*NodeConfig, error) {
 		cfg.Telemt.ConfigPath = defaultTelemtConfigPath
 	}
 	if cfg.Globalping.APIBase == "" {
-		cfg.Globalping.APIBase = globalpingAPIBase
+		cfg.Globalping.APIBase = GlobalpingAPIBase
 	}
 	if err := validateHTTPURL(cfg.Globalping.APIBase); err != nil {
 		return nil, fmt.Errorf("globalping.api_base in %s: %w", path, err)
@@ -168,14 +122,14 @@ func validateHTTPURL(raw string) error {
 
 var nodeIDPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$`)
 
-// resolveNodeID — случайный персистентный ID с коротким читаемым именем.
+// ResolveID — случайный персистентный ID с коротким читаемым именем.
 // ID генерируется один раз и сохраняется в state-файл: он определяет место ноды
 // в очереди регистратора (RegisteredAt), поэтому не должен меняться на рестартах.
-func resolveNodeID() (string, error) {
-	return loadOrGenerateRandomID(defaultIDStateFile)
+func ResolveID(stateFile string) (string, error) {
+	return LoadOrGenerateRandomID(stateFile)
 }
 
-func loadOrGenerateRandomID(stateFile string) (string, error) {
+func LoadOrGenerateRandomID(stateFile string) (string, error) {
 	name := "node"
 	if data, err := os.ReadFile(stateFile); err == nil {
 		id := strings.TrimSpace(string(data))

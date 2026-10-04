@@ -1,10 +1,12 @@
-package main
+package agent
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 func drainGpKick() {
@@ -71,7 +73,7 @@ func TestRegisterKicksOnlyOn200(t *testing.T) {
 	defer okSrv.Close()
 
 	nodeID = "n-test-gpkick"
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = okSrv.URL
 	if ok, _ := register(okSrv.Client(), cfg, "203.0.113.9"); !ok {
 		t.Fatal("expected successful register")
@@ -86,7 +88,7 @@ func TestRegisterKicksOnlyOn200(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer quarSrv.Close()
-	cfg2 := &NodeConfig{}
+	cfg2 := &config.NodeConfig{}
 	cfg2.Registry.URL = quarSrv.URL
 	if ok, _ := register(quarSrv.Client(), cfg2, "203.0.113.9"); ok {
 		t.Fatal("429 register must not be ok")

@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"fmt"
@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"sharedd/node/internal/config"
 )
 
 func splitLines(s string) []string { return strings.Split(s, "\n") }
@@ -23,7 +25,7 @@ func TestApplySharedConfigTriggersRequestedGlobalping(t *testing.T) {
 		}
 	}
 drained:
-	applySharedConfig(&NodeConfig{}, SharedConfig{ForceGlobalping: true})
+	applySharedConfig(&config.NodeConfig{}, SharedConfig{ForceGlobalping: true})
 	select {
 	case <-gpKick:
 	case <-time.After(time.Second):
@@ -204,7 +206,7 @@ hello = "00000000000000000000000000000000"
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	cfg.Sync.ApplyToTelemt = true
 	shared := SharedConfig{
@@ -318,7 +320,7 @@ hello = "00000000000000000000000000000000"
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	cfg.Sync.ApplyToTelemt = true
 	shared := SharedConfig{TLSDomain: "m.beboo.ru"}
@@ -388,7 +390,7 @@ func TestApplySharedConfigMaskFalse(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	cfg.Sync.ApplyToTelemt = true
 	if _, err := applySharedConfigAdditively(cfg, SharedConfig{TLSDomain: "m.beboo.ru"}); err != nil {
@@ -432,7 +434,7 @@ func TestApplySharedConfigManagedRestartsForChangedSecret(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 
 	oldSystemd, oldUnit := applySystemdAvailable, applyDetectProxyUnit
@@ -451,7 +453,7 @@ func TestApplySharedConfigManagedRestartsForChangedSecret(t *testing.T) {
 		actions = append(actions, action+" "+unit)
 		return nil
 	}
-	applyWaitMetrics = func(*NodeConfig, time.Duration) error { return nil }
+	applyWaitMetrics = func(*config.NodeConfig, time.Duration) error { return nil }
 
 	shared := SharedConfig{Users: map[string]string{"alice": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
 	if err := applySharedConfigManaged(cfg, shared); err != nil {
@@ -589,7 +591,7 @@ hello = "00000000000000000000000000000000"
 		t.Fatal(err)
 	}
 
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	cfg.Sync.ApplyToTelemt = true
 
@@ -709,7 +711,7 @@ func TestApplySharedConfigManagedRollsBackRestartFailure(t *testing.T) {
 			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
-			cfg := &NodeConfig{}
+			cfg := &config.NodeConfig{}
 			cfg.Telemt.ConfigPath = path
 
 			oldSystemd, oldUnit := applySystemdAvailable, applyDetectProxyUnit
@@ -738,7 +740,7 @@ func TestApplySharedConfigManagedRollsBackRestartFailure(t *testing.T) {
 				return nil
 			}
 			applyMtproxylRestart = failThenRecover
-			applyBlindRestart = func(*NodeConfig) error { return failThenRecover() }
+			applyBlindRestart = func(*config.NodeConfig) error { return failThenRecover() }
 
 			err := applySharedConfigManaged(cfg, SharedConfig{TLSDomain: "front.example.com"})
 			if err == nil || !strings.Contains(err.Error(), "restart") {
@@ -758,7 +760,7 @@ func TestApplySharedConfigManagedRollsBackRestartFailure(t *testing.T) {
 // applySharedConfigAdditively — посчитать патч и записать файл без управления
 // сервисом. Боевой путь — applySharedConfigManaged (стоп→патч→старт→ожидание);
 // этот ярлык существует только для тестов: они не трогают systemd.
-func applySharedConfigAdditively(cfg *NodeConfig, shared SharedConfig) (bool, error) {
+func applySharedConfigAdditively(cfg *config.NodeConfig, shared SharedConfig) (bool, error) {
 	newLines, changed, err := computeSharedConfigPatch(cfg, shared)
 	if err != nil || !changed {
 		return changed, err

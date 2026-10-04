@@ -1,4 +1,4 @@
-package main
+package agent
 
 // Управление прокси-сервисом.
 //
@@ -29,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // Таймауты — var ради подмены в тестах.
@@ -157,7 +159,7 @@ var ensureMetricsTimeout = 8 * time.Second
 // отвечать; если нет — перезапускаем тем, что есть: systemd-юнит, mtproxyl CLI
 // или последним рубежом вслепую `systemctl restart telemt.service` (на
 // Classic/MEKO юнит гарантированно называется так, даже если детект споткнулся).
-func ensureProxyUp(cfg *NodeConfig) error {
+func ensureProxyUp(cfg *config.NodeConfig) error {
 	if err := waitMetricsReady(cfg, ensureMetricsTimeout); err == nil {
 		return nil
 	}
@@ -184,7 +186,7 @@ func ensureProxyUp(cfg *NodeConfig) error {
 
 // blindRestartTelemt — слепой рестарт telemt.service: юнит мог ускользнуть от
 // всех уровней детекта (битый dbus и т.п.), а restart по имени — сработать.
-func blindRestartTelemt(cfg *NodeConfig) error {
+func blindRestartTelemt(cfg *config.NodeConfig) error {
 	if !systemdAvailable() {
 		return fmt.Errorf("no systemd and no mtproxyl CLI — start proxy manually")
 	}
@@ -204,7 +206,7 @@ func proxyCtl(action, unit string) error {
 }
 
 // metricsURLForConfig — URL /metrics по ТЕКУЩЕМУ содержимому telemt.toml.
-func metricsURLForConfig(cfg *NodeConfig) (string, error) {
+func metricsURLForConfig(cfg *config.NodeConfig) (string, error) {
 	telemtCfg, err := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	if err != nil {
 		return "", err
@@ -215,7 +217,7 @@ func metricsURLForConfig(cfg *NodeConfig) (string, error) {
 // waitMetricsReady — ждём, пока прокси реально встанет: метрики должны
 // отвечать HTTP 200 (заодно это и «проверка конфига»: кривой telemt.toml
 // прокси просто не поднимется).
-func waitMetricsReady(cfg *NodeConfig, timeout time.Duration) error {
+func waitMetricsReady(cfg *config.NodeConfig, timeout time.Duration) error {
 	url, err := metricsURLForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("resolve metrics url: %w", err)

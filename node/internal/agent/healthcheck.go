@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"bytes"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"sharedd/node/internal/config"
 )
 
 // ---- telemt config ----
@@ -127,7 +129,7 @@ type GlobalpingChecker struct {
 
 func NewGlobalpingChecker(apiBase string) *GlobalpingChecker {
 	if apiBase == "" {
-		apiBase = globalpingAPIBase
+		apiBase = config.GlobalpingAPIBase
 	}
 	return &GlobalpingChecker{APIBase: apiBase, Client: &http.Client{Timeout: 15 * time.Second}}
 }
@@ -492,7 +494,7 @@ func baseReport(nodeID, ip string, telemtCfg *TelemtConfig) HealthReport {
 
 // RunGlobalpingCheck — медленная внешняя проверка (HEAD/HTTPS с fake-SNI из РФ-проб).
 // Отчёт всегда содержит measurement_id (кроме случая, когда create упал ещё до id).
-func RunGlobalpingCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
+func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 	telemtCfg, terr := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	report := baseReport(nodeID, ip, telemtCfg)
 
@@ -548,7 +550,7 @@ func RunGlobalpingCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 // RunMetricsCheck — быстрая локальная проверка telemt /metrics.
 // Отчёт намеренно НЕ содержит measurement_id: регистратор при таком отчёте
 // не трогает ранее верифицированный globalping-статус.
-func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
+func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 	telemtCfg, terr := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	report := baseReport(nodeID, ip, telemtCfg)
 
@@ -627,7 +629,7 @@ func parseTerminateBody(body []byte) (*TerminatedError, bool) {
 	return &TerminatedError{Reason: p.Reason, Message: p.Message}, true
 }
 
-func SendReport(cfg *NodeConfig, report HealthReport) error {
+func SendReport(cfg *config.NodeConfig, report HealthReport) error {
 	data, _ := json.Marshal(report)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := registryRequest(client, cfg, http.MethodPost, "/report", bytes.NewReader(data))

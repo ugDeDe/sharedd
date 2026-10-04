@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sharedd/node/internal/config"
 )
 
 func TestParseAntiscanIPs(t *testing.T) {
@@ -20,7 +22,7 @@ func TestApplyAntiscanUsesRegistryPortWithoutTTL(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[server]\nport = 8443\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	oldRun, oldFetch := antiscanRun, antiscanFetch
 	oldShared := sharedConfigCache.Get()
@@ -56,7 +58,7 @@ func TestApplyAntiscanDisablesHookOnPortMismatch(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[server]\nport = 443\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = path
 	oldRun, oldShared := antiscanRun, sharedConfigCache.Get()
 	defer func() { antiscanRun = oldRun; sharedConfigCache.Set(oldShared) }()

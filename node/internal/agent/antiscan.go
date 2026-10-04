@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"bufio"
@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 const (
@@ -90,7 +92,7 @@ func removeAntiscanHooks(ctx context.Context) {
 	}
 }
 
-func applyAntiscan(cfg *NodeConfig) error {
+func applyAntiscan(cfg *config.NodeConfig) error {
 	shared := sharedConfigCache.Get()
 	if shared.ProxyPort < 1 || shared.ProxyPort > 65535 {
 		return fmt.Errorf("registry returned invalid proxy_port %d", shared.ProxyPort)
@@ -154,7 +156,7 @@ func kickAntiscan() {
 	}
 }
 
-func antiscanLoop(cfg *NodeConfig) {
+func antiscanLoop(cfg *config.NodeConfig) {
 	run := func() {
 		if err := applyAntiscan(cfg); err != nil {
 			log.Printf("antiscan: %v", err)

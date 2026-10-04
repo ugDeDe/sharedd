@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // withManagerDirs подменяет каталоги детекта менеджеров на tmp-фикстуры.
@@ -79,7 +81,7 @@ func TestRegisterSendsNodeType(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
 	nodeID = "node-t-1"
 	if ok, _ := register(&http.Client{Timeout: 3 * time.Second}, cfg, "1.2.3.4"); !ok {
@@ -99,7 +101,7 @@ func TestRegisterFailureKeepsNodeType(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
 	lastNodeType = NodeTypeMTProxyL // ранее регистрировались как MTProxyL
 	nodeID = "node-t-2"

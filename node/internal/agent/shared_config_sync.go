@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"encoding/json"
@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"sharedd/node/internal/config"
 )
 
 // sectionHeaderRe — заголовок TOML-таблицы. Толерантен к пробелам внутри скобок
@@ -421,7 +423,7 @@ func (a *agentIntervals) Metrics() time.Duration {
 }
 func (a *agentIntervals) Sync() time.Duration { a.mu.RLock(); defer a.mu.RUnlock(); return a.syncI }
 
-func fetchSharedConfig(cfg *NodeConfig) (SharedConfig, error) {
+func fetchSharedConfig(cfg *config.NodeConfig) (SharedConfig, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := registryRequest(client, cfg, http.MethodGet, "/config", nil)
 	if err != nil {
@@ -447,7 +449,7 @@ func fetchSharedConfig(cfg *NodeConfig) (SharedConfig, error) {
 // telemt, и с MTProxyL (она владеет тем же файлом).
 // Запись файла идёт через applySharedConfigManaged — с остановкой и
 // рестартом прокси (конфиг на работающем прокси не применяется сам).
-func applySharedConfig(cfg *NodeConfig, shared SharedConfig) {
+func applySharedConfig(cfg *config.NodeConfig, shared SharedConfig) {
 	previousPort := sharedConfigCache.Get().ProxyPort
 	sharedConfigCache.Set(shared)
 	if previousPort != shared.ProxyPort {
@@ -467,7 +469,7 @@ func applySharedConfig(cfg *NodeConfig, shared SharedConfig) {
 	}
 }
 
-func syncLoop(cfg *NodeConfig) {
+func syncLoop(cfg *config.NodeConfig) {
 	for {
 		shared, err := fetchSharedConfig(cfg)
 		if err != nil {
@@ -482,7 +484,7 @@ func syncLoop(cfg *NodeConfig) {
 // computeSharedConfigPatch — чистый расчёт патча telemt.toml: читает текущий
 // файл и возвращает НОВЫЕ строки, ничего не записывая. changed=false →
 // файл уже соответствует, трогать (и рестартовать прокси) нечего.
-func computeSharedConfigPatch(cfg *NodeConfig, shared SharedConfig) (newLines []string, changed bool, err error) {
+func computeSharedConfigPatch(cfg *config.NodeConfig, shared SharedConfig) (newLines []string, changed bool, err error) {
 	path := cfg.Telemt.ConfigPath
 	lines, err := readLines(path)
 	if err != nil {
@@ -598,7 +600,7 @@ func validateTOMLText(lines []string) error {
 //
 // Без изменений (changed=false) прокси вообще не трогаем — никаких лишних
 // рестартов на каждом sync-тике.
-func applySharedConfigManaged(cfg *NodeConfig, shared SharedConfig) error {
+func applySharedConfigManaged(cfg *config.NodeConfig, shared SharedConfig) error {
 	applySvcMu.Lock()
 	defer applySvcMu.Unlock()
 

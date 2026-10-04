@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"net/http"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // withApplyOnceEnv — изоляция внешнего мира для one-shot тестов: никакого
@@ -31,8 +33,8 @@ func withApplyOnceEnv(t *testing.T) {
 	})
 }
 
-func mkApplyOnceCfg(registryURL, telemtPath string) *NodeConfig {
-	cfg := &NodeConfig{}
+func mkApplyOnceCfg(registryURL, telemtPath string) *config.NodeConfig {
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = registryURL
 	cfg.Registry.Token = "test-node-token"
 	cfg.Telemt.ConfigPath = telemtPath

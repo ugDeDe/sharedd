@@ -1,4 +1,4 @@
-package main
+package agent
 
 // Однократное применение конфига — режим `-apply-once` для
 // установщика. Раньше установщик сам останавливал прокси, а дальше «надеялся»,
@@ -33,6 +33,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 const (
@@ -48,7 +50,7 @@ var (
 	applyOnceFetchDelay    = 3 * time.Second
 )
 
-func runApplyOnce(cfg *NodeConfig) int {
+func runApplyOnce(cfg *config.NodeConfig) int {
 	if !cfg.Sync.ApplyToTelemt {
 		fmt.Println("APPLY-ONCE: skipped (sync.apply_to_telemt = false)")
 		return applyOnceOK

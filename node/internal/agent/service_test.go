@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"net"
@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // Globalping-цикл ждёт listen-порт прокси, прежде чем создавать
@@ -68,7 +70,7 @@ func TestApplySharedConfigAdditivelyReportsChange(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(base), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Telemt.ConfigPath = cfgPath
 
 	shared := SharedConfig{

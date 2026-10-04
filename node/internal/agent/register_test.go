@@ -1,10 +1,12 @@
-package main
+package agent
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 // Регистратор в карантине после prune отвечает 429 + Retry-After —
@@ -20,7 +22,7 @@ func TestRegister429CarriesRetryAfter(t *testing.T) {
 	defer srv.Close()
 
 	nodeID = "n-test-reg"
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
 
 	ok, retryAfter := register(srv.Client(), cfg, "203.0.113.9")
@@ -39,7 +41,7 @@ func TestRegister200HasNoRetryAfter(t *testing.T) {
 	defer srv.Close()
 
 	nodeID = "n-test-ok"
-	cfg := &NodeConfig{}
+	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
 
 	ok, retryAfter := register(srv.Client(), cfg, "203.0.113.9")

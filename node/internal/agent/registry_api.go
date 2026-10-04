@@ -1,12 +1,14 @@
-package main
+package agent
 
 import (
 	"io"
 	"net/http"
+
+	"sharedd/node/internal/config"
 )
 
 // registryRequest is the single transport path for authenticated node API calls.
-func registryRequest(client *http.Client, cfg *NodeConfig, method, path string, body io.Reader) (*http.Response, error) {
+func registryRequest(client *http.Client, cfg *config.NodeConfig, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequest(method, cfg.Registry.URL+path, body)
 	if err != nil {
 		return nil, err

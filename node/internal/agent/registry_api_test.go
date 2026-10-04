@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"io"
@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"sharedd/node/internal/config"
 )
 
 func TestRegistryRequestAddsBearerToken(t *testing.T) {
@@ -31,7 +33,7 @@ func TestRegistryRequestAddsBearerToken(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			cfg := &NodeConfig{}
+			cfg := &config.NodeConfig{}
 			cfg.Registry.URL = srv.URL
 			cfg.Registry.Token = "shared-secret"
 			var body io.Reader

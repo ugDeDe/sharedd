@@ -1,4 +1,4 @@
-package main
+package agent
 
 // Завершение ноды и самостоятельное возвращение в строй.
 //
@@ -38,6 +38,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"sharedd/node/internal/config"
 )
 
 const (
@@ -127,7 +129,7 @@ var awaitLocalRecoveryFn = awaitLocalRecovery
 // САМИ, раз в deadRecoveryPoll. Зелёные метрики = прокси ожил → exit(1),
 // Restart=always поднимет свежий процесс, который перерегистрируется
 // (регистратор снимает dead-запись первым же /register). Не возвращается.
-func awaitLocalRecovery(cfg *NodeConfig) {
+func awaitLocalRecovery(cfg *config.NodeConfig) {
 	log.Print(msgDead)
 	log.Printf("dead: жду восстановления локальных проверок (перепроверка каждые %s); после оздоровления перезапущусь и зарегистрируюсь заново",
 		deadRecoveryPoll)
@@ -146,7 +148,7 @@ func awaitLocalRecovery(cfg *NodeConfig) {
 
 // deadRecover — рантайм-обработка dead: ждём локального оздоровления,
 // затем перезапуск через systemd. В проде Do не возвращается (exit).
-func deadRecover(cfg *NodeConfig) {
+func deadRecover(cfg *config.NodeConfig) {
 	deadOnce.Do(func() {
 		awaitLocalRecoveryFn(cfg)
 		if systemdAvailable() && unitLoaded(agentUnitName) {
@@ -166,7 +168,7 @@ var exitProcess = os.Exit
 // POST /retire (best-effort, короткий таймаут). Оба класса не останавливают
 // службу: агент сам ждёт восстановления (смены IP / оздоровления метрик),
 // после чего перезапускается и регистрируется заново.
-func selfTerminate(cfg *NodeConfig, reason, message, ip string) {
+func selfTerminate(cfg *config.NodeConfig, reason, message, ip string) {
 	if message == "" {
 		message = msgIPBan
 		if reason == reasonDead {
