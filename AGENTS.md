@@ -32,6 +32,6 @@
 - The registry persists operational assignments in its JSON state file and permanent block history in SQLite. Changes to state structs must account for restart/load behavior and existing persisted data.
 - The agent's one-shot apply path is a safety transaction: fetch config, stop proxy, atomically patch its config while preserving ownership/mode, restart, wait for metrics, and roll back on failure. Do not bypass it in installers.
 - `healthcheck.globalping_validity_min` must be strictly greater than `node_defaults.globalping_ms` expressed in minutes. Stale/missing verified Globalping state quarantines a node and requests an immediate agent check; it is not itself an IP ban.
-- For MTProxyL superexpert mode, patch `/opt/mtproxyl/superexpert.toml`, not its generated `mtproxy/config.toml`; MTProxyL overwrites the latter on restart.
+- For MTProxyL, config path is detected from `/opt/mtproxyl/mtproxy/config.toml` (or `telemt.toml`), configured via MTProxyL CLI (`expert`/`secret`).
 - `shared_proxy.port` (default 443) is the registry source of truth. Installers must fail before replacing the agent when the selected telemt config uses another port; mismatched running nodes are ineligible for mastery and must not keep the sharedd antiscan INPUT hook.
 - Antiscan is owned by the node agent: it atomically refreshes `sharedd_scanners` from stamparm/ipsum every 30 minutes and hooks `ANTISCAN_MTPROTO` on the shared port. Do not reintroduce TTL-based filtering.

@@ -768,3 +768,78 @@ func applySharedConfigAdditively(cfg *NodeConfig, shared SharedConfig) (bool, er
 	}
 	return true, nil
 }
+
+func TestApplySharedConfigViaMtproxylCLI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	original := "[server]\nport = 443\nmetrics_listen = \"127.0.0.1:9090\"\n\n[censorship]\ntls_domain = \"old.example.com\"\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &NodeConfig{}
+	cfg.Telemt.ConfigPath = path
+
+	oldSystemd, oldUnit := applySystemdAvailable, applyDetectProxyUnit
+	oldPrefer, oldType := applyPreferMtproxyl, applyDetectNodeType
+	oldMT, oldCmd := applyMtproxylRestart, applyMtproxylCmd
+	oldWait := applyWaitMetrics
+	defer func() {
+		applySystemdAvailable, applyDetectProxyUnit = oldSystemd, oldUnit
+		applyPreferMtproxyl, applyDetectNodeType = oldPrefer, oldType
+		applyMtproxylRestart, applyMtproxylCmd = oldMT, oldCmd
+		applyWaitMetrics = oldWait
+	}()
+
+	applySystemdAvailable = func() bool { return false }
+	applyDetectProxyUnit = func() string { return "" }
+	applyPreferMtproxyl = func() bool { return true }
+	applyDetectNodeType = func() string { return NodeTypeMTProxyL }
+
+	var recordedCmds []string
+	applyMtproxylCmd = func(args ...string) error {
+		recordedCmds = append(recordedCmds, strings.Join(args, " "))
+		return nil
+	}
+
+	restartCalled := false
+	applyMtproxylRestart = func() error {
+		restartCalled = true
+		return nil
+	}
+	applyWaitMetrics = func(*NodeConfig, time.Duration) error { return nil }
+
+	shared := SharedConfig{
+		TLSDomain: "m.beboo.ru",
+		Users: map[string]string{
+			"u0cb271": "dddddddddddddddddddddddddddddddd",
+		},
+	}
+
+	if err := applySharedConfigManaged(cfg, shared); err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+
+	if !restartCalled {
+		t.Fatal("expected mtproxyl restart to be called")
+	}
+
+	expectedCalls := []string{
+		"secret add u0cb271 dddddddddddddddddddddddddddddddd",
+		"expert set censorship tls_domains m.beboo.ru --no-apply",
+		"expert set --raw censorship.exclusive_mask m.beboo.ru m.beboo.ru:443 --no-apply",
+		"expert apply",
+	}
+
+	for _, want := range expectedCalls {
+		found := false
+		for _, got := range recordedCmds {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected CLI command %q in recorded commands:\n%v", want, recordedCmds)
+		}
+	}
+}
+

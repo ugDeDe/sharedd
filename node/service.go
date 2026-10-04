@@ -15,8 +15,7 @@ package main
 //
 // Детект юнита: у Classic и MEKO-фикса сервис называется telemt.service —
 // его ищем первым. MTProxyL управляет прокси через свой CLI (mtproxyl
-// restart пересобирает рабочий config.toml из superexpert.toml), тогда
-// systemd-юнита может не быть — fallback на CLI.
+// secret / expert + restart), тогда systemd-юнита может не быть — fallback на CLI.
 
 import (
 	"fmt"
@@ -135,16 +134,26 @@ func detectProxyUnit() string {
 	return ""
 }
 
-// mtproxylCLIAvailable — MTProxyL CLI в PATH (его restart пересобирает рабочий
-// config.toml из superexpert.toml).
+func mtproxylCLIPath() (string, error) {
+	if p, err := exec.LookPath("mtproxyl"); err == nil {
+		return p, nil
+	}
+	for _, p := range []string{"/usr/local/bin/mtproxyl", "/usr/bin/mtproxyl"} {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("mtproxyl CLI not found in PATH")
+}
+
+// mtproxylCLIAvailable — MTProxyL CLI доступен.
 func mtproxylCLIAvailable() bool {
-	_, err := exec.LookPath("mtproxyl")
+	_, err := mtproxylCLIPath()
 	return err == nil
 }
 
-// preferMtproxylCLI — на MTProxyL-ноде CLI первичен: systemctl-рестарт
-// поднял бы прокси с ранее сгенерированным config.toml, а наш патч лежит в
-// superexpert.toml — до рабочего конфига его доносит только mtproxyl restart.
+// preferMtproxylCLI — на MTProxyL-ноде CLI первичен: параметры прокси
+// настраиваются через mtproxyl secret / expert, а mtproxyl restart применяет их.
 func preferMtproxylCLI() bool {
 	return detectNodeType() == NodeTypeMTProxyL && mtproxylCLIAvailable()
 }
@@ -257,18 +266,22 @@ func waitProxyTCP(port int, timeout time.Duration) bool {
 	}
 }
 
-// tryMtproxylRestart — перезапуск прокси через CLI MTProxyL (superexpert.toml
-// → config.toml пересобирается самим CLI). ASSUME_YES, как в установщике.
+// tryMtproxylRestart — перезапуск прокси через CLI MTProxyL.
 func tryMtproxylRestart() error {
-	bin, err := exec.LookPath("mtproxyl")
+	return runMtproxylCmd("restart")
+}
+
+// runMtproxylCmd — выполнение команды MTProxyL CLI с флагом MTPROXYL_ASSUME_YES.
+func runMtproxylCmd(args ...string) error {
+	bin, err := mtproxylCLIPath()
 	if err != nil {
-		return fmt.Errorf("mtproxyl CLI not found in PATH")
+		return err
 	}
-	cmd := exec.Command(bin, "restart")
+	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), "MTPROXYL_ASSUME_YES=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mtproxyl restart: %v: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("mtproxyl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
