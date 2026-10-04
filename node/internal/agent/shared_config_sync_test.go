@@ -830,8 +830,10 @@ func TestApplySharedConfigViaMtproxylCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldPath := os.Getenv("PATH")
-	os.Setenv("PATH", fakeBin+string(os.PathListSeparator)+oldPath)
-	t.Cleanup(func() { os.Setenv("PATH", oldPath) })
+	if err := os.Setenv("PATH", fakeBin+string(os.PathListSeparator)+oldPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Setenv("PATH", oldPath) })
 
 	var recordedCmds []string
 	applyMtproxylCmd = func(args ...string) error {
