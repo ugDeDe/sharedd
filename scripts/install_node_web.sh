@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent"
+BINARY_URL="${BINARY_URL:-https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent}"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -21,11 +21,20 @@ STATE_DIR="${SHAREDD_STATE_DIR:-/var/lib/sharedd}"    # автотестов; в
 UNIT_DEST="${SHAREDD_UNIT_DEST:-/etc/systemd/system/sharedd-node-agent.service}" # установке
 BIN_DEST="${SHAREDD_BIN_DEST:-/usr/local/bin/sharedd-node-agent}"                # не заданы
 
-# ветки telemt: ваниль vs MTProxyL superexpert (как в install_node.sh)
+# ветки telemt: ваниль vs MTProxyL (как в install_node.sh)
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
-TELEMT_MTPROXYL="/opt/mtproxyl/superexpert.toml"
 MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
+detect_mtproxyl_config() {
+    for c in "/opt/mtproxyl/mtproxy/config.toml" "/opt/mtproxyl/mtproxy/telemt.toml" "/opt/mtproxyl/superexpert.toml"; do
+        if [ -f "$c" ]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    printf '%s' "/opt/mtproxyl/mtproxy/config.toml"
+}
+TELEMT_MTPROXYL="$(detect_mtproxyl_config)"
 MTPROXYL_MODE=0
 
 # ── параметры командной строки ──────────────────────────────────────────
@@ -36,7 +45,8 @@ MTPROXYL_MODE=0
 #                    например ddproxy-6an4o. Без --name id генерирует агент,
 #                    с именем node (node-xxxxx)
 #   --registry-token=TOKEN  обязательный Node API token регистратора
-# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME.
+#   --binary-url=URL        ссылка на скачивание бинарника агента
+# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL.
 # Пример автоматизации:
 #   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --registry-token=TOKEN --name=ddproxy
 NODE_NAME="${NODE_NAME:-}"
@@ -44,14 +54,15 @@ REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 NONINTERACTIVE=0
 usage() {
     cat <<USAGE
-Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ]
+Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--binary-url=URL]
 
   --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
   --registry-token=TOKEN  Node API token из панели регистратора
   --name=ИМЯ       имя ноды длиной 1..10; итоговый id: ИМЯ-xxxxx, напр. helsinki-6an4o
+  --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent
   -h, --help       эта справка
 
-Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME (флаги имеют приоритет).
+Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME, BINARY_URL (флаги имеют приоритет).
 Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --registry-token=TOKEN --name=ИМЯ
 USAGE
 }
@@ -66,6 +77,9 @@ while [ $# -gt 0 ]; do
         --name=*)     NODE_NAME="${1#*=}" ;;
         --name)       shift; [ $# -gt 0 ] || die "--name требует значение"
                       NODE_NAME="$1" ;;
+        --binary-url=*) BINARY_URL="${1#*=}" ;;
+        --binary-url) shift; [ $# -gt 0 ] || die "--binary-url требует URL"
+                      BINARY_URL="$1" ;;
         -h|--help)    usage; exit 0 ;;
         *)            die "неизвестный параметр: $1 (справка: --help)" ;;
     esac
@@ -250,46 +264,73 @@ install -m 0755 "$file" "$BIN_DEST"
 ok "бинарник: ${BOLD}${BIN_DEST}${NC}"
 
 # ── конфиг telemt: автоопределение ───────────────────────────────────────
-superexpert_active() {  # флаг в настройках + файл на месте (семантика MTProxyL)
-    [ -f "$TELEMT_MTPROXYL" ] && [ -f "$MTPROXYL_SETTINGS" ] \
-        && grep -qE '^SUPEREXPERT_ENABLED="?true"?' "$MTPROXYL_SETTINGS" 2>/dev/null
-}
 mtproxyl_cli() { command -v mtproxyl &>/dev/null; }
 
-ensure_superexpert_on() {
-    if superexpert_active; then
-        say "MTProxyL: режим супер-эксперта уже активен"; return 0
-    fi
-    if ! mtproxyl_cli; then
-        if [ -f "$TELEMT_MTPROXYL" ]; then
-            warn "CLI mtproxyl не найден — считаю, что $TELEMT_MTPROXYL уже источник конфига"
-            return 0
+disable_superexpert_if_active() {
+    if [ -f "$MTPROXYL_SETTINGS" ] && grep -qE '^SUPEREXPERT_ENABLED="?true"?' "$MTPROXYL_SETTINGS" 2>/dev/null; then
+        if mtproxyl_cli; then
+            say "MTProxyL: отключаю устаревший режим superexpert..."
+            MTPROXYL_ASSUME_YES=1 mtproxyl superexpert off >>"$INSTALL_LOG" 2>&1 || true
+            TELEMT_MTPROXYL="$(detect_mtproxyl_config)"
         fi
-        die "ни ванильного telemt ($TELEMT_CLASSIC), ни MTProxyL не найдено — сначала поставьте прокси"
     fi
-    say "MTProxyL: включаю режим супер-эксперта..."
-    # ASSUME_YES: read_line отвечает yes; файла нет — 'on' создаст его копией рабочего конфига
-    MTPROXYL_ASSUME_YES=1 mtproxyl superexpert on >>"$INSTALL_LOG" 2>&1 \
-        || die "'mtproxyl superexpert on' упал — см. $INSTALL_LOG"
-    if superexpert_active \
-        || mtproxyl superexpert status --json 2>/dev/null | grep -q '"active":true'; then
-        ok "режим супер-эксперта активен"
-    else
-        die "superexpert не включился — проверьте: mtproxyl superexpert status"
+}
+
+apply_mtproxyl_from_registry() {
+    [ "$MTPROXYL_MODE" -eq 1 ] || return 0
+    mtproxyl_cli || return 0
+
+    say "MTProxyL: получаю конфигурацию с регистратора..."
+    local cfg_json=""
+    if command -v curl &>/dev/null; then
+        cfg_json="$(curl -fsSL --connect-timeout 15 -H "Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config" 2>/dev/null || true)"
+    elif command -v wget &>/dev/null; then
+        cfg_json="$(wget -qO- --timeout=15 --header="Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config" 2>/dev/null || true)"
     fi
+
+    if [ -z "$cfg_json" ]; then
+        warn "не удалось получить /config с регистратора для первичной настройки MTProxyL"
+        return 0
+    fi
+
+    local sni=""
+    sni="$(printf '%s' "$cfg_json" | grep -oE '"tls_domain"[[:space:]]*:[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)".*/\1/' || true)"
+
+    say "MTProxyL: настраиваю секреты и режим эксперта через CLI..."
+    printf '%s' "$cfg_json" | grep -oE '"[a-zA-Z0-9_.-]+"[[:space:]]*:[[:space:]]*"[a-fA-F0-9]{32}"' | while IFS=: read -r raw_u raw_s; do
+        local u s
+        u="$(printf '%s' "$raw_u" | tr -d ' "')"
+        s="$(printf '%s' "$raw_s" | tr -d ' "')"
+        if [ -n "$u" ] && [ -n "$s" ]; then
+            say "MTProxyL: добавляю секрет для $u..."
+            MTPROXYL_ASSUME_YES=1 mtproxyl secret add "$u" "$s" >>"$INSTALL_LOG" 2>&1 || true
+        fi
+    done
+
+    if [ -n "$sni" ]; then
+        say "MTProxyL: настраиваю SNI $sni и exclusive_mask..."
+        MTPROXYL_ASSUME_YES=1 mtproxyl expert set censorship tls_domains "$sni" --no-apply >>"$INSTALL_LOG" 2>&1 || true
+        MTPROXYL_ASSUME_YES=1 mtproxyl expert set --raw censorship.exclusive_mask "$sni" "${sni}:443" --no-apply >>"$INSTALL_LOG" 2>&1 || true
+    fi
+
+    say "MTProxyL: сохраняю настройки (expert apply) и перезапускаю прокси..."
+    MTPROXYL_ASSUME_YES=1 mtproxyl expert apply >>"$INSTALL_LOG" 2>&1 || true
+    MTPROXYL_ASSUME_YES=1 mtproxyl restart >>"$INSTALL_LOG" 2>&1 || true
+    TELEMT_CONFIG="$(detect_mtproxyl_config)"
+    ok "MTProxyL: параметры успешно применены через CLI"
 }
 
 TELEMT_CONFIG="${TELEMT_CONFIG:-}"   # пустая = автоопределение
 if [ -z "$TELEMT_CONFIG" ]; then
-    have_classic=0; have_superx=0
+    have_classic=0; have_mtproxyl=0
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
-    [ -f "$TELEMT_MTPROXYL" ] && have_superx=1
-    if [ "$have_classic" -eq 1 ] && [ "$have_superx" -eq 1 ]; then
-        def=1; superexpert_active && def=2
+    { [ -f "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; } && have_mtproxyl=1
+    if [ "$have_classic" -eq 1 ] && [ "$have_mtproxyl" -eq 1 ]; then
+        def=1; mtproxyl_cli && def=2
         if [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
             echo -e "  ${BOLD}Найдены два конфига telemt — какой патчить?${NC}"
             echo -e "    ${BOLD}1${NC}) Классика: $TELEMT_CLASSIC"
-            echo -e "    ${BOLD}2${NC}) MTProxyL superexpert: $TELEMT_MTPROXYL"
+            echo -e "    ${BOLD}2${NC}) MTProxyL: $TELEMT_MTPROXYL"
             read -r -p "  → Выбор [${def}]: " choice </dev/tty || true
             case "${choice:-$def}" in
                 1) TELEMT_CONFIG="$TELEMT_CLASSIC" ;;
@@ -309,12 +350,17 @@ if [ -z "$TELEMT_CONFIG" ]; then
     elif [ "$have_classic" -eq 1 ]; then
         TELEMT_CONFIG="$TELEMT_CLASSIC"
     else
-        TELEMT_CONFIG="$TELEMT_MTPROXYL"   # superexpert есть или MTProxyL стоит — его мир
+        TELEMT_CONFIG="$TELEMT_MTPROXYL"   # MTProxyL стоит — его мир
     fi
 fi
-if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ]; then
-    MTPROXYL_MODE=1
-    ensure_superexpert_on
+if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
+    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ]; then
+        MTPROXYL_MODE=1
+        disable_superexpert_if_active
+        TELEMT_CONFIG="$(detect_mtproxyl_config)"
+        ok "обнаружен MTProxyL (${TELEMT_CONFIG})"
+        apply_mtproxyl_from_registry
+    fi
 fi
 [ -f "$TELEMT_CONFIG" ] || die "конфиг telemt не найден: $TELEMT_CONFIG — сначала поставьте telemt/MTProxyL"
 say "конфиг telemt: ${BOLD}${TELEMT_CONFIG}${NC}"

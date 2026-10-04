@@ -69,9 +69,18 @@ NONINTERACTIVE=0
 
 # автоопределяемые пути к конфигу telemt
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
-TELEMT_MTPROXYL="/opt/mtproxyl/superexpert.toml"
 MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
+detect_mtproxyl_config() {
+    for c in "/opt/mtproxyl/mtproxy/config.toml" "/opt/mtproxyl/mtproxy/telemt.toml" "/opt/mtproxyl/superexpert.toml"; do
+        if [ -f "$c" ]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    printf '%s' "/opt/mtproxyl/mtproxy/config.toml"
+}
+TELEMT_MTPROXYL="$(detect_mtproxyl_config)"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -211,62 +220,72 @@ say "бинарник: ${BOLD}${BINARY}${NC}"
 
 mtproxyl_cli() { command -v mtproxyl &>/dev/null; }
 
-# Режим superexpert у MTProxyL активен = флаг в настройках + файл на месте
-# (та же семантика, что _superexpert_active в MTProxyL). Читаем settings.conf
-# напрямую — это дёшево и не дёргает CLI на каждое сравнение.
-superexpert_active() {
-    [ -f "$TELEMT_MTPROXYL" ] || return 1
-    [ -f "$MTPROXYL_SETTINGS" ] || return 1
-    grep -qE '^SUPEREXPERT_ENABLED="?true"?' "$MTPROXYL_SETTINGS" 2>/dev/null
+disable_superexpert_if_active() {
+    if [ -f "$MTPROXYL_SETTINGS" ] && grep -qE '^SUPEREXPERT_ENABLED="?true"?' "$MTPROXYL_SETTINGS" 2>/dev/null; then
+        if mtproxyl_cli; then
+            say "MTProxyL: отключаю устаревший режим superexpert..."
+            MTPROXYL_ASSUME_YES=1 mtproxyl superexpert off >>"$INSTALL_LOG" 2>&1 || true
+            TELEMT_MTPROXYL="$(detect_mtproxyl_config)"
+        fi
+    fi
 }
 
-# Гарантировать, что superexpert включён: если выключен — включаем через CLI
-# (MTPROXYL_ASSUME_YES=1: read_line отвечает yes, редактор не запускается;
-# если superexpert.toml ещё нет — 'on' создаст его копией рабочего config.toml).
-ensure_superexpert_on() {
-    if superexpert_active; then
-        say "MTProxyL: режим супер-эксперта уже активен"
+apply_mtproxyl_from_registry() {
+    [ "$MTPROXYL_MODE" -eq 1 ] || return 0
+    mtproxyl_cli || return 0
+
+    say "MTProxyL: получаю конфигурацию с регистратора..."
+    local cfg_json=""
+    if command -v curl &>/dev/null; then
+        cfg_json="$(curl -fsSL --connect-timeout 15 -H "Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config" 2>/dev/null || true)"
+    elif command -v wget &>/dev/null; then
+        cfg_json="$(wget -qO- --timeout=15 --header="Authorization: Bearer $REGISTRY_TOKEN" "$REGISTRY_URL/config" 2>/dev/null || true)"
+    fi
+
+    if [ -z "$cfg_json" ]; then
+        warn "не удалось получить /config с регистратора для первичной настройки MTProxyL"
         return 0
     fi
-    if ! mtproxyl_cli; then
-        if [ -f "$TELEMT_MTPROXYL" ]; then
-            warn "CLI mtproxyl не найден — включить режим не могу; считаю, что ${TELEMT_MTPROXYL} уже является источником конфига"
-            return 0
+
+    local sni=""
+    sni="$(printf '%s' "$cfg_json" | grep -oE '"tls_domain"[[:space:]]*:[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)".*/\1/' || true)"
+
+    say "MTProxyL: настраиваю секреты и режим эксперта через CLI..."
+    printf '%s' "$cfg_json" | grep -oE '"[a-zA-Z0-9_.-]+"[[:space:]]*:[[:space:]]*"[a-fA-F0-9]{32}"' | while IFS=: read -r raw_u raw_s; do
+        local u s
+        u="$(printf '%s' "$raw_u" | tr -d ' "')"
+        s="$(printf '%s' "$raw_s" | tr -d ' "')"
+        if [ -n "$u" ] && [ -n "$s" ]; then
+            say "MTProxyL: добавляю секрет для $u..."
+            MTPROXYL_ASSUME_YES=1 mtproxyl secret add "$u" "$s" >>"$INSTALL_LOG" 2>&1 || true
         fi
-        die "ни ванильного telemt (${TELEMT_CLASSIC}), ни MTProxyL (${MTPROXYL_DIR} + CLI) не найдено.
-    Сначала установите telemt/MTProxyL, либо задайте путь явно: --telemt-config PATH"
+    done
+
+    if [ -n "$sni" ]; then
+        say "MTProxyL: настраиваю SNI $sni и exclusive_mask..."
+        MTPROXYL_ASSUME_YES=1 mtproxyl expert set censorship tls_domains "$sni" --no-apply >>"$INSTALL_LOG" 2>&1 || true
+        MTPROXYL_ASSUME_YES=1 mtproxyl expert set --raw censorship.exclusive_mask "$sni" "${sni}:443" --no-apply >>"$INSTALL_LOG" 2>&1 || true
     fi
-    say "MTProxyL: включаю режим супер-эксперта (свой конфиг ${TELEMT_MTPROXYL})..."
-    MTPROXYL_ASSUME_YES=1 mtproxyl superexpert on >>"$INSTALL_LOG" 2>&1 \
-        || die "команда 'mtproxyl superexpert on' завершилась с ошибкой — см. лог выше"
-    if superexpert_active \
-        || mtproxyl superexpert status --json 2>/dev/null | grep -q '"active":true'; then
-        ok "режим супер-эксперта активен (${TELEMT_MTPROXYL})"
-    else
-        die "режим супер-эксперта не включился — проверьте: mtproxyl superexpert status"
-    fi
-    if [ ! -f "$TELEMT_MTPROXYL" ]; then
-        die "ожидался файл ${TELEMT_MTPROXYL} после включения superexpert — его нет"
-    fi
+
+    say "MTProxyL: сохраняю настройки (expert apply) и перезапускаю прокси..."
+    MTPROXYL_ASSUME_YES=1 mtproxyl expert apply >>"$INSTALL_LOG" 2>&1 || true
+    MTPROXYL_ASSUME_YES=1 mtproxyl restart >>"$INSTALL_LOG" 2>&1 || true
+    TELEMT_CONFIG="$(detect_mtproxyl_config)"
+    ok "MTProxyL: параметры успешно применены через CLI"
 }
 
 if [ -z "$TELEMT_CONFIG" ]; then
-    have_classic=0; have_superx=0
+    have_classic=0; have_mtproxyl=0
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
-    [ -f "$TELEMT_MTPROXYL" ] && have_superx=1
+    { [ -f "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; } && have_mtproxyl=1
 
-    if [ "$have_classic" -eq 1 ] && [ "$have_superx" -eq 1 ]; then
+    if [ "$have_classic" -eq 1 ] && [ "$have_mtproxyl" -eq 1 ]; then
         # оба мира существуют — выбор неоднозначен, спрашиваем (в не-TTY — fail-fast)
         if [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
-            def=1; superexpert_active && def=2
+            def=1; mtproxyl_cli && def=2
             echo -e "  ${BOLD}Найдены два конфига telemt — какой патчить агенту?${NC}"
             echo -e "    ${BOLD}1${NC}) Классика (ванильный telemt): ${TELEMT_CLASSIC}"
-            if superexpert_active; then
-                sx_note="${GREEN}(режим активен)${NC}"
-            else
-                sx_note="${DIM}(superexpert выключен — включим)${NC}"
-            fi
-            echo -e "    ${BOLD}2${NC}) MTProxyL superexpert: ${TELEMT_MTPROXYL}   ${sx_note}"
+            echo -e "    ${BOLD}2${NC}) MTProxyL: ${TELEMT_MTPROXYL}"
             read -r -p "  ${SYM_ARROW} Выбор [${def}]: " choice </dev/tty || true
             case "${choice:-$def}" in
                 1) TELEMT_CONFIG="$TELEMT_CLASSIC" ;;
@@ -275,7 +294,7 @@ if [ -z "$TELEMT_CONFIG" ]; then
             esac
             echo ""
         elif [ "$NONINTERACTIVE" -eq 1 ]; then
-            def=1; superexpert_active && def=2
+            def=1; mtproxyl_cli && def=2
             [ "$def" -eq 1 ] && TELEMT_CONFIG="$TELEMT_CLASSIC" || TELEMT_CONFIG="$TELEMT_MTPROXYL"
             warn "найдены оба конфига telemt — неинтерактивно выбран: $TELEMT_CONFIG"
         else
@@ -284,30 +303,27 @@ if [ -z "$TELEMT_CONFIG" ]; then
         fi
     elif [ "$have_classic" -eq 1 ]; then
         TELEMT_CONFIG="$TELEMT_CLASSIC"
-        if mtproxyl_cli || [ -d "$MTPROXYL_DIR" ]; then
-            warn "обнаружен MTProxyL, но superexpert-конфига нет — беру классику."
-            warn "если прокси на самом деле крутит MTProxyL (он перегенерирует свой config.toml),"
-            warn "перезапустите установщик: --preset mtproxyl"
-        fi
     else
-        # superexpert.toml есть — берём его (включив режим); файла нет, но MTProxyL
-        # установлен — тоже его мир: включаем superexpert, файл родится копией
-        # текущего рабочего конфига.
         TELEMT_CONFIG="$TELEMT_MTPROXYL"
     fi
 fi
 
 # mtproxyl-режим — по фактическому пути (покрывает и --telemt-config, и --preset)
-if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ]; then
-    MTPROXYL_MODE=1
-    ensure_superexpert_on
+if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
+    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ]; then
+        MTPROXYL_MODE=1
+        disable_superexpert_if_active
+        TELEMT_CONFIG="$(detect_mtproxyl_config)"
+        ok "обнаружен MTProxyL (${TELEMT_CONFIG})"
+        apply_mtproxyl_from_registry
+    fi
 fi
 
 # --- telemt должен существовать ---
 if [ ! -f "$TELEMT_CONFIG" ]; then
     warn "конфиг telemt не найден: $TELEMT_CONFIG"
     if [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
-        warn "обнаружен MTProxyL: прокси должен читать ${TELEMT_MTPROXYL} (режим superexpert) — перезапустите: --preset mtproxyl"
+        warn "обнаружен MTProxyL: прокси должен читать ${TELEMT_MTPROXYL} — перезапустите: --preset mtproxyl"
     fi
     [ -f "$TELEMT_CLASSIC" ] && [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ] && warn "найден классический конфиг: $TELEMT_CLASSIC — перезапустите: --preset classic"
     die "сначала установите telemt (или MTProxyL), затем повторите. Путь задаётся: --preset classic|mtproxyl, --telemt-config PATH"
@@ -602,8 +618,8 @@ echo -e "  ${DIM}подтянет SNI/пользователей/интерва�
 echo -e "  ${DIM}в telemt.toml (mask_host не трогается; при mask=true — exclusive_mask).${NC}"
 if [ "$MTPROXYL_MODE" -eq 1 ]; then
     echo ""
-    echo -e "  ${DIM}MTProxyL superexpert: агент правит ${TELEMT_MTPROXYL} и сам делает${NC}"
-    echo -e "  ${DIM}mtproxyl restart — рабочий config.toml пересобирается из superexpert.toml.${NC}"
+    echo -e "  ${DIM}MTProxyL: агент синхронизирует ${TELEMT_MTPROXYL} и вызывает${NC}"
+    echo -e "  ${DIM}mtproxyl restart для применения изменений.${NC}"
     echo -e "  ${DIM}Все изменения из панели (юзеры/SNI) применяются автоматически с рестартом.${NC}"
 fi
 hline

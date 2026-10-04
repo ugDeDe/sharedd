@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "sharedd — архитектура проекта",
+    "output": "docs/architecture.sharedd.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1140,
+      800
+    ]
+  },
+  "components": [
+    {
+      "id": "uigen",
+      "type": "cloud",
+      "label": "tools/uigen",
+      "sublabel": "esbuild → webassets",
+      "pos": [
+        30,
+        270
+      ],
+      "size": [
+        150,
+        56
+      ]
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "Веб-панель",
+      "sublabel": "panel · stats · dashboard · links",
+      "pos": [
+        230,
+        140
+      ],
+      "size": [
+        160,
+        56
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "JSON state",
+      "sublabel": "assignments",
+      "pos": [
+        430,
+        120
+      ],
+      "size": [
+        160,
+        56
+      ]
+    },
+    {
+      "id": "history",
+      "type": "database",
+      "label": "SQLite history",
+      "sublabel": "bans · events · traffic",
+      "pos": [
+        660,
+        130
+      ],
+      "size": [
+        170,
+        56
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "backend",
+      "label": "sharedd-registry",
+      "sublabel": "единая точка решений",
+      "tag": "Go · server",
+      "pos": [
+        430,
+        250
+      ],
+      "size": [
+        180,
+        62
+      ]
+    },
+    {
+      "id": "gp",
+      "type": "external",
+      "label": "Globalping",
+      "sublabel": "внешние РФ-пробы",
+      "pos": [
+        930,
+        320
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Telegram-клиенты",
+      "sublabel": "tg://proxy",
+      "pos": [
+        30,
+        650
+      ],
+      "size": [
+        130,
+        56
+      ]
+    },
+    {
+      "id": "cf",
+      "type": "cloud",
+      "label": "Cloudflare DNS",
+      "sublabel": "mtp1.example.com",
+      "pos": [
+        25,
+        540
+      ],
+      "size": [
+        140,
+        56
+      ]
+    },
+    {
+      "id": "telemt",
+      "type": "backend",
+      "label": "telemt / MTProxyL",
+      "sublabel": "shared_proxy :443",
+      "pos": [
+        400,
+        530
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "sharedd-node-agent",
+      "sublabel": "агент на VPS",
+      "tag": "Go · systemd",
+      "pos": [
+        670,
+        530
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "antiscan",
+      "type": "security",
+      "label": "Antiscan",
+      "sublabel": "stamparm/ipsum",
+      "pos": [
+        430,
+        660
+      ],
+      "size": [
+        160,
+        54
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Регистратор · control plane",
+      "wraps": [
+        "panel",
+        "state",
+        "history",
+        "registry"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Нода VPS · data plane",
+      "wraps": [
+        "telemt",
+        "agent",
+        "antiscan"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "uigen-panel",
+      "from": "uigen",
+      "to": "panel",
+      "label": "сборка HTML",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "registry-panel",
+      "from": "registry",
+      "to": "panel",
+      "label": "SPA + JSON API",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "registry-state",
+      "from": "registry",
+      "to": "state",
+      "label": "assignments",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "registry-history",
+      "from": "registry",
+      "to": "history",
+      "label": "bans / events",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "registry-gp",
+      "from": "registry",
+      "to": "gp",
+      "label": "GET результата по id",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "agent-registry",
+      "from": "agent",
+      "to": "registry",
+      "label": "отчёт: measurement id",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "registry-agent",
+      "from": "registry",
+      "to": "agent",
+      "label": "конфиг + apply",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "registry-cf",
+      "from": "registry",
+      "to": "cf",
+      "label": "Cloudflare API: смена A",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "security"
+    },
+    {
+      "id": "users-cf",
+      "from": "users",
+      "to": "cf",
+      "label": "DNS-запрос",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "cf-telemt",
+      "from": "cf",
+      "to": "telemt",
+      "label": "A-запись живой ноды",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis",
+      "labelAt": [
+        290,
+        562
+      ]
+    },
+    {
+      "id": "agent-telemt",
+      "from": "agent",
+      "to": "telemt",
+      "label": "патч TOML, restart",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "agent-antiscan",
+      "from": "agent",
+      "to": "antiscan",
+      "label": "refresh sharedd_scanners",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "agent-gp",
+      "from": "agent",
+      "to": "gp",
+      "label": "POST измерения",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ]
+}

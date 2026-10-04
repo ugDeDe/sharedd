@@ -497,7 +497,7 @@ func computeSharedConfigPatch(cfg *config.NodeConfig, shared SharedConfig) (newL
 	// это выбор оператора (например, MTProxyL QuickSettings). Активное
 	// прощупывание нашего SNI вместо этого накрываем exclusive_mask на
 	// настоящий сайт — см. ниже.
-	maskOn := censorshipMaskEnabled(lines)
+	maskOn := censorshipMaskEnabled(lines) || applyPreferMtproxyl() || applyDetectNodeType() == NodeTypeMTProxyL
 
 	for username, secret := range shared.Users {
 		var ch bool
@@ -559,10 +559,35 @@ var (
 	applyPreferMtproxyl   = preferMtproxylCLI
 	applyDetectNodeType   = detectNodeType
 	applyMtproxylRestart  = tryMtproxylRestart
+	applyMtproxylCmd      = runMtproxylCmd
 	applyBlindRestart     = blindRestartTelemt
 	applyProxyCtl         = proxyCtl
 	applyWaitMetrics      = waitMetricsReady
 )
+
+// applyMtproxylCLI применяет секреты и параметры Censorship через MTProxyL CLI.
+func applyMtproxylCLI(shared SharedConfig) error {
+	if !mtproxylCLIAvailable() {
+		return nil
+	}
+	for username, secret := range shared.Users {
+		if err := applyMtproxylCmd("secret", "add", username, secret); err != nil {
+			log.Printf("mtproxyl secret add %s: %v (continuing)", username, err)
+		}
+	}
+	if shared.TLSDomain != "" {
+		if err := applyMtproxylCmd("expert", "set", "censorship", "tls_domains", shared.TLSDomain, "--no-apply"); err != nil {
+			return fmt.Errorf("mtproxyl expert set tls_domains: %w", err)
+		}
+		if err := applyMtproxylCmd("expert", "set", "--raw", "censorship.exclusive_mask", shared.TLSDomain, shared.TLSDomain+":443", "--no-apply"); err != nil {
+			return fmt.Errorf("mtproxyl expert set exclusive_mask: %w", err)
+		}
+	}
+	if err := applyMtproxylCmd("expert", "apply"); err != nil {
+		return fmt.Errorf("mtproxyl expert apply: %w", err)
+	}
+	return nil
+}
 
 func rollbackConfig(path string, orig []string, restart func() error, cause error) error {
 	if orig == nil {
@@ -628,15 +653,15 @@ func applySharedConfigManaged(cfg *config.NodeConfig, shared SharedConfig) error
 	}
 	if unit != "" && applyPreferMtproxyl() {
 		// На MTProxyL systemctl-рестарт поднял бы прокси со СТАРЫМ
-		// сгенерированным config.toml — наш патч лежит в superexpert.toml и до
-		// рабочего конфига его доносит только `mtproxyl restart`.
+		// сгенерированным config.toml — параметры настраиваются через MTProxyL CLI
+		// и рабочий конфиг пересобирает `mtproxyl restart`.
 		log.Printf("node type MTProxyL: managing proxy via mtproxyl CLI (unit %s found but CLI rebuilds config)", unit)
 		unit = ""
 	}
 
 	if unit == "" {
 		// systemd-юнита нет (или он вторичен, см. выше). MTProxyL: CLI сам
-		// пересобирает config.toml из superexpert.toml и поднимает прокси.
+		// пересобирает config.toml из параметров expert/secrets и поднимает прокси.
 		// Classic/MEKO без найденного юнита: пишем файл и ВСЛЕПУЮ пробуем
 		// `systemctl restart telemt.service` — на этих установках юнит зовётся
 		// именно так, и рестарт по имени срабатывает, даже если детект (show/
@@ -645,7 +670,10 @@ func applySharedConfigManaged(cfg *config.NodeConfig, shared SharedConfig) error
 			return err
 		}
 		if applyPreferMtproxyl() || applyDetectNodeType() == NodeTypeMTProxyL {
-			log.Printf("%s updated; restarting proxy via mtproxyl CLI (no systemd unit found)...", path)
+			log.Printf("%s updated; applying via mtproxyl CLI and restarting...", path)
+			if cerr := applyMtproxylCLI(shared); cerr != nil {
+				return rollbackConfig(path, orig, applyMtproxylRestart, fmt.Errorf("mtproxyl CLI apply: %w", cerr))
+			}
 			if rerr := applyMtproxylRestart(); rerr != nil {
 				return rollbackConfig(path, orig, applyMtproxylRestart, fmt.Errorf("mtproxyl restart after config write: %w", rerr))
 			}

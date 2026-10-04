@@ -440,7 +440,7 @@ tar xzf dist/sharedd-node-agent-*-linux-amd64.tar.gz
 sudo bash pkg/install_full.sh # URL регистратора (Enter = дефолт), путь telemt — авто
 # явные пресеты:
 sudo bash pkg/install_full.sh --preset classic # /etc/telemt/telemt.toml
-sudo bash pkg/install_full.sh --preset mtproxyl # MTProxyL superexpert (режим включится сам)
+sudo bash pkg/install_full.sh --preset mtproxyl # MTProxyL (настройка через CLI)
 ```
 
 Или web-установка голым бинарником из релиза:
@@ -627,9 +627,9 @@ Globalping, а не самоотчётом). Два пути: **1)** смени�
 <summary><b>MTProxyL и/или MEKO fix поддерживается?</b></summary>
 
 Да. Агент детектит тип установки: ванильный telemt,
-MEKO, MTProxyL Manager. Для MTProxyL Manager агент
-патчит **superexpert-конфиг**; режим супер-эксперта
-установщик включает автоматически. Тип ноды показывается бейджом в панели.
+MEKO, MTProxyL Manager. Для MTProxyL Manager
+агент настраивает параметры и секреты через CLI (`mtproxyl expert` / `secret`).
+Тип ноды показывается бейджом в панели.
 
 </details>
 
