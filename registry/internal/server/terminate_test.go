@@ -203,9 +203,10 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 	}
 }
 
-// Kill-доставка: dead запрещает перерегистрацию навсегда (403+terminate);
-// ip_ban по ТОМУ ЖЕ ip даёт одну GP-перепроверку (reverify-карантин,
-// ), с НОВОГО ip блок снимается сразу.
+// Kill-доставка: dead блок НЕ создаёт — восстановившаяся нода
+// перерегистрируется, dead-запись снимается первым же /register;
+// ip_ban по ТОМУ ЖЕ ip даёт одну GP-перепроверку (reverify-карантин),
+// с НОВОГО ip блок снимается сразу.
 func TestTerminatedKillDeliveryAndIPLift(t *testing.T) {
 	r := newTerminateTestRegistry(t)
 	now := time.Now()
@@ -229,22 +230,31 @@ func TestTerminatedKillDeliveryAndIPLift(t *testing.T) {
 		return rec
 	}
 
-	// dead + тот же ip → 403 terminate (бессрочно)
+	// dead + регистрация → блок НЕ мешает: 200, dead-запись снята
 	rec := post("/register", `{"node_id":"node-dead","ip":"1.1.1.1"}`, "")
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("dead-terminated register must be 403, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dead-terminated register must be accepted (blockless), got %d", rec.Code)
 	}
-	var p struct {
-		Terminate bool   `json:"terminate"`
-		Reason    string `json:"reason"`
-		Message   string `json:"message"`
+	r.mu.RLock()
+	_, deadStillThere := r.state.Terminated["node-dead"]
+	r.mu.RUnlock()
+	if deadStillThere {
+		t.Fatal("dead record must be lifted by re-register")
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil || !p.Terminate || p.Reason != BanReasonDead {
-		t.Fatalf("bad terminate payload: %s", rec.Body.String())
+	// повторная регистрация после повторного dead — снова возможна
+	// (неограниченное число циклов)
+	r.mu.Lock()
+	r.state.Terminated["node-dead"] = &TerminatedRecord{
+		NodeID: "node-dead", IP: "1.1.1.1", Reason: BanReasonDead, Message: MsgDead, At: now,
 	}
-	// dead + heartbeat → тоже kill
-	if rec := post("/heartbeat", `{"node_id":"node-dead"}`, "1.1.1.1"); rec.Code != http.StatusForbidden {
-		t.Fatalf("terminated heartbeat must be 403, got %d", rec.Code)
+	r.mu.Unlock()
+	if rec := post("/register", `{"node_id":"node-dead","ip":"1.1.1.1"}`, ""); rec.Code != http.StatusOK {
+		t.Fatalf("repeated dead re-register must be accepted, got %d", rec.Code)
+	}
+	// dead до перерегистрации: heartbeat не убивает — кандидат неизвестен,
+	// обычный 410 «перерегистрируйся»
+	if rec := post("/heartbeat", `{"node_id":"node-absent"}`, "1.1.1.1"); rec.Code != http.StatusGone {
+		t.Fatalf("unknown-node heartbeat must be 410, got %d", rec.Code)
 	}
 
 	// Ip_ban + ТОТ ЖЕ ip → не kill, а reverify-карантин с одной

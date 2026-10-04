@@ -600,10 +600,10 @@ func RunMetricsCheck(cfg *NodeConfig, nodeID, ip string) HealthReport {
 }
 
 // TerminatedError — регистратор ответил kill-сигналом
-// (403 {"terminate":true,...}): нода убита навсегда, обязана записать
-// Message в лог дословно, положить tombstone и остановиться
-// (terminate.go). Причина: ip_ban — GP-карантин исчерпан, dead — порт/
-// метрики не отвечали дольше terminate_dead_min.
+// (403 {"terminate":true,...}): обязана записать Message в лог дословно и
+// уйти в режим ожидания восстановления (terminate.go): ip_ban — ждём смены
+// IP, dead — ждём локального оздоровления, затем перезапуск и повторная
+// регистрация.
 type TerminatedError struct {
 	Reason  string
 	Message string

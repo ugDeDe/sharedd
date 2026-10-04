@@ -204,15 +204,17 @@ func (r *Registry) buildMux() *http.ServeMux {
 		}
 		// Терминально убитая нода; ip_ban по ТОМУ ЖЕ ip
 		// не вечен — даём одну GP-перепроверку (reverify в registerWithReverify;
-		// ложные глобалпинги, прокси был выключен при отладке). dead —
-		// бессрочен, агенту kill-сигнал. Совпадение по ip с ЧУЖОЙ записью —
+		// ложные глобалпинги, прокси был выключен при отладке). dead блоком
+		// не является вовсе — нода возвращается после локального восстановления,
+		// запись снимается здесь же. Совпадение по ip с ЧУЖОЙ ip_ban-записью —
 		// тоже reverify (переустановка агента с новым id старый ip не отмывает).
-		r.mu.RLock()
+		r.mu.Lock()
 		rec := r.terminatedBlockingLocked(body.NodeID, body.IP)
 		if rec == nil && body.IP != "" {
 			rec = r.terminatedIPBanByIPLocked(body.IP)
 		}
-		r.mu.RUnlock()
+		r.liftDeadTerminatedLocked(body.NodeID, body.IP)
+		r.mu.Unlock()
 		if rec != nil && !reverifyOpenLocked(rec, time.Now()) {
 			log.Printf("register from terminated node %s (%s) rejected: %s (reverify_failed=%t)",
 				body.NodeID, body.IP, rec.Reason, rec.ReverifyFailed)
@@ -257,10 +259,12 @@ func (r *Registry) buildMux() *http.ServeMux {
 			c.HeartbeatsTotal++
 			r.state.Counters.Heartbeats++
 		}
-		// Heartbeat от терминально убитой ноды — kill-сигнал
-		// (403+terminate). IP берём из соединения: для ip_ban сменившийся ip
-		// блока не имеет — обычный 410 «перерегистрируйся» (register,
-		// пусть и перезаписью, снимет терминальную запись по смене ip).
+		// Heartbeat от убитой по ip_ban ноды — kill-сигнал (403+terminate);
+		// dead-запись блока не даёт — кандидат отсутствует, обычный 410
+		// «перерегистрируйся» (агент перерегистрируется после локального
+		// восстановления, register снимет dead-запись). IP берём из
+		// соединения: для ip_ban сменившийся ip блока не имеет — обычный
+		// 410 «перерегистрируйся» (register снимет запись по смене ip).
 		var rec *TerminatedRecord
 		if !ok {
 			host, _, _ := net.SplitHostPort(req.RemoteAddr)

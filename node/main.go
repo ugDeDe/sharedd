@@ -90,18 +90,15 @@ func main() {
 		ipr.fixed = cfg.Node.PublicIP
 	}
 
-	// Нода когда-то была терминально завершена — проверяем право на
-	// Воскрешение ДО любых регистраций (ip сменился ИЛИ регистратор
-	// дал gp re-verify — иначе служба останавливается, новых регистраций
-	// не будет).
+	// Блокировки ноды живёт только на регистраторе: нода при любом старте
+	// регистрируется как обычно, решение (принять / reverify-карантин /
+	// 429 / kill) принимает регистратор.
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	// Сетевой вотчдог: после ручной смены IP/шлюза на хостинге агент сам
 	// сбрасывает протухшие соединения, детектит новый адрес и в крайнем
 	// случае перезапускается (netwatch.go).
 	netw.bind(client, ipr)
-
-	checkTerminationTombstone(cfg, ipr, client)
 
 	ip, err := ipr.Current(true)
 	if err != nil {
@@ -145,8 +142,10 @@ func register(client *http.Client, cfg *NodeConfig, ip string) (bool, time.Durat
 	netw.noteOK()
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	// Терминальный бан — регистрация запрещена навсегда; завершаемся
-	// (сообщение регистратора уходит в лог дословно). Функция не возвращается.
+	// Kill от регистратора (ip_ban/dead): службу не останавливаем —
+	// агент сам ждёт восстановления (смены IP / оздоровления метрик),
+	// затем перезапускается и регистрируется заново. Сообщение
+	// регистратора уходит в лог дословно.
 	if resp.StatusCode == http.StatusForbidden {
 		if te, ok := parseTerminateBody(body); ok {
 			selfTerminate(cfg, te.Reason, te.Message, ip)
@@ -339,8 +338,9 @@ func metricsLoop(cfg *NodeConfig, ipr *ipResolver) {
 		// больной ноде знать незачем — пусть снимает её по heartbeat-TTL.
 		gate.noteLocal(report.Error == "" && report.MetricsOK)
 		// Метрик-немота непрерывно дольше dead_kill (ум. 10 мин) —
-		// это терминальный класс dead. Агент умирает сам, успевая сообщить
-		// регистратору /retire (бан — в вечную историю). В лог уходит msgDead.
+		// класс dead. Агент сообщает регистратору /retire (бан — в вечную
+		// историю) и ЖДЁТ локального оздоровления, затем перезапускается
+		// и регистрируется заново (dead-запись на регистраторе снимается).
 		if win := cfg.deadKill(); win > 0 && gate.deadKillDue(time.Now(), win) {
 			selfTerminate(cfg, reasonDead, msgDead, ip)
 		}

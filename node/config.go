@@ -55,11 +55,12 @@ type NodeConfig struct {
 		ApplyToTelemt bool `toml:"apply_to_telemt"`
 	} `toml:"sync"`
 
-	// Watchdog: dead_kill_ms — непрерывно красные локальные
-	// проверки (scrape telemt /metrics) дольше этого окна → терминальное
-	// само-завершение ноды (класс dead, см. terminate.go): агент пишет в лог
-	// msgDead, кладёт tombstone, шлёт /retire регистратору и останавливает
-	// свою службу. 0/отсутствует = 600000 (10 мин); -1 = выключено.
+	// Watchdog: dead_kill_ms — непрерывно красные
+	// проверки (scrape telemt /metrics) дольше этого окна → класс dead
+	// (см. terminate.go): агент пишет в лог msgDead, шлёт /retire
+	// регистратору и ЖДЁТ локального оздоровления, после которого
+	// перезапускается и регистрируется заново. 0/отсутствует = 600000
+	// (10 мин); -1 = выключено.
 	Watchdog struct {
 		DeadKillMs int `toml:"dead_kill_ms"`
 	} `toml:"watchdog"`

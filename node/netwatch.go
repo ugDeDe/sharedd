@@ -123,9 +123,9 @@ func (w *netWatch) noteFail() {
 
 // restartSelf — самоперезапуск через systemd: exit(1) при Restart=always
 // поднимает агента заново (чистые сокеты, свежий детект IP, немедленная
-// регистрация). Терминальные стопы (dieSelf) делают systemctl stop и выходят
-// с 0 — эти семантики не пересекаются. Без systemd-юнита не выходим: убить
-// агента насовсем хуже, чем продолжать ретраи со сбросом соединений.
+// регистрация). Recovery-режимы terminate.go (ip_ban/dead) используют ту же
+// семантику exit(1). Без systemd-юнита не выходим: убить агента насовсем
+// хуже, чем продолжать ретраи со сбросом соединений.
 func restartSelf(reason string) {
 	if systemdAvailable() && unitLoaded(agentUnitName) {
 		log.Printf("network change detected — restarting agent (%s); systemd will bring it back up", reason)

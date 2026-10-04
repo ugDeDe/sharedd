@@ -28,11 +28,14 @@ package server
 //
 // 2. dead — TCP-порт не отвечает И метрики не поступают непрерывно
 // дольше terminate_dead_min (ум. 10). Регистратор ставит терминальную
-// запись (говорящая нода получит kill на следующем обращении); нода со
-// своей стороны само-детектит тот же факт по локальным scrape'ам
-// (node/terminate.go) и, умирая, шлёт POST /retire — так бан попадает
-// в историю, даже если агент молчал и уже выпал по heartbeat-TTL.
-// Бессрочен. Исключение: нода, умершая по tcp+metrics ВО
+// запись и пишет бан в историю; нода со своей стороны само-детектит тот
+// же факт по локальным scrape'ам (node/terminate.go), шлёт POST /retire
+// (бан попадает в вечную историю, даже если агент молчал и уже выпал
+// по heartbeat-TTL) и ЖДЁТ локального восстановления. dead НЕ вечен:
+// оздоровившаяся нода перерегистрируется сама, запись снимает первый же
+// /register (liftDeadTerminatedLocked), а здоровье проверяется заново
+// обычными циклами — циклов «умерла → восстановилась → вернулась»
+// неограниченное число. Исключение: нода, умершая по tcp+metrics ВО
 // ВРЕМЯ GP-карантина, записывается как ip_ban (её класс уже определён
 // карантином); dead — только для нод, GP не фейливших.
 //
@@ -136,7 +139,10 @@ func (r *Registry) terminateRetiredLocked(id, ip string, now time.Time, reason s
 }
 
 // terminatedBlockingLocked — терминальная запись, БЛОКИРУЮЩАЯ обращение
-// (id, ip), или nil. Для ip_ban обращение с ДРУГОГО ip не блокируется —
+// (id, ip), или nil. dead-записи блок не создают вовсе: нода сама ждёт
+// локального восстановления и перерегистрируется — запись снимает
+// /register (liftDeadTerminatedLocked), здоровье проверяется заново.
+// Для ip_ban обращение с ДРУГОГО ip не блокируется —
 // оператор последовал инструкции «запустите службу заново после смены ip»;
 // снятие записи оформляет /register (terminateLiftIfIPChangedLocked),
 // heartbeat/report с нового ip просто получают «re-register» как обычно.
@@ -145,10 +151,32 @@ func (r *Registry) terminatedBlockingLocked(id, ip string) *TerminatedRecord {
 	if t == nil {
 		return nil
 	}
+	if t.Reason == BanReasonDead {
+		return nil
+	}
 	if t.Reason == BanReasonIPBan && ip != "" && ip != t.IP {
 		return nil
 	}
 	return t
+}
+
+// liftDeadTerminatedLocked — возврат dead-ноды в строй: запись снимаем
+// при первом же /register после локального восстановления. Вечная история
+// бана в БД остаётся; дальнейшую судьбу ноды решают обычные проверки
+// (TCP-проба, метрики, globalping) — циклов возврата неограниченное число.
+// Под write-lock. Возвращает true, если запись была снята.
+func (r *Registry) liftDeadTerminatedLocked(id, ip string) bool {
+	t := r.state.Terminated[id]
+	if t == nil || t.Reason != BanReasonDead {
+		return false
+	}
+	delete(r.state.Terminated, id)
+	r.addEventLocked(Event{
+		Type: EventBanLifted, NodeID: id, IP: ip,
+		Detail: "dead-запись снята: нода вернулась после локального восстановления, здоровье проверяется заново",
+	})
+	log.Printf("termination (dead) of %s lifted: node re-registered after local recovery", id)
+	return true
 }
 
 // terminatedIPBanByIPLocked — ip_ban-запись по IP с ЛЮБЫМ node_id
