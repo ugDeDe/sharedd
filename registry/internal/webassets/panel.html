@@ -4822,16 +4822,26 @@
       btn.textContent = label;
     });
   }
-  function toggleDisabled(id) {
+  function toggleDisabled(id, btn) {
     const u = USERS.find((x) => x.id === id);
     if (!u) return;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "…";
     panelReq(`/panel/api/admin/users/${id}`, "PATCH", { disabled: !u.disabled }).then(() => {
       showToast(u.disabled ? "Пользователь разблокирован." : "Пользователь заблокирован.");
       load3().catch(() => {
       });
-    }).catch((e) => showToast(e.code === "last_admin" ? "Нельзя заблокировать последнего администратора" : e.message, true));
+    }).catch((e) => {
+      showToast(e.code === "last_admin" ? "Нельзя заблокировать последнего администратора" : e.message, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
   }
-  function rotateKey(id, name) {
+  function rotateKey(id, name, btn) {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Открытие…";
     panelReq(`/panel/api/admin/users/${id}/authkey/rotate`, "POST").then((r) => {
       openModal(
         `Новый ключ · ${name}`,
@@ -4842,15 +4852,15 @@
         </div>`,
         [
           { label: "Копировать", onClick: (ev) => {
-            const btn = ev.currentTarget;
+            const btn2 = ev.currentTarget;
             const done = () => {
-              btn.textContent = "скопировано";
+              btn2.textContent = "скопировано";
               setTimeout(() => {
-                btn.textContent = "Копировать";
+                btn2.textContent = "Копировать";
               }, 1500);
             };
             if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(r.authkey).then(done, () => {
-              btn.textContent = "не вышло";
+              btn2.textContent = "не вышло";
             });
             else done();
           } },
@@ -4861,7 +4871,11 @@
           } }
         ]
       );
-    }).catch((e) => showToast(e.message, true));
+    }).catch((e) => {
+      showToast(e.message, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
   }
   function revokeKey(id, name) {
     openModal(
@@ -4975,7 +4989,7 @@
       }
       const rot = t.closest("[data-rotate]");
       if (rot) {
-        rotateKey(Number(rot.dataset.rotate), rot.dataset.name);
+        rotateKey(Number(rot.dataset.rotate), rot.dataset.name, rot);
         return;
       }
       const rev = t.closest("[data-revoke]");
@@ -4995,7 +5009,7 @@
       }
       const tg = t.closest("[data-toggle]");
       if (tg) {
-        toggleDisabled(Number(tg.dataset.toggle));
+        toggleDisabled(Number(tg.dataset.toggle), tg);
         return;
       }
     });
