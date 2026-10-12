@@ -1,0 +1,2783 @@
+<!-- ВНИМАНИЕ: файл собран автоматически из ui/pages/cabinet/.
+     Правки здесь будут потеряны при следующей сборке.
+     Исходники: ui/  ·  пересборка: bash scripts/build_ui.sh -->
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · кабинет</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+  /* ui/tokens.css */
+  :root {
+    color-scheme: dark;
+    --bg: #080a0f;
+    --surf: #12151d;
+    --surf-2: #171b25;
+    --surf-3: #1d2331;
+    --line: rgba(255, 255, 255, .09);
+    --line-2: rgba(255, 255, 255, .05);
+    --fg: #eef1f6;
+    --fg-2: #a0abbe;
+    --fg-3: #6d7788;
+    --acc: #4da3ff;
+    --acc-2: #8b8bf5;
+    --acc-fg: #06121f;
+    --acc-soft: rgba(77, 163, 255, .16);
+    --link: #5ac8fa;
+    --ok: #3ddc97;
+    --ok-soft: rgba(61, 220, 151, .13);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, .13);
+    --bad: #ff7089;
+    --bad-soft: rgba(255, 112, 137, .13);
+    --info: #5ac8fa;
+    --info-soft: rgba(90, 200, 250, .13);
+    --special: #c084fc;
+    --special-soft: rgba(192, 132, 252, .13);
+    --gold: #f0b34a;
+    --gold-soft: rgba(240, 179, 74, .14);
+    --amb-1: rgba(77, 163, 255, .40);
+    --amb-2: rgba(90, 200, 250, .26);
+    --amb-3: rgba(139, 139, 245, .30);
+    --dot: rgba(255, 255, 255, .075);
+    --gl-a: rgba(38, 44, 60, .62);
+    --gl-b: rgba(22, 27, 38, .52);
+    --gl-brd: rgba(255, 255, 255, .13);
+    --gl-hi: rgba(255, 255, 255, .18);
+    --gl-lo: rgba(0, 0, 0, .45);
+    --gl-sheen: rgba(255, 255, 255, .10);
+    --gl-rim-a: rgba(255, 255, 255, .42);
+    --gl-rim-b: rgba(255, 255, 255, .04);
+    --gl-blur: 30px;
+    --track: rgba(0, 0, 0, .26);
+    --track-in: rgba(0, 0, 0, .40);
+    --thumb: rgba(255, 255, 255, .14);
+    --thumb-hi: rgba(255, 255, 255, .22);
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .45);
+    --sh-2: 0 2px 8px rgba(0, 0, 0, .40), 0 18px 46px rgba(0, 0, 0, .45);
+    --sh-pop: 0 16px 44px rgba(0, 0, 0, .60);
+    --sans:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    --mono:
+      ui-monospace,
+      SFMono-Regular,
+      "SF Mono",
+      Menlo,
+      Consolas,
+      monospace;
+    --r-xs: 7px;
+    --r-sm: 10px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 22px;
+    --r-pill: 999px;
+    --ctl-h: 34px;
+    --gap: 14px;
+    --pad: 18px;
+  }
+  :root[data-theme=light] {
+    color-scheme: light;
+    --bg: #eef0f6;
+    --surf: #ffffff;
+    --surf-2: #f5f6fa;
+    --surf-3: #eceef4;
+    --line: rgba(17, 24, 39, .09);
+    --line-2: rgba(17, 24, 39, .05);
+    --fg: #101725;
+    --fg-2: #57627a;
+    --fg-3: #8d97a8;
+    --acc: #0a6fff;
+    --acc-2: #5b5bd6;
+    --acc-fg: #ffffff;
+    --acc-soft: rgba(10, 111, 255, .11);
+    --link: #0e8fd6;
+    --ok: #0a8a5f;
+    --ok-soft: rgba(10, 138, 95, .11);
+    --warn: #b6740b;
+    --warn-soft: rgba(182, 116, 11, .12);
+    --bad: #d1344b;
+    --bad-soft: rgba(209, 52, 75, .10);
+    --info: #0e6fb8;
+    --info-soft: rgba(14, 111, 184, .10);
+    --special: #7c3aed;
+    --special-soft: rgba(124, 58, 237, .10);
+    --gold: #a35f06;
+    --gold-soft: rgba(163, 95, 6, .12);
+    --amb-1: rgba(10, 111, 255, .34);
+    --amb-2: rgba(56, 189, 248, .30);
+    --amb-3: rgba(91, 91, 214, .24);
+    --dot: rgba(16, 23, 37, .10);
+    --gl-a: rgba(255, 255, 255, .74);
+    --gl-b: rgba(255, 255, 255, .52);
+    --gl-brd: rgba(255, 255, 255, .75);
+    --gl-hi: rgba(255, 255, 255, .92);
+    --gl-lo: rgba(16, 23, 37, .07);
+    --gl-sheen: rgba(255, 255, 255, .42);
+    --gl-rim-a: rgba(255, 255, 255, 1);
+    --gl-rim-b: rgba(16, 23, 37, .14);
+    --track: rgba(16, 23, 37, .055);
+    --track-in: rgba(16, 23, 37, .07);
+    --thumb: #ffffff;
+    --thumb-hi: rgba(255, 255, 255, .9);
+    --sh-1: 0 1px 2px rgba(16, 23, 37, .05);
+    --sh-2: 0 2px 6px rgba(16, 23, 37, .05), 0 14px 40px rgba(16, 23, 37, .09);
+    --sh-pop: 0 12px 34px rgba(16, 23, 37, .16);
+  }
+
+  /* ui/base.css */
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-cyrillic.woff2) format("woff2");
+    unicode-range:
+      U+0301,
+      U+0400-045F,
+      U+0490-0491,
+      U+04B0-04B1,
+      U+2116;
+  }
+  @font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/assets/inter-latin.woff2) format("woff2");
+    unicode-range:
+      U+0000-00FF,
+      U+0131,
+      U+0152-0153,
+      U+02BB-02BC,
+      U+02C6,
+      U+02DA,
+      U+02DC,
+      U+0304,
+      U+0308,
+      U+0329,
+      U+2000-206F,
+      U+20AC,
+      U+2122,
+      U+2191,
+      U+2193,
+      U+2212,
+      U+2215,
+      U+FEFF,
+      U+FFFD;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: transparent;
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums;
+    min-height: 100vh;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -20% -10%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        46rem 30rem at 12% -8%,
+        var(--amb-1),
+        transparent 60%),
+      radial-gradient(
+        40rem 26rem at 88% 2%,
+        var(--amb-2),
+        transparent 58%),
+      radial-gradient(
+        44rem 30rem at 62% 108%,
+        var(--amb-3),
+        transparent 60%);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(
+        circle at 1px 1px,
+        var(--dot) 1px,
+        transparent 0);
+    background-size: 26px 26px;
+    -webkit-mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+    mask-image:
+      radial-gradient(
+        130% 85% at 50% 0%,
+        #000 28%,
+        transparent 76%);
+  }
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  h1 {
+    font-size: 17px;
+  }
+  h2 {
+    font-size: 13.5px;
+  }
+  a {
+    color: var(--acc);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+  }
+  ::selection {
+    background: var(--acc-soft);
+  }
+  .mono {
+    font-family: var(--mono);
+    font-size: .92em;
+    letter-spacing: -.015em;
+  }
+  .muted {
+    color: var(--fg-2);
+  }
+  .dim {
+    color: var(--fg-3);
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .spacer {
+    flex: 1 1 auto;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 44px;
+  }
+  .page-foot {
+    padding: 22px 4px 30px;
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 12px;
+  }
+  @media (max-width: 640px) {
+    .wrap {
+      padding: 0 12px 30px;
+    }
+  }
+
+  /* ui/components/glass.css */
+  .glass {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        180deg,
+        var(--gl-a),
+        var(--gl-b));
+    border: 1px solid var(--gl-brd);
+    box-shadow:
+      inset 0 1px 0 var(--gl-hi),
+      inset 0 -1px 0 var(--gl-lo),
+      var(--sh-2);
+    -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+    backdrop-filter: blur(var(--gl-blur)) saturate(190%);
+  }
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      linear-gradient(
+        142deg,
+        var(--gl-rim-a) 0%,
+        transparent 34%,
+        transparent 66%,
+        var(--gl-rim-b) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  .glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        125deg,
+        var(--gl-sheen) 0%,
+        transparent 34%);
+  }
+  .glass > *:not(.glass-raw) {
+    position: relative;
+    z-index: 1;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      background: var(--surf);
+    }
+  }
+
+  /* ui/components/topbar.css */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding: 14px 0 12px;
+    margin-bottom: 16px;
+  }
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    padding: 9px 11px;
+    border-radius: var(--r-xl);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 3px;
+    flex: none;
+  }
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-md);
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: .01em;
+    background:
+      linear-gradient(
+        150deg,
+        var(--acc),
+        var(--acc-2));
+    box-shadow:
+      0 4px 12px var(--acc-soft),
+      inset 0 1px 0 rgba(255, 255, 255, .5),
+      inset 0 -1px 0 rgba(0, 0, 0, .14);
+  }
+  .brand-name {
+    font-size: 14.5px;
+    font-weight: 650;
+    letter-spacing: -.025em;
+    line-height: 1.15;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--fg-3);
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .navwrap {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .navwrap::-webkit-scrollbar {
+    display: none;
+  }
+  .nav {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    flex: none;
+    background: var(--track);
+    box-shadow: inset 0 1px 2px var(--track-in);
+  }
+  .nav a {
+    padding: 6px 13px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    font-size: 12.5px;
+    font-weight: 520;
+    color: var(--fg-2);
+    text-decoration: none;
+    transition: color .15s, background .15s;
+  }
+  .nav a:hover {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .nav a.active {
+    color: var(--fg);
+    font-weight: 600;
+    background: var(--thumb);
+    box-shadow:
+      0 1px 2px rgba(16, 23, 37, .10),
+      0 2px 6px rgba(16, 23, 37, .07),
+      inset 0 1px 0 var(--thumb-hi);
+  }
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 560;
+    white-space: nowrap;
+  }
+  .status-pill i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.live {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .status-pill.live i {
+    animation: pulse 2.4s infinite;
+  }
+  .status-pill.off {
+    background: var(--bad-soft);
+    color: var(--bad);
+  }
+  @keyframes pulse {
+    50% {
+      opacity: .32;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status-pill.live i {
+      animation: none;
+    }
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: color .13s ease, background .13s ease;
+  }
+  .icon-btn:hover {
+    color: var(--fg);
+    background: var(--track);
+  }
+  .icon-btn:active {
+    background: var(--track-in);
+  }
+  .topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line);
+    flex: none;
+    margin: 0 4px;
+  }
+  .icon-btn .i-sun {
+    display: none;
+  }
+  :root[data-theme=light] .icon-btn .i-sun {
+    display: block;
+  }
+  :root[data-theme=light] .icon-btn .i-moon {
+    display: none;
+  }
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 50;
+    padding: 6px;
+    border-radius: var(--r-xl);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 2px;
+    border-radius: var(--r-md);
+    color: var(--fg-3);
+    text-decoration: none;
+    min-width: 0;
+    transition: color .13s ease, background .13s ease;
+  }
+  .mobile-nav a svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+  }
+  .mobile-nav a span {
+    font-size: 9.5px;
+    font-weight: 560;
+    letter-spacing: -.01em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-nav a:hover {
+    color: var(--fg-2);
+    text-decoration: none;
+  }
+  .mobile-nav a.active {
+    color: var(--acc);
+    background: var(--acc-soft);
+  }
+  @media (max-width: 720px) {
+    .nav {
+      display: none;
+    }
+    .mobile-nav {
+      display: grid;
+    }
+    body {
+      padding-bottom: 74px;
+    }
+    .topbar {
+      padding: 10px 0 8px;
+    }
+    .topbar-inner {
+      padding: 7px 9px;
+      border-radius: var(--r-lg);
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
+    }
+    .brand-sub {
+      display: none;
+    }
+    .status-pill {
+      height: 27px;
+      padding: 0 10px;
+      font-size: 11.5px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  @media (min-width: 721px) and (max-width: 1100px) {
+    .brand-sub {
+      display: none;
+    }
+    .nav a {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .topbar-inner {
+      gap: 10px;
+    }
+    .topbar-right {
+      gap: 6px;
+    }
+  }
+  @media (max-width: 560px) {
+    .topbar-inner {
+      gap: 8px;
+    }
+    .topbar-right {
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 13.5px;
+    }
+    .status-pill span {
+      display: none;
+    }
+    .status-pill {
+      padding: 0 8px;
+    }
+    .topbar-links .icon-btn {
+      width: 26px;
+      height: 26px;
+    }
+    .topbar-sep {
+      margin: 0 2px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mobile-nav {
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 5px;
+    }
+    .mobile-nav a {
+      padding: 6px 1px;
+    }
+    .mobile-nav a svg {
+      width: 17px;
+      height: 17px;
+    }
+    .mobile-nav a span {
+      font-size: 8.5px;
+    }
+    .brand-name {
+      font-size: 13px;
+    }
+  }
+
+  /* ui/components/card.css */
+  .card {
+    background: var(--surf);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    min-width: 0;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .card-head h2 {
+    margin: 0;
+  }
+  .card-head .hint {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--fg-3);
+    font-weight: 400;
+  }
+  .card-body {
+    padding: var(--pad);
+  }
+  .card-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px var(--pad);
+    border-top: 1px solid var(--line-2);
+    background: var(--surf-2);
+  }
+  .card-note {
+    padding: 12px var(--pad) 16px;
+    color: var(--fg-3);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .metrics {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+  }
+  .metric {
+    padding: 15px 17px;
+    display: flex;
+    flex-direction: column;
+    min-height: 118px;
+  }
+  .metric-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 540;
+    color: var(--fg-2);
+  }
+  .metric-label svg {
+    color: var(--fg-3);
+    flex: none;
+  }
+  .metric-value {
+    font-size: 32px;
+    font-weight: 640;
+    letter-spacing: -.035em;
+    line-height: 1;
+    margin: 12px 0 5px;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+  .metric-value.ok {
+    color: var(--ok);
+  }
+  .metric-value.warn {
+    color: var(--warn);
+  }
+  .metric-value.bad {
+    color: var(--bad);
+  }
+  .metric-value .sep {
+    color: var(--fg-3);
+    font-weight: 300;
+    margin: 0 1px;
+  }
+  .metric-value .unit {
+    font-size: 13px;
+    font-weight: 540;
+    color: var(--fg-2);
+    letter-spacing: -.01em;
+    margin-left: 4px;
+  }
+  .metric-foot {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    margin-top: auto;
+  }
+  .metric-spark {
+    display: block;
+    width: 100%;
+    height: 26px;
+    margin: 2px 0 6px;
+  }
+  @media (max-width: 640px) {
+    .metrics {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 12px 13px;
+    }
+    .metric-value {
+      font-size: 24px;
+      margin: 8px 0 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+    }
+    .metric-foot {
+      font-size: 10.5px;
+    }
+  }
+  @media (max-width: 400px) {
+    .metrics {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ui/components/table.css */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .card > .table-wrap:last-child {
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  thead th {
+    text-align: left;
+    padding: 9px var(--pad);
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 1px solid var(--line-2);
+  }
+  tbody td {
+    padding: 11px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  tbody tr {
+    transition: background .12s;
+  }
+  tbody tr.clickable {
+    cursor: pointer;
+  }
+  tbody tr:hover td {
+    background: var(--surf-2);
+  }
+  tbody tr.master td:first-child {
+    box-shadow: inset 2px 0 0 var(--gold);
+  }
+  td.num,
+  th.num {
+    text-align: right;
+  }
+  tbody td.mono,
+  tbody td .mono {
+    white-space: nowrap;
+  }
+  tbody td.wrap,
+  tbody td.wrap .mono {
+    white-space: normal;
+  }
+  .table-empty {
+    padding: 34px var(--pad);
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 13px;
+  }
+  .meter {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 118px;
+  }
+  .meter-track {
+    flex: 1;
+    height: 5px;
+    min-width: 46px;
+    border-radius: var(--r-pill);
+    background: var(--surf-3);
+    overflow: hidden;
+  }
+  .meter-fill {
+    display: block;
+    height: 100%;
+    max-width: 100%;
+    border-radius: inherit;
+    background: var(--fg-3);
+    transition: width .3s ease;
+  }
+  .meter-fill.ok {
+    background: var(--ok);
+  }
+  .meter-fill.warn {
+    background: var(--warn);
+  }
+  .meter-fill.bad {
+    background: var(--bad);
+  }
+  .meter-value {
+    font-size: 12.5px;
+    color: var(--fg-2);
+  }
+  @media (max-width: 720px) {
+    .table-cards thead {
+      display: none;
+    }
+    .table-cards tbody tr {
+      display: block;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-2);
+    }
+    .table-cards tbody tr:last-child {
+      border-bottom: 0;
+    }
+    .table-cards tbody td {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 3px 0;
+      border: 0;
+    }
+    .table-cards tbody td::before {
+      content: attr(data-label);
+      flex: 0 0 92px;
+      color: var(--fg-3);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .table-cards tbody td.num {
+      text-align: left;
+    }
+    .table-cards tbody tr:hover td {
+      background: none;
+    }
+  }
+
+  /* ui/components/badge.css */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 21px;
+    padding: 0 7px;
+    border-radius: var(--r-xs);
+    background: var(--surf-2);
+    color: var(--fg-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    white-space: nowrap;
+  }
+  .badge.ok {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .badge.warn {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .badge.bad {
+    background: var(--bad-soft);
+    color: var(--bad);
+  }
+  .badge.info {
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .badge.special {
+    background: var(--special-soft);
+    color: var(--special);
+  }
+  .badge.gold {
+    background: var(--gold-soft);
+    color: var(--gold);
+  }
+  .badge.mono {
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .badge i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 520;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: .14s;
+  }
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-3);
+  }
+  .chip.active {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .checks {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .check-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    border-bottom: 2px solid currentColor;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .check-tag.ok {
+    color: var(--ok);
+  }
+  .check-tag.warn {
+    color: var(--warn);
+  }
+  .check-tag.bad {
+    color: var(--bad);
+  }
+  .check-tag.unknown {
+    color: var(--fg-3);
+    opacity: .55;
+  }
+
+  /* ui/components/form.css */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: var(--ctl-h);
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 550;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background .13s,
+      border-color .13s,
+      color .13s;
+  }
+  .btn:hover {
+    background: var(--surf-2);
+    border-color: var(--fg-3);
+    text-decoration: none;
+  }
+  .btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .btn svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .btn.primary {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-fg);
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
+    border-color: var(--acc);
+  }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--fg-2);
+  }
+  .btn.ghost:hover {
+    background: var(--surf-2);
+    color: var(--fg);
+  }
+  .btn.danger {
+    color: var(--bad);
+    border-color: transparent;
+    background: var(--bad-soft);
+  }
+  .btn.danger:hover {
+    background: var(--bad-soft);
+    filter: brightness(1.1);
+  }
+  .btn.sm {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .btn.icon {
+    width: var(--ctl-h);
+    padding: 0;
+  }
+  .btn.icon.sm {
+    width: 28px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .field > label {
+    color: var(--fg-2);
+    font-size: 12.5px;
+    font-weight: 520;
+  }
+  .field .help {
+    color: var(--fg-3);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  input[type=text],
+  input[type=password],
+  input[type=number],
+  input[type=search],
+  textarea,
+  select {
+    width: 100%;
+    min-width: 0;
+    height: var(--ctl-h);
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surf-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    transition: border-color .13s, box-shadow .13s;
+  }
+  textarea {
+    height: auto;
+    min-height: 84px;
+    padding: 9px 11px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--fg-3);
+  }
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 30px;
+    cursor: pointer;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent 50%,
+        var(--fg-3) 50%),
+      linear-gradient(
+        135deg,
+        var(--fg-3) 50%,
+        transparent 50%);
+    background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  input.mono,
+  textarea.mono {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  input[type=number] {
+    max-width: 150px;
+    -moz-appearance: textfield;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .check input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .check .box {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surf-2);
+    display: grid;
+    place-items: center;
+    transition: all .13s;
+  }
+  .check .box::after {
+    content: "";
+    width: 9px;
+    height: 9px;
+    transform: scale(0);
+    background: var(--acc-fg);
+    transition: transform .13s;
+    clip-path: polygon(14% 47%, 0 61%, 39% 100%, 100% 22%, 85% 8%, 39% 71%);
+  }
+  .check input:checked + .box {
+    background: var(--acc);
+    border-color: var(--acc);
+  }
+  .check input:checked + .box::after {
+    transform: scale(1);
+  }
+  .check input:focus-visible + .box {
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-group input {
+    padding-right: 42px;
+  }
+  .input-group .in-btn {
+    position: absolute;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--fg-3);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .input-group .in-btn:hover {
+    background: var(--surf-3);
+    color: var(--fg);
+  }
+
+  /* ui/components/misc.css */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 15px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-3);
+    border-radius: var(--r-md);
+    background: var(--surf);
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  .banner svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    margin-top: 2px;
+  }
+  .banner b {
+    color: var(--fg);
+    font-weight: 620;
+  }
+  .banner.info {
+    border-left-color: var(--acc);
+    background: var(--acc-soft);
+  }
+  .banner.warn {
+    border-left-color: var(--warn);
+    background: var(--warn-soft);
+  }
+  .banner.warn svg {
+    color: var(--warn);
+  }
+  .banner.bad {
+    border-left-color: var(--bad);
+    background: var(--bad-soft);
+  }
+  .banner.bad svg {
+    color: var(--bad);
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--fg-3);
+  }
+  .empty-state svg {
+    width: 26px;
+    height: 26px;
+    opacity: .55;
+  }
+  .empty-state .t {
+    color: var(--fg-2);
+    font-size: 13.5px;
+    font-weight: 560;
+  }
+  .empty-state .s {
+    font-size: 12.5px;
+    max-width: 44ch;
+    line-height: 1.5;
+  }
+  .skeleton {
+    border-radius: var(--r-xs);
+    background:
+      linear-gradient(
+        90deg,
+        var(--surf-2) 25%,
+        var(--surf-3) 37%,
+        var(--surf-2) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+  #toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 90;
+    display: none;
+    max-width: min(380px, calc(100vw - 36px));
+    padding: 11px 15px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ok);
+    background: var(--surf);
+    box-shadow: var(--sh-pop);
+    color: var(--ok);
+    font-size: 13px;
+  }
+  #toast.show {
+    display: block;
+    animation: toast-in .18s ease;
+  }
+  #toast.err {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .kv {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 12px;
+  }
+  .kv-k {
+    color: var(--fg-3);
+    font-size: 10.5px;
+  }
+  .kv-v {
+    color: var(--fg);
+    font-weight: 560;
+  }
+
+  /* ui/components/modal.css */
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .modal {
+      background: var(--bg);
+    }
+  }
+  .modal.show {
+    display: grid;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 400px;
+    padding: 22px;
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .modal-box h2 {
+    font-size: 16px;
+  }
+  .modal-box .modal-body {
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .modal-box .modal-foot {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .modal-box .d {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  /* ui/components/nodecard.css */
+  .node-list {
+    display: block;
+  }
+  .node-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px var(--pad) 8px;
+    background: var(--surf-2);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .node-group .dim {
+    letter-spacing: .02em;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .node-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    cursor: pointer;
+    transition: background .12s ease;
+  }
+  .node-card:last-child {
+    border-bottom: 0;
+  }
+  .node-card:hover {
+    background: var(--surf-2);
+  }
+  .node-card.master {
+    background: color-mix(in srgb, var(--gold) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  .node-card.master:hover {
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .node-card.master {
+      background: var(--gold-soft);
+    }
+  }
+  .node-main {
+    min-width: 0;
+  }
+  .node-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .node-id {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .node-sub {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .node-problem {
+    color: var(--bad);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .node-side {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: none;
+  }
+  .node-clients {
+    text-align: right;
+  }
+  .node-clients-v {
+    display: block;
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  .node-clients-l {
+    font-size: 10.5px;
+    color: var(--fg-3);
+  }
+  .node-meter {
+    min-width: 140px;
+  }
+  .node-more {
+    grid-column: 1 / -1;
+    display: none;
+    gap: 10px 26px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .node-card.open .node-more {
+    display: flex;
+  }
+  .node-more .kv-v.late {
+    color: var(--bad);
+  }
+  .node-more .node-open {
+    margin-left: auto;
+  }
+  .node-card.quar {
+    cursor: pointer;
+  }
+  .node-card.quar .node-sub {
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .node-card {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .node-side {
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .node-meter {
+      min-width: 0;
+      flex: 1;
+    }
+    .node-problem {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .node-group,
+    .node-card {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .node-more .node-open {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+
+  /* ui/pages/cabinet/page.css */
+  .view-title {
+    margin: 4px 2px 14px;
+  }
+  .view[hidden] {
+    display: none;
+  }
+  .card {
+    margin-bottom: var(--gap);
+  }
+  .skel-line {
+    height: 20px;
+    margin: 2px 0;
+  }
+  .skel-block {
+    height: 120px;
+    margin: var(--pad);
+  }
+  .wizard-steps {
+    display: flex;
+    gap: 6px;
+    padding: 14px var(--pad) 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .wizard-steps::-webkit-scrollbar {
+    display: none;
+  }
+  .wizard-step {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 11px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--surf);
+    color: var(--fg-3);
+    font-size: 12px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .wizard-step .n {
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: var(--surf-3);
+    color: var(--fg-3);
+    font-size: 10.5px;
+    font-weight: 650;
+  }
+  .wizard-step.active {
+    background: var(--acc-soft);
+    border-color: transparent;
+    color: var(--acc);
+  }
+  .wizard-step.active .n {
+    background: var(--acc);
+    color: var(--acc-fg);
+  }
+  .wizard-step.done {
+    color: var(--fg-2);
+  }
+  .wizard-step.done .n {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .wiz-body {
+    padding: var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .wiz-body[hidden] {
+    display: none;
+  }
+  .wiz-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .pick-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pick {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--line);
+    background: var(--surf-2);
+    color: var(--fg);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .pick:hover {
+    border-color: var(--fg-3);
+  }
+  .pick[aria-pressed=true] {
+    border-color: var(--acc);
+    background: var(--acc-soft);
+  }
+  .pick[disabled] {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .pick .dot {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid var(--fg-3);
+    flex: none;
+  }
+  .pick[aria-pressed=true] .dot {
+    border-color: var(--acc);
+    box-shadow: inset 0 0 0 3px var(--acc);
+  }
+  .pick-b {
+    min-width: 0;
+    flex: 1;
+  }
+  .pick-t {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pick-s {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    margin-top: 2px;
+  }
+  .wiz-foot {
+    justify-content: space-between;
+  }
+  .wiz-foot .spacer {
+    flex: 1 1 auto;
+  }
+  .secret-reveal {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .secret-reveal .key {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+    padding: 11px 13px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--surf-2);
+    color: var(--fg);
+    user-select: all;
+  }
+  .secret-reveal .warn-note {
+    color: var(--warn);
+    font-size: 12px;
+  }
+  .op-err {
+    color: var(--fg-2);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .row-highlight {
+    background: var(--acc-soft);
+  }
+  #ops-note[hidden] {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .wiz-foot {
+      flex-direction: column-reverse;
+    }
+    .wiz-foot .btn {
+      width: 100%;
+    }
+    .card-head {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub" id="hdr-user">кабинет</div>
+        </div>
+      </div>
+      <div class="navwrap"><nav class="nav">
+        <a href="#/nodes" data-view="nodes">Мои ноды</a>
+        <a href="#/create" data-view="create">Создать сервер</a>
+        <a href="#/beget" data-view="beget">Beget</a>
+        <a href="#/operations" data-view="operations">Операции</a>
+      </nav></div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+        <button class="icon-btn" id="logout-btn" type="button" title="Выйти" aria-label="Выйти">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <h1 id="view-title" class="view-title">Мои ноды</h1>
+
+  <main>
+    <!-- ═══ Мои ноды ════════════════════════════════════════════════ -->
+    <section class="view" id="view-nodes">
+      <div class="metrics" id="node-metrics"></div>
+      <div id="quota-banner"></div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ключ доступа</h2>
+          <span class="hint">ключ регистрации нод в пуле</span>
+        </div>
+        <div class="card-body" id="authkey-body"><div class="skeleton skel-line"></div></div>
+        <div class="card-note" id="authkey-note"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Мои ноды</h2>
+          <span class="hint" id="nodes-hint"></span>
+          <button class="btn ghost sm" style="margin-left:auto" id="nodes-reload">Обновить</button>
+        </div>
+        <div class="node-list" id="nodes-body"></div>
+        <div class="card-note">Ошибка здоровья или установки не создаёт новый сервер. Ресурс остаётся и доступен для повторной установки профиля. Платный заказ отправляется ровно один раз — повтор того же запроса не создаёт второй сервер.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Создать сервер ══════════════════════════════════════════ -->
+    <section class="view" id="view-create" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Создать сервер</h2>
+          <span class="hint">платный заказ у Beget · отправляется один раз</span>
+        </div>
+        <div class="wizard-steps" id="wiz-steps" role="list"></div>
+        <div id="wiz-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-foot" id="wiz-foot"></div>
+      </section>
+    </section>
+
+    <!-- ═══ Beget ═══════════════════════════════════════════════════ -->
+    <section class="view" id="view-beget" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Личный аккаунт Beget</h2>
+          <span class="hint">регистратор добавит SSH-ключ для установки</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="beget-reload">Обновить</button>
+        </div>
+        <div class="card-body" id="beget-status"><div class="skeleton skel-line"></div></div>
+        <form class="card-body" id="beget-form" novalidate>
+          <div class="field">
+            <label for="bg-login">Логин Beget</label>
+            <input type="text" id="bg-login" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+          </div>
+          <div class="field">
+            <label for="bg-pass">Пароль Beget</label>
+            <div class="input-group">
+              <input type="password" id="bg-pass" autocomplete="new-password" required>
+              <button type="button" class="in-btn" data-reveal="bg-pass" aria-label="Показать пароль" title="Показать пароль">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="help">Пароль не отображается и не сохраняется в открытом виде. Регистратор добавит SSH-ключ для установки.</span>
+          </div>
+          <div class="card-foot" style="margin:0 calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="submit" class="btn primary" id="beget-submit">Подключить</button>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <!-- ═══ Операции ════════════════════════════════════════════════ -->
+    <section class="view" id="view-operations" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Операции</h2>
+          <span class="hint">журнал платных заказов · обновление каждые 5 с</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Создана</th><th>Тип</th><th>Нода</th><th>Состояние</th><th>Ошибка</th><th>Действие</th></tr></thead>
+            <tbody id="ops-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note" id="ops-note"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="page-foot">sharedd · кабинет · <span id="last-upd">ещё не обновлялось</span></footer>
+</div>
+
+<nav class="mobile-nav glass">
+  <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Ноды</span></a>
+  <a href="#/create" data-view="create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Создать</span></a>
+  <a href="#/beget" data-view="beget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Beget</span></a>
+  <a href="#/operations" data-view="operations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Операции</span></a>
+</nav>
+
+<div id="toast" aria-live="polite"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ui/lib/dom.ts
+  var $ = (id) => document.getElementById(id);
+  var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // ui/lib/format.ts
+  function fmtAgo(iso) {
+    if (!iso) return "—";
+    const sec = (Date.now() - new Date(iso).getTime()) / 1e3;
+    if (sec < 10) return "только что";
+    if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
+    return `${Math.floor(sec / 86400)} дн назад`;
+  }
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+  function fmtNum(n) {
+    if (n === null || n === void 0) return "—";
+    return Math.round(n).toLocaleString("ru-RU").replace(/\u00A0/g, " ");
+  }
+
+  // ui/lib/theme.ts
+  var KEY = "sharedd.theme";
+  function initTheme() {
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === "light" ? "dark" : "light";
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem(KEY, next);
+      } catch {
+      }
+      document.dispatchEvent(new CustomEvent("themechange"));
+    });
+  }
+
+  // ui/pages/cabinet/api.ts
+  var redirecting = false;
+  function gotoSignin() {
+    if (redirecting) return;
+    redirecting = true;
+    location.replace("/signin");
+  }
+  function csrf() {
+    const m = document.cookie.match(/(?:^|;\s*)sharedd_csrf=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  async function req(path, method = "GET", body) {
+    const headers = {};
+    if (body !== void 0) headers["Content-Type"] = "application/json";
+    if (method !== "GET" && method !== "HEAD") headers["X-CSRF-Token"] = csrf();
+    const resp = await fetch(path, {
+      method,
+      headers,
+      body: body === void 0 ? void 0 : JSON.stringify(body),
+      cache: "no-store"
+    });
+    if (resp.status === 401) {
+      gotoSignin();
+      throw new Error("unauthorized");
+    }
+    if (resp.status === 204) return void 0;
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      const err = new Error(data.message || data.error || "HTTP " + resp.status);
+      err.code = data.error;
+      err.status = resp.status;
+      throw err;
+    }
+    return resp.json();
+  }
+  var api = {
+    me: () => req("/api/me"),
+    nodes: () => req("/api/me/nodes"),
+    authkey: () => req("/api/me/authkey"),
+    profiles: () => req("/api/me/profiles"),
+    begetLink: () => req("/api/me/beget/link"),
+    connectBeget: (login, password) => req("/api/me/beget/link", "PUT", { login, password }),
+    regions: () => req("/api/me/beget/regions"),
+    createVps: (body) => req("/api/me/vps", "POST", body),
+    operations: () => req("/api/me/operations"),
+    cancelOperation: (id) => req(`/api/me/operations/${id}/cancel`, "POST"),
+    deleteNode: (id) => req(`/api/me/nodes/${encodeURIComponent(id)}`, "DELETE"),
+    logout: () => req("/api/auth/logout", "POST")
+  };
+  function newIdemKey() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
+  // ui/pages/cabinet/main.ts
+  var ME = null;
+  var NODES = [];
+  var OPS = [];
+  var OPEN_NODES = /* @__PURE__ */ new Set();
+  var HIGHLIGHT_OP = 0;
+  var STATUS_META = {
+    healthy: { label: "здорова", cls: "ok" },
+    unhealthy: { label: "нездорова", cls: "bad" },
+    quarantined: { label: "карантин Globalping", cls: "warn" },
+    deleting: { label: "удаляется", cls: "warn" },
+    offline: { label: "нет данных", cls: "" }
+  };
+  var OP_META = {
+    pending: { label: "ожидает", cls: "info" },
+    sent: { label: "отправлено провайдеру", cls: "info" },
+    confirmed: { label: "подтверждено", cls: "ok" },
+    unknown: { label: "неизвестно · ручной разбор", cls: "special" },
+    failed: { label: "ошибка", cls: "bad" },
+    deleting: { label: "удаляется", cls: "warn" },
+    deleted: { label: "удалено", cls: "" }
+  };
+  var EMPTY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
+  var toastTimer;
+  function showToast(text, isErr = false) {
+    const t = $("toast");
+    t.textContent = text;
+    t.classList.toggle("err", isErr);
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => t.classList.remove("show"), 5e3);
+  }
+  var lastFocused = null;
+  function setPageInert(on) {
+    Array.from(document.body.children).forEach((el) => {
+      if (el.id === "modal" || el.id === "toast") return;
+      if (on) el.setAttribute("inert", "");
+      else el.removeAttribute("inert");
+    });
+  }
+  function openModal(title, body, actions) {
+    var _a;
+    lastFocused = document.activeElement;
+    $("modal-title").textContent = title;
+    $("modal-body").innerHTML = body;
+    const foot = $("modal-foot");
+    foot.replaceChildren();
+    actions.forEach((a) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn" + (a.cls ? " " + a.cls : "");
+      b.textContent = a.label;
+      b.addEventListener("click", a.onClick);
+      foot.appendChild(b);
+    });
+    const m = $("modal");
+    m.classList.add("show");
+    setPageInert(true);
+    (_a = foot.querySelector("button")) == null ? void 0 : _a.focus();
+  }
+  function closeModal() {
+    $("modal").classList.remove("show");
+    setPageInert(false);
+    $("modal-body").replaceChildren();
+    $("modal-foot").replaceChildren();
+    if (lastFocused) {
+      try {
+        lastFocused.focus();
+      } catch {
+      }
+    }
+    lastFocused = null;
+  }
+  $("modal").addEventListener("click", (e) => {
+    if (e.target.id === "modal") closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    const m = $("modal");
+    if (!m.classList.contains("show")) return;
+    if (e.key === "Escape") {
+      closeModal();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const box = m.querySelector(".modal-box");
+    if (!box) return;
+    const f = box.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !box.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (active === last || !box.contains(active))) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+  var VIEWS = {
+    nodes: "Мои ноды",
+    create: "Создать сервер",
+    beget: "Beget",
+    operations: "Операции"
+  };
+  function currentView() {
+    const p = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+    return VIEWS[p[0]] ? p[0] : "nodes";
+  }
+  function route() {
+    const v = currentView();
+    document.querySelectorAll(".view").forEach((el) => {
+      el.hidden = el.id !== "view-" + v;
+    });
+    document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === v));
+    $("view-title").textContent = VIEWS[v];
+    if (v === "create") wizard.enter();
+    if (v === "beget") loadBeget();
+    renderAll();
+  }
+  function availColor(p) {
+    return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
+  }
+  function nodeCardHTML(n) {
+    const meta = STATUS_META[n.status] || STATUS_META.offline;
+    const quar = n.quarantine != null;
+    const master = (n.master_domains || []).length > 0;
+    const dc2 = n.status === "offline" ? "unknown" : n.dc2_ok ? "ok" : "bad";
+    const dc2Title = n.dc2_ok ? "DC2 доступен" : "DC2 недоступен — отказ здоровья не пересоздаёт VPS";
+    const open = OPEN_NODES.has(n.node_id) ? " open" : "";
+    return `<div class="node-card${master ? " master" : ""}${open}" data-id="${esc(n.node_id)}">
+    <div class="node-main">
+      <div class="node-top">
+        <span class="node-id mono">${esc(n.node_id)}</span>
+        <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
+        ${master ? `<span class="badge gold" title="${esc((n.master_domains || []).join(", "))}">★ мастер</span>` : ""}
+        ${quar && n.status !== "quarantined" ? `<span class="badge warn"><i></i>карантин</span>` : ""}
+      </div>
+      <div class="node-sub">
+        <span class="mono">${esc(n.ip || "—")}</span>
+        <span class="checks">
+          <span class="check-tag ${dc2}" title="${esc(dc2Title)}">DC2</span>
+        </span>
+      </div>
+    </div>
+    <div class="node-side">
+      <div class="meter node-meter">
+        <div class="meter-track"><div class="meter-fill ${availColor(n.availability)}" style="width:${Math.max(0, Math.min(100, n.availability))}%"></div></div>
+        <span class="meter-value">${n.availability.toFixed(1)}%</span>
+      </div>
+    </div>
+    <div class="node-more">
+      <div class="kv"><span class="kv-k">Домены</span><span class="kv-v mono">${esc((n.master_domains || []).join(", ") || "—")}</span></div>
+      <div class="kv"><span class="kv-k">Карантин</span><span class="kv-v">${quar ? `${n.quarantine.attempts} попыток · с ${esc(fmtClock(new Date(n.quarantine.entered_at * 1e3).toISOString()))}` : "—"}</span></div>
+      <button class="btn sm danger node-del" data-del="${esc(n.node_id)}" style="margin-left:auto">Удалить ноду</button>
+    </div>
+  </div>`;
+  }
+  function renderNodes() {
+    const body = $("nodes-body");
+    $("nodes-hint").textContent = NODES.length ? `${NODES.length} ${plural(NODES.length, "нода", "ноды", "нод")}` : "";
+    if (!NODES.length) {
+      body.innerHTML = `<div class="empty-state">${EMPTY_SVG}
+      <span class="t">Пока нет нод</span>
+      <span class="s">Создайте сервер в разделе «Создать сервер» — нода появится после регистрации в пуле.</span></div>`;
+      return;
+    }
+    body.innerHTML = NODES.map(nodeCardHTML).join("");
+  }
+  function renderMetrics() {
+    if (!ME) return;
+    const used = ME.used_nodes, max = ME.max_nodes;
+    const pool = NODES.filter((n) => n.status !== "offline").length;
+    const problems = NODES.filter((n) => !n.dc2_ok || n.quarantine).length;
+    const pct = max > 0 ? Math.min(100, Math.round(used / max * 100)) : 0;
+    const quotaCls = max > 0 && used >= max ? "warn" : "ok";
+    $("node-metrics").innerHTML = `
+    <div class="card metric">
+      <div class="metric-label">Квота нод</div>
+      <div class="metric-value">${fmtNum(used)}<span class="sep">/</span>${fmtNum(max)}</div>
+      <div class="meter"><div class="meter-track"><div class="meter-fill ${quotaCls}" style="width:${pct}%"></div></div>
+        <span class="meter-value">${pct}%</span></div>
+      <div class="metric-foot">занято мест</div>
+    </div>
+    <div class="card metric">
+      <div class="metric-label">Нод в пуле</div>
+      <div class="metric-value">${fmtNum(pool)}</div>
+      <div class="metric-foot">зарегистрировано</div>
+    </div>
+    <div class="card metric">
+      <div class="metric-label">Проблемы</div>
+      <div class="metric-value ${problems ? "bad" : ""}">${fmtNum(problems)}</div>
+      <div class="metric-foot">DC2 или карантин</div>
+    </div>`;
+    const qb = $("quota-banner");
+    if (max > 0 && used >= max) {
+      qb.innerHTML = `<div class="banner warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>Квота исчерпана: новая регистрация заблокирована. Освободите место или запросите лимит у администратора.</span></div>`;
+    } else {
+      qb.replaceChildren();
+    }
+  }
+  function renderAuthkey(a) {
+    const badge = a.active ? `<span class="badge ok"><i></i>активен</span>` : `<span class="badge">отозван</span>`;
+    const prefix = a.prefix ? `${esc(a.prefix)}…` : "—";
+    const created = a.created_at ? fmtAgo(new Date(a.created_at * 1e3).toISOString()) : "—";
+    $("authkey-body").innerHTML = `<div class="kv" style="gap:8px">
+    <span class="kv-k">Ключ доступа</span>
+    <span class="kv-v mono">${prefix}</span>
+    <span>${badge} <span class="dim">создан ${esc(created)}</span></span>
+  </div>`;
+    $("authkey-note").textContent = "Выпуск и отзыв ключа — через администратора.";
+  }
+  function cancelCell(o) {
+    if (o.state === "pending") return `<button class="btn sm" data-cancel="${o.id}">Отменить</button>`;
+    if (o.state === "sent") return `<button class="btn sm" disabled title="Заказ уже отправлен провайдеру — отмена невозможна">Отменить</button>`;
+    return `<span class="dim">—</span>`;
+  }
+  function renderOperations() {
+    const body = $("ops-body");
+    const note = $("ops-note");
+    const hasUnknown = OPS.some((o) => o.state === "unknown");
+    if (!OPS.length) {
+      body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <span class="t">Операций пока нет</span>
+      <span class="s">Здесь появится журнал заказов серверов.</span></div></td></tr>`;
+    } else {
+      body.innerHTML = OPS.map((o) => {
+        const meta = OP_META[o.state] || { label: o.state, cls: "" };
+        const hl = o.id === HIGHLIGHT_OP ? ' class="row-highlight"' : "";
+        return `<tr data-op="${o.id}"${hl}>
+        <td data-label="Создана" class="mono">${esc(fmtClock(new Date(o.created_at * 1e3).toISOString()))}</td>
+        <td data-label="Тип">${esc(o.kind)}</td>
+        <td data-label="Нода" class="mono">${esc(o.node_id || "—")}</td>
+        <td data-label="Состояние"><span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span></td>
+        <td data-label="Ошибка" class="wrap"><span class="op-err">${esc(o.last_error || "—")}</span></td>
+        <td data-label="Действие">${cancelCell(o)}</td>
+      </tr>`;
+      }).join("");
+    }
+    note.hidden = !hasUnknown;
+    note.textContent = hasUnknown ? "Ответ провайдера потерян. Повторный платный заказ запрещён; регистратор сверяет ресурс у провайдера. Если сверка не удалась, запись остаётся для ручного разбора — создайте обращение к администратору с этим id." : "";
+  }
+  function renderBeget(link) {
+    const el = $("beget-status");
+    if (link.verified) {
+      el.innerHTML = `<div class="kv" style="gap:8px">
+      <span class="kv-v">Статус</span>
+      <span><span class="badge ok"><i></i>подключён</span></span>
+    </div>
+    <div class="dim" style="margin-top:8px">SSH-ключ зарегистрирован. Секреты наружу не отдаются.</div>`;
+    } else if (link.last_error) {
+      el.innerHTML = `<div class="kv" style="gap:8px">
+      <span class="kv-v">Статус</span>
+      <span><span class="badge bad"><i></i>ошибка</span></span>
+      <span style="margin-top:8px;color:var(--bad)">${esc(link.last_error)}</span>
+    </div>
+    <div class="banner info" style="margin:12px 0 0">Подключите личный аккаунт Beget, чтобы создавать серверы.</div>`;
+    } else {
+      el.innerHTML = `<div class="banner info" style="margin:0">Подключите личный аккаунт Beget — регистратор добавит SSH-ключ для установки.</div>`;
+    }
+  }
+  function loadBeget() {
+    api.begetLink().then(renderBeget).catch((e) => {
+      $("beget-status").innerHTML = `<div class="banner bad">Не удалось загрузить статус: ${esc(e.message)}</div>`;
+    });
+  }
+  var STEPS = ["Регион", "Тариф", "Профиль", "Переменные", "Подтверждение"];
+  var wizard = {
+    st: { step: 0, regions: null, region: "", configId: "", profiles: null, profile: null, vars: {}, idemKey: "", confirm: false, loading: false },
+    entered: false,
+    enter() {
+      if (this.entered) {
+        this.render();
+        return;
+      }
+      this.entered = true;
+      this.loadRegions();
+      this.loadProfiles();
+      this.render();
+    },
+    loadRegions() {
+      this.st.regions = null;
+      api.regions().then((r) => {
+        this.st.regions = r.regions || [];
+        this.render();
+      }).catch((e) => {
+        this.st.regions = [];
+        this.render();
+        showToast("Каталог регионов: " + e.message, true);
+      });
+    },
+    loadProfiles() {
+      this.st.profiles = null;
+      api.profiles().then((r) => {
+        this.st.profiles = r.profiles || [];
+        this.render();
+      }).catch(() => {
+        this.st.profiles = [];
+        this.render();
+      });
+    },
+    goto(step) {
+      if (step < 0 || step >= STEPS.length) return;
+      this.st.step = step;
+      this.render();
+    },
+    submitted() {
+      this.st = { step: 0, regions: this.st.regions, region: "", configId: "", profiles: this.st.profiles, profile: null, vars: {}, idemKey: "", confirm: false, loading: false };
+      this.entered = false;
+      location.hash = "#/operations";
+    },
+    render() {
+      const st = this.st;
+      const stepsHtml = STEPS.map((s, i) => `<span class="wizard-step${i === st.step ? " active" : i < st.step ? " done" : ""}" role="listitem">
+        <span class="n">${i < st.step ? "✓" : i + 1}</span>${esc(s)}</span>`).join("");
+      $("wiz-steps").innerHTML = stepsHtml;
+      const linked = begetOk;
+      const bodyEl = $("wiz-body");
+      const footEl = $("wiz-foot");
+      if (!linked) {
+        bodyEl.innerHTML = `<div class="banner warn" style="margin:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Сначала подключите аккаунт Beget в разделе <a href="#/beget">Beget</a>. Без этого создать сервер нельзя.</span></div>`;
+        footEl.innerHTML = "";
+        return;
+      }
+      bodyEl.innerHTML = this.stepHTML();
+      footEl.innerHTML = this.footHTML();
+      this.bindStepBody();
+      this.bindFoot();
+    },
+    stepHTML() {
+      const st = this.st;
+      switch (st.step) {
+        case 0:
+          return this.regionHTML();
+        case 1:
+          return this.tariffHTML();
+        case 2:
+          return this.profileHTML();
+        case 3:
+          return this.varsHTML();
+        default:
+          return this.confirmHTML();
+      }
+    },
+    regionHTML() {
+      const st = this.st;
+      if (st.regions === null) return `<div class="skeleton skel-block"></div>`;
+      if (!st.regions.length) return `<div class="empty-state"><span class="t">Каталог пуст</span><span class="s">Провайдер не вернул ни одного доступного региона.</span></div>`;
+      const items = st.regions.map((r) => `<button type="button" class="pick" data-region="${esc(r.id)}" aria-pressed="${r.id === st.region}" ${r.available ? "" : "disabled"}>
+        <span class="dot"></span>
+        <span class="pick-b"><span class="pick-t">${esc(r.name || r.name_en || r.id)}</span>
+        <span class="pick-s mono">${esc(r.id)}${r.country ? " · " + esc(r.country) : ""}${r.available ? "" : " · недоступен"}</span></span>
+      </button>`).join("");
+      return `<div class="pick-list">${items}</div>`;
+    },
+    tariffHTML() {
+      return `<div class="field">
+      <label for="wiz-config">Конфигурация (необязательно)</label>
+      <input type="text" id="wiz-config" class="mono" placeholder="configuration_id" value="${esc(this.st.configId)}">
+      <span class="help">Каталог тарифов провайдер не отдаёт через API. Оставьте пустым — провайдер подберёт конфигурацию по региону. Сумма списывается с личного аккаунта Beget.</span>
+    </div>`;
+    },
+    profileHTML() {
+      const st = this.st;
+      if (st.profiles === null) return `<div class="skeleton skel-block"></div>`;
+      if (!st.profiles.length) return `<div class="empty-state"><span class="t">Нет опубликованных профилей</span><span class="s">Профиль установки пока не опубликован — создание сервера недоступно.</span></div>`;
+      const items = st.profiles.map((p) => {
+        var _a;
+        return `<button type="button" class="pick" data-profile="${p.id}" aria-pressed="${((_a = st.profile) == null ? void 0 : _a.id) === p.id}">
+        <span class="dot"></span>
+        <span class="pick-b"><span class="pick-t">${esc(p.name)}</span>
+        <span class="pick-s">${esc(p.description || "")}</span></span>
+      </button>`;
+      }).join("");
+      return `<div class="pick-list">${items}</div>`;
+    },
+    varsHTML() {
+      var _a;
+      const st = this.st;
+      const schema = parseSchema((_a = st.profile) == null ? void 0 : _a.vars_schema);
+      const props = schema.properties || {};
+      const required = new Set(schema.required || []);
+      const keys = Object.keys(props);
+      if (!keys.length) return `<div class="banner info" style="margin:0">Профиль не требует переменных.</div>`;
+      const fields = keys.map((k) => {
+        const type = props[k].type || "string";
+        const id = "var-" + k;
+        const req2 = required.has(k) ? " · обязательно" : "";
+        if (type === "boolean") {
+          return `<label class="check"><input type="checkbox" id="${esc(id)}" data-var="${esc(k)}" data-type="boolean"${st.vars[k] ? " checked" : ""}><span class="box"></span> ${esc(k)}${req2}</label>`;
+        }
+        const itype = type === "integer" || type === "number" ? "number" : "text";
+        const val = st.vars[k] === void 0 ? "" : esc(String(st.vars[k]));
+        return `<div class="field">
+        <label for="${esc(id)}">${esc(k)}<span class="dim">${req2}</span></label>
+        <input type="${itype}" id="${esc(id)}" data-var="${esc(k)}" data-type="${esc(type)}" value="${val}">
+      </div>`;
+      }).join("");
+      return `<div class="wiz-grid">${fields}</div>`;
+    },
+    confirmHTML() {
+      var _a, _b, _c;
+      const st = this.st;
+      const regionLabel = ((_b = (_a = st.regions) == null ? void 0 : _a.find((r) => r.id === st.region)) == null ? void 0 : _b.name) || st.region;
+      const varsText = Object.keys(st.vars).length ? esc(JSON.stringify(st.vars)) : "—";
+      return `<div class="kv" style="gap:10px">
+      <span class="kv-k">Регион</span><span class="kv-v">${esc(regionLabel)} <span class="mono dim">${esc(st.region)}</span></span>
+      <span class="kv-k">Конфигурация</span><span class="kv-v mono">${esc(st.configId || "—")}</span>
+      <span class="kv-k">Профиль</span><span class="kv-v">${esc(((_c = st.profile) == null ? void 0 : _c.name) || "—")}</span>
+      <span class="kv-k">Переменные</span><span class="kv-v mono wrap">${varsText}</span>
+    </div>
+    <div class="banner warn" style="margin:14px 0 0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>Списание с личного аккаунта Beget. Заказ отправляется один раз — повтор того же запроса не создаёт второй сервер.</span>
+    </div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" id="wiz-confirm"${st.confirm ? " checked" : ""}><span class="box"></span> Подтверждаю создание</label>`;
+    },
+    footHTML() {
+      const st = this.st;
+      const canNext = this.canAdvance();
+      const back = st.step > 0 ? `<button type="button" class="btn" id="wiz-back">Назад</button>` : "";
+      const next = st.step < STEPS.length - 1 ? `<button type="button" class="btn primary" id="wiz-next"${canNext ? "" : " disabled"}>Далее</button>` : `<button type="button" class="btn primary" id="wiz-submit"${canNext && st.confirm && !st.loading ? "" : " disabled"}>${st.loading ? "Создание…" : "Создать сервер"}</button>`;
+      return `<span class="spacer"></span>${back}${next}`;
+    },
+    canAdvance() {
+      const st = this.st;
+      switch (st.step) {
+        case 0:
+          return !!st.region;
+        case 1:
+          return true;
+        case 2:
+          return !!st.profile;
+        case 3:
+          return this.varsValid();
+        default:
+          return true;
+      }
+    },
+    varsValid() {
+      var _a;
+      const schema = parseSchema((_a = this.st.profile) == null ? void 0 : _a.vars_schema);
+      for (const k of schema.required || []) {
+        const v = this.st.vars[k];
+        if (v === void 0 || v === "") return false;
+      }
+      return true;
+    },
+    collectVars() {
+      document.querySelectorAll("[data-var]").forEach((el) => {
+        var _a;
+        const key = el.dataset.var;
+        const type = el.dataset.type || "string";
+        if (el instanceof HTMLInputElement && el.type === "checkbox") {
+          this.st.vars[key] = el.checked;
+        } else if (el instanceof HTMLInputElement) {
+          const raw = el.value.trim();
+          if (raw === "" && !(parseSchema((_a = this.st.profile) == null ? void 0 : _a.vars_schema).required || []).includes(key)) {
+            delete this.st.vars[key];
+            return;
+          }
+          this.st.vars[key] = (type === "integer" || type === "number") && raw !== "" ? Number(raw) : raw;
+        }
+      });
+    },
+    /* Тело шага перерисовывается только в render(): onchange на [data-var] и
+       wiz-confirm — на «живучих» узлах, повторный bind копил бы слушатели
+       (collectVars/refreshFoot срабатывали бы N раз за одно событие). */
+    bindStepBody() {
+      const st = this.st;
+      document.querySelectorAll("[data-region]").forEach((b) => b.addEventListener("click", () => {
+        st.region = b.dataset.region;
+        this.render();
+      }));
+      const cfg = $("wiz-config");
+      if (cfg) cfg.addEventListener("input", () => {
+        st.configId = cfg.value.trim();
+      });
+      document.querySelectorAll("[data-profile]").forEach((b) => b.addEventListener("click", () => {
+        st.profile = st.profiles.find((p) => p.id === Number(b.dataset.profile)) || null;
+        st.vars = {};
+        this.render();
+      }));
+      if (st.step === 3) {
+        document.querySelectorAll("[data-var]").forEach((el) => {
+          el.addEventListener("change", () => {
+            this.collectVars();
+            this.refreshFoot();
+          });
+          el.addEventListener("input", () => {
+            this.collectVars();
+            this.refreshFoot();
+          });
+        });
+      }
+      const chk = $("wiz-confirm");
+      if (chk) chk.addEventListener("change", () => {
+        st.confirm = chk.checked;
+        this.refreshFoot();
+      });
+    },
+    /* Кнопки подвала пересоздаются на каждый refreshFoot — их слушатели
+       вешаем заново там же. */
+    bindFoot() {
+      var _a, _b, _c;
+      const st = this.st;
+      (_a = $("wiz-back")) == null ? void 0 : _a.addEventListener("click", () => this.goto(st.step - 1));
+      (_b = $("wiz-next")) == null ? void 0 : _b.addEventListener("click", () => {
+        if (st.step === 3) this.collectVars();
+        if (!this.canAdvance()) return;
+        if (st.step === STEPS.length - 2 && !st.idemKey) st.idemKey = newIdemKey();
+        this.goto(st.step + 1);
+      });
+      (_c = $("wiz-submit")) == null ? void 0 : _c.addEventListener("click", () => this.submit());
+    },
+    refreshFoot() {
+      $("wiz-foot").innerHTML = this.footHTML();
+      this.bindFoot();
+    },
+    submit() {
+      var _a;
+      const st = this.st;
+      if (!st.idemKey) st.idemKey = newIdemKey();
+      st.loading = true;
+      this.refreshFoot();
+      api.createVps({
+        region: st.region,
+        configuration_id: st.configId,
+        profile_id: ((_a = st.profile) == null ? void 0 : _a.id) || 0,
+        vars: st.vars,
+        confirm: true,
+        idem_key: st.idemKey
+      }).then((op) => {
+        st.loading = false;
+        HIGHLIGHT_OP = op.id;
+        showToast("Операция создана. Статус — в разделе «Операции».");
+        this.submitted();
+        refresh().catch(() => {
+        });
+      }).catch((e) => {
+        st.loading = false;
+        this.refreshFoot();
+        const text = e.code === "quota_exceeded" ? "Квота исчерпана: освободите место или запросите лимит у администратора" : e.status === 429 ? "Слишком часто: подождите перед следующим заказом" : e.status === 503 ? "Сервис временно недоступен" : e.status === 400 ? "Проверьте регион и переменные профиля" : "Не удалось создать сервер: " + e.message;
+        const el = $("wiz-body");
+        el.insertAdjacentHTML("afterbegin", `<div class="banner bad" style="margin:0 0 14px"><span>${esc(text)}</span></div>`);
+        showToast(text, true);
+      });
+    }
+  };
+  function parseSchema(raw) {
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  var begetOk = false;
+  function renderAll() {
+    if (ME) {
+      $("hdr-user").textContent = ME.username;
+      renderMetrics();
+    }
+    renderNodes();
+    renderOperations();
+  }
+  var refreshing = false;
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const [me, nodes, ops, link, key] = await Promise.all([
+        api.me(),
+        api.nodes(),
+        api.operations(),
+        api.begetLink(),
+        api.authkey()
+      ]);
+      ME = me;
+      NODES = nodes.nodes || [];
+      OPS = ops.operations || [];
+      begetOk = !!link.verified;
+      renderBeget(link);
+      renderAuthkey(key);
+      $("last-upd").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
+      $("live-text").textContent = "live";
+      $("live-pill").className = "status-pill live";
+      renderAll();
+      const ae = document.activeElement;
+      const editingWizard = ae instanceof HTMLElement && !!ae.closest("#wiz-body, #wiz-foot");
+      if (currentView() === "create" && !editingWizard) wizard.render();
+    } catch (e) {
+      const err = e;
+      if (err.message === "unauthorized") return;
+      $("live-text").textContent = "нет связи";
+      $("live-pill").className = "status-pill off";
+    } finally {
+      refreshing = false;
+    }
+  }
+  function confirmDeleteNode(id) {
+    openModal(
+      `Удалить ноду ${id}?`,
+      "Нода будет отмечена на удаление и освободится после подтверждения провайдера. Место освободит администратор. Ошибка здоровья или установки не создаёт новый сервер.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Удалить", cls: "danger", onClick: () => {
+          closeModal();
+          api.deleteNode(id).then(() => {
+            showToast("Нода отмечена на удаление. Место освободит администратор.");
+            refresh().catch(() => {
+            });
+          }).catch((e) => showToast(e.message, true));
+        } }
+      ]
+    );
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const reveal = t.closest("button[data-reveal]");
+    if (reveal) {
+      const inp = $(reveal.dataset.reveal);
+      if (inp) inp.type = inp.type === "password" ? "text" : "password";
+      return;
+    }
+    const del = t.closest("[data-del]");
+    if (del) {
+      confirmDeleteNode(del.dataset.del);
+      return;
+    }
+    const cancel = t.closest("[data-cancel]");
+    if (cancel) {
+      const id = Number(cancel.dataset.cancel);
+      api.cancelOperation(id).then(() => {
+        showToast("Операция отменена.");
+        refresh().catch(() => {
+        });
+      }).catch((e2) => {
+        showToast(e2.status === 409 ? "Операцию нельзя отменить на этом шаге" : e2.message, true);
+      });
+      return;
+    }
+    const card = t.closest(".node-card[data-id]");
+    if (card) {
+      const id = card.dataset.id;
+      card.classList.toggle("open");
+      OPEN_NODES.has(id) ? OPEN_NODES.delete(id) : OPEN_NODES.add(id);
+    }
+  });
+  $("nodes-reload").addEventListener("click", () => refresh());
+  $("beget-reload").addEventListener("click", () => loadBeget());
+  $("logout-btn").addEventListener("click", () => {
+    api.logout().catch(() => {
+    }).finally(() => location.replace("/signin"));
+  });
+  var begetForm = $("beget-form");
+  begetForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const login = $("bg-login").value.trim();
+    const pass = $("bg-pass").value;
+    if (!login || !pass) return;
+    const btn = $("beget-submit");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Проверка…";
+    api.connectBeget(login, pass).then(() => {
+      $("bg-pass").value = "";
+      showToast("Beget подключён.");
+      loadBeget();
+      refresh().catch(() => {
+      });
+    }).catch((err) => {
+      const text = err.status === 400 ? "Неверный логин или пароль" : err.status === 503 ? "Сервис временно недоступен" : "Не удалось подключить: " + err.message;
+      showToast(text, true);
+    }).finally(() => {
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  });
+  window.addEventListener("hashchange", route);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refresh().catch(() => {
+    });
+  });
+  initTheme();
+  route();
+  refresh().catch(() => {
+  });
+  setInterval(() => {
+    if (!document.hidden) refresh().catch(() => {
+    });
+  }, 5e3);
+})();
+</script>
+</body>
+</html>

@@ -556,7 +556,8 @@
     z-index: 50;
     padding: 6px;
     border-radius: var(--r-xl);
-    grid-template-columns: repeat(6, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 2px;
   }
   .mobile-nav a {
@@ -1954,6 +1955,212 @@
     font-weight: 560;
   }
 
+  /* ui/components/nodecard.css */
+  .node-list {
+    display: block;
+  }
+  .node-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px var(--pad) 8px;
+    background: var(--surf-2);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .node-group .dim {
+    letter-spacing: .02em;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .node-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+    cursor: pointer;
+    transition: background .12s ease;
+  }
+  .node-card:last-child {
+    border-bottom: 0;
+  }
+  .node-card:hover {
+    background: var(--surf-2);
+  }
+  .node-card.master {
+    background: color-mix(in srgb, var(--gold) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  .node-card.master:hover {
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .node-card.master {
+      background: var(--gold-soft);
+    }
+  }
+  .node-main {
+    min-width: 0;
+  }
+  .node-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .node-id {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .node-sub {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .node-problem {
+    color: var(--bad);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .node-side {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: none;
+  }
+  .node-clients {
+    text-align: right;
+  }
+  .node-clients-v {
+    display: block;
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -.02em;
+  }
+  .node-clients-l {
+    font-size: 10.5px;
+    color: var(--fg-3);
+  }
+  .node-meter {
+    min-width: 140px;
+  }
+  .node-more {
+    grid-column: 1 / -1;
+    display: none;
+    gap: 10px 26px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .node-card.open .node-more {
+    display: flex;
+  }
+  .node-more .kv-v.late {
+    color: var(--bad);
+  }
+  .node-more .node-open {
+    margin-left: auto;
+  }
+  .node-card.quar {
+    cursor: pointer;
+  }
+  .node-card.quar .node-sub {
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .node-card {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .node-side {
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .node-meter {
+      min-width: 0;
+      flex: 1;
+    }
+    .node-problem {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .node-group,
+    .node-card {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .node-more .node-open {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+
+  /* ui/components/modal.css */
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .modal {
+      background: var(--bg);
+    }
+  }
+  .modal.show {
+    display: grid;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 400px;
+    padding: 22px;
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .modal-box h2 {
+    font-size: 16px;
+  }
+  .modal-box .modal-body {
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .modal-box .modal-foot {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .modal-box .d {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
   /* ui/pages/panel/page.css */
   .view-title {
     margin: 4px 2px 14px;
@@ -2528,160 +2735,6 @@
       animation: none;
     }
   }
-  .node-list {
-    display: block;
-  }
-  .node-group {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    padding: 12px var(--pad) 8px;
-    background: var(--surf-2);
-    border-bottom: 1px solid var(--line-2);
-    font-size: 10.5px;
-    font-weight: 640;
-    letter-spacing: .09em;
-    text-transform: uppercase;
-    color: var(--fg-2);
-  }
-  .node-group .dim {
-    letter-spacing: .02em;
-    text-transform: none;
-    font-weight: 500;
-  }
-  .node-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px 18px;
-    padding: 12px var(--pad);
-    border-bottom: 1px solid var(--line-2);
-    cursor: pointer;
-    transition: background .12s ease;
-  }
-  .node-card:last-child {
-    border-bottom: 0;
-  }
-  .node-card:hover {
-    background: var(--surf-2);
-  }
-  .node-card.master {
-    background: color-mix(in srgb, var(--gold) 7%, transparent);
-    box-shadow: inset 3px 0 0 var(--gold);
-  }
-  .node-card.master:hover {
-    background: color-mix(in srgb, var(--gold) 12%, transparent);
-  }
-  @supports not (background: color-mix(in srgb, red 50%, blue)) {
-    .node-card.master {
-      background: var(--gold-soft);
-    }
-  }
-  .node-main {
-    min-width: 0;
-  }
-  .node-top {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-  .node-id {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: -.02em;
-  }
-  .node-sub {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-    margin-top: 5px;
-    font-size: 11.5px;
-    color: var(--fg-3);
-  }
-  .node-problem {
-    color: var(--bad);
-    max-width: 320px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .node-side {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex: none;
-  }
-  .node-clients {
-    text-align: right;
-  }
-  .node-clients-v {
-    display: block;
-    font-size: 15px;
-    font-weight: 640;
-    letter-spacing: -.02em;
-  }
-  .node-clients-l {
-    font-size: 10.5px;
-    color: var(--fg-3);
-  }
-  .node-meter {
-    min-width: 140px;
-  }
-  .node-more {
-    grid-column: 1 / -1;
-    display: none;
-    gap: 10px 26px;
-    flex-wrap: wrap;
-    align-items: center;
-    margin-top: 10px;
-    padding-top: 12px;
-    border-top: 1px dashed var(--line);
-  }
-  .node-card.open .node-more {
-    display: flex;
-  }
-  .node-more .kv-v.late {
-    color: var(--bad);
-  }
-  .node-more .node-open {
-    margin-left: auto;
-  }
-  .node-card.quar {
-    cursor: pointer;
-  }
-  .node-card.quar .node-sub {
-    gap: 12px;
-  }
-  @media (max-width: 720px) {
-    .node-card {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .node-side {
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 8px;
-    }
-    .node-meter {
-      min-width: 0;
-      flex: 1;
-    }
-    .node-problem {
-      max-width: 100%;
-      white-space: normal;
-    }
-    .node-group,
-    .node-card {
-      padding-left: 12px;
-      padding-right: 12px;
-    }
-    .node-more .node-open {
-      margin-left: 0;
-      width: 100%;
-    }
-  }
   .capacity {
     padding: 16px var(--pad);
     border-bottom: 1px solid var(--line-2);
@@ -2833,6 +2886,32 @@
       width: 100%;
     }
   }
+  .u-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .u-quota {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .u-quota .meter {
+    min-width: 70px;
+  }
+  .q-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .q-edit .q-in {
+    width: 76px;
+  }
+  @media (max-width: 720px) {
+    .u-acts .btn {
+      width: 100%;
+    }
+  }
 </style>
 </head>
 <body>
@@ -2854,6 +2933,7 @@
         <a href="#/dns" data-view="dns">Мастера и DNS</a>
         <a href="#/srmd" data-view="srmd" title="Система распределения и масштабирования доменов">СРМД</a>
         <a href="#/events" data-view="events">Журнал</a>
+        <a href="#/users" data-view="users">Пользователи</a>
         <a href="#/settings" data-view="settings">Настройки</a>
       </nav></div>
       <div class="topbar-right">
@@ -3010,6 +3090,24 @@
       </section>
     </section>
 
+    <!-- ═══ Пользователи ════════════════════════════════════════════ -->
+    <section class="view" id="view-users" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Пользователи</h2>
+          <span class="hint" style="margin-left:0">квота, ключи, освобождение мест</span>
+          <button class="btn primary" style="margin-left:auto" id="users-create">Создать пользователя</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Логин</th><th>Роль</th><th>Квота</th><th>Занято</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="users-body"><tr><td colspan="6"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-note">Нельзя заблокировать последнего активного администратора. Уменьшение квоты не удаляет существующие ноды, но блокирует новые сверх лимита. «Освободить место» нужно, когда нода удалена физически.</div>
+      </section>
+    </section>
+
     <!-- ═══ Настройки ═══════════════════════════════════════════════ -->
     <section class="view" id="view-settings" hidden>
       <div class="card-head" style="border:0;padding-left:0;padding-right:0">
@@ -3039,10 +3137,19 @@
   <a href="#/dns" data-view="dns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><span>DNS</span></a>
   <a href="#/srmd" data-view="srmd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>СРМД</span></a>
   <a href="#/events" data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Журнал</span></a>
+  <a href="#/users" data-view="users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/></svg><span>Пользователи</span></a>
   <a href="#/settings" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Настройки</span></a>
 </nav>
 
-<div id="toast"></div>
+<div id="toast" aria-live="polite"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
 
 <div id="login-overlay" hidden>
   <div class="login-box glass">
@@ -4501,6 +4608,399 @@
     };
   }
 
+  // ui/pages/panel/views/users.ts
+  var USERS = [];
+  async function panelReq(path, method = "GET", body) {
+    const resp = await fetch(path, {
+      method,
+      headers: Object.assign(
+        { "Authorization": "Bearer " + getToken() },
+        body === void 0 ? {} : { "Content-Type": "application/json" }
+      ),
+      body: body === void 0 ? void 0 : JSON.stringify(body)
+    });
+    if (resp.status === 204) return void 0;
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      const err = new Error(data.message || data.error || "HTTP " + resp.status);
+      err.code = data.error;
+      err.status = resp.status;
+      throw err;
+    }
+    return resp.json();
+  }
+  var lastFocused = null;
+  function setPageInert(on) {
+    Array.from(document.body.children).forEach((el) => {
+      if (el.id === "modal" || el.id === "toast") return;
+      if (on) el.setAttribute("inert", "");
+      else el.removeAttribute("inert");
+    });
+  }
+  function openModal(title, body, actions) {
+    var _a;
+    lastFocused = document.activeElement;
+    $("modal-title").textContent = title;
+    $("modal-body").innerHTML = body;
+    const foot = $("modal-foot");
+    foot.replaceChildren();
+    actions.forEach((a) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn" + (a.cls ? " " + a.cls : "");
+      b.textContent = a.label;
+      b.addEventListener("click", (ev) => a.onClick(ev));
+      foot.appendChild(b);
+    });
+    $("modal").classList.add("show");
+    setPageInert(true);
+    (_a = foot.querySelector("button")) == null ? void 0 : _a.focus();
+  }
+  function closeModal() {
+    $("modal").classList.remove("show");
+    setPageInert(false);
+    $("modal-body").replaceChildren();
+    $("modal-foot").replaceChildren();
+    if (lastFocused) {
+      try {
+        lastFocused.focus();
+      } catch {
+      }
+    }
+    lastFocused = null;
+  }
+  $("modal").addEventListener("click", (e) => {
+    if (e.target.id === "modal") closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    const m = $("modal");
+    if (!m.classList.contains("show")) return;
+    if (e.key === "Escape") {
+      closeModal();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const box = m.querySelector(".modal-box");
+    if (!box) return;
+    const f = box.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !box.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (active === last || !box.contains(active))) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+  var EDITING_QUOTA = null;
+  function quotaCell(u) {
+    if (EDITING_QUOTA === u.id) {
+      return `<span class="q-edit">
+      <input type="number" class="q-in" id="q-in-${u.id}" min="0" max="10000" value="${u.max_nodes}" aria-label="Максимум нод" title="Уменьшение не удаляет существующие ноды, но блокирует новые сверх лимита.">
+      <button class="btn sm primary" data-qsave="${u.id}">Сохранить</button>
+      <button class="btn sm ghost" data-qcancel="${u.id}">Отмена</button>
+    </span>`;
+    }
+    return `<span class="q-val num">${u.max_nodes}</span>
+    <button class="btn sm ghost" data-qedit="${u.id}" title="Изменить квоту">изм.</button>`;
+  }
+  function actionsCell(u) {
+    const revoke = u.used_nodes > 0 ? `<button class="btn sm danger" data-revoke="${u.id}" data-name="${esc(u.username)}">Отозвать</button>` : "";
+    return `<span class="u-acts">
+    <button class="btn sm" data-rotate="${u.id}" data-name="${esc(u.username)}">Ключ</button>
+    ${revoke}
+    <button class="btn sm ghost" data-release="${u.id}" data-name="${esc(u.username)}">Освободить место</button>
+    <button class="btn sm ghost" data-passwd="${u.id}" data-name="${esc(u.username)}">Сбросить пароль</button>
+  </span>`;
+  }
+  function statusCell(u) {
+    const badge = u.disabled ? `<span class="badge bad"><i></i>заблокирован</span>` : `<span class="badge ok"><i></i>активен</span>`;
+    const action = u.disabled ? "Разблокировать" : "Заблокировать";
+    return `<button class="btn sm ghost" data-toggle="${u.id}" title="${action}" aria-label="${action} пользователя ${esc(u.username)}" aria-pressed="${u.disabled}">${badge}</button>`;
+  }
+  function render6() {
+    const body = $("users-body");
+    if (!USERS.length) {
+      body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <span class="t">Пользователей нет</span>
+      <span class="s">Создайте первого.</span></div></td></tr>`;
+      return;
+    }
+    body.innerHTML = USERS.map((u) => {
+      const pct = u.max_nodes > 0 ? Math.min(100, Math.round(u.used_nodes / u.max_nodes * 100)) : 0;
+      return `<tr data-uid="${u.id}">
+      <td data-label="Логин">${esc(u.username)}</td>
+      <td data-label="Роль">${u.role === "admin" ? `<span class="badge special">админ</span>` : `<span class="badge">пользователь</span>`}</td>
+      <td data-label="Квота">${quotaCell(u)}</td>
+      <td data-label="Занято"><span class="u-quota"><span class="num">${u.used_nodes}</span>
+        <span class="meter"><span class="meter-track"><span class="meter-fill ${pct >= 100 ? "warn" : "ok"}" style="width:${pct}%"></span></span></span></span></td>
+      <td data-label="Статус">${statusCell(u)}</td>
+      <td data-label="Действия">${actionsCell(u)}</td>
+    </tr>`;
+    }).join("");
+  }
+  async function load3() {
+    var _a;
+    try {
+      const data = await panelReq("/panel/api/admin/users");
+      USERS = data.users || [];
+      render6();
+    } catch (e) {
+      const err = e;
+      $("users-body").innerHTML = `<tr><td colspan="6"><div class="banner bad" style="margin:0">
+      <span>Не удалось загрузить пользователей: ${esc(err.message)}</span>
+      <button class="btn sm" id="users-retry" style="margin-left:auto">Повторить</button></div></td></tr>`;
+      (_a = $("users-retry")) == null ? void 0 : _a.addEventListener("click", () => load3().catch(() => {
+      }));
+    }
+  }
+  function createUser() {
+    openModal(
+      "Создать пользователя",
+      `<div class="field" style="gap:12px">
+      <div><label for="nu-user">Логин</label>
+        <input type="text" id="nu-user" class="mono" pattern="[a-z0-9_.-]{3,32}" minlength="3" maxlength="32" autocomplete="off"></div>
+      <div><label for="nu-pass">Пароль</label>
+        <input type="password" id="nu-pass" minlength="10" autocomplete="new-password"></div>
+      <div><label for="nu-role">Роль</label>
+        <select id="nu-role"><option value="user">пользователь</option><option value="admin">админ</option></select></div>
+      <div><label for="nu-max">Квота (мест)</label>
+        <input type="number" id="nu-max" min="0" max="10000" value="0"></div>
+      <div class="help" style="color:var(--fg-3);font-size:11.5px">Логин 3–32: a–z 0–9 _ . - · пароль ≥ 10 символов.</div>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Создать", cls: "primary", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          const username = $("nu-user").value.trim();
+          const password = $("nu-pass").value;
+          const role = $("nu-role").value;
+          const max_nodes = Number($("nu-max").value) || 0;
+          if (!username || password.length < 10) {
+            showToast("Логин 3–32 и пароль ≥ 10", true);
+            return;
+          }
+          const label = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Создание…";
+          panelReq("/panel/api/admin/users", "POST", { username, password, role, max_nodes }).then(() => {
+            closeModal();
+            showToast("Пользователь создан.");
+            load3().catch(() => {
+            });
+          }).catch((e) => showToast(e.status === 409 ? "Логин уже занят" : e.message, true)).finally(() => {
+            btn.disabled = false;
+            btn.textContent = label;
+          });
+        } }
+      ]
+    );
+  }
+  function saveQuota(id, btn) {
+    const inp = $("q-in-" + id);
+    if (!inp) return;
+    const max_nodes = Number(inp.value);
+    if (!Number.isFinite(max_nodes) || max_nodes < 0) {
+      showToast("Квота: целое число ≥ 0", true);
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Сохранение…";
+    panelReq(`/panel/api/admin/users/${id}`, "PATCH", { max_nodes }).then(() => {
+      EDITING_QUOTA = null;
+      showToast("Квота обновлена.");
+      load3().catch(() => {
+      });
+    }).catch((e) => {
+      showToast(e.message, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function toggleDisabled(id) {
+    const u = USERS.find((x) => x.id === id);
+    if (!u) return;
+    panelReq(`/panel/api/admin/users/${id}`, "PATCH", { disabled: !u.disabled }).then(() => {
+      showToast(u.disabled ? "Пользователь разблокирован." : "Пользователь заблокирован.");
+      load3().catch(() => {
+      });
+    }).catch((e) => showToast(e.code === "last_admin" ? "Нельзя заблокировать последнего администратора" : e.message, true));
+  }
+  function rotateKey(id, name) {
+    panelReq(`/panel/api/admin/users/${id}/authkey/rotate`, "POST").then((r) => {
+      openModal(
+        `Новый ключ · ${name}`,
+        `<div class="secret-reveal">
+          <div class="warn-note">Ключ показывается один раз. Сохраните его сейчас — позже он недоступен.</div>
+          <div class="key">${esc(r.authkey)}</div>
+          <div class="dim" style="font-size:11.5px">Новый ключ отзовёт все прежние. Существующие ноды продолжат работу; новые регистрации старым ключом будут отклонены.</div>
+        </div>`,
+        [
+          { label: "Копировать", onClick: (ev) => {
+            const btn = ev.currentTarget;
+            const done = () => {
+              btn.textContent = "скопировано";
+              setTimeout(() => {
+                btn.textContent = "Копировать";
+              }, 1500);
+            };
+            if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(r.authkey).then(done, () => {
+              btn.textContent = "не вышло";
+            });
+            else done();
+          } },
+          { label: "Закрыть", cls: "primary", onClick: () => {
+            closeModal();
+            load3().catch(() => {
+            });
+          } }
+        ]
+      );
+    }).catch((e) => showToast(e.message, true));
+  }
+  function revokeKey(id, name) {
+    openModal(
+      `Отозвать ключ пользователя ${name}?`,
+      "Существующие ноды продолжат работу; новые регистрации с этим ключом будут запрещены.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Отозвать", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Отзыв…";
+          panelReq(`/panel/api/admin/users/${id}/authkey`, "DELETE").then(() => {
+            closeModal();
+            showToast("Ключ отозван.");
+            load3().catch(() => {
+            });
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Отозвать";
+          });
+        } }
+      ]
+    );
+  }
+  function releaseNode(id, name) {
+    openModal(
+      `Освободить ноду · ${name}`,
+      `<div class="field">
+      <label for="rn-node">node_id</label>
+      <input type="text" id="rn-node" class="mono" placeholder="NAME-hash" autocomplete="off">
+      <span class="help" style="color:var(--fg-3);font-size:11.5px">Нужно, когда нода удалена физически: место освобождается, владелец переходит в legacy.</span>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Освободить", cls: "primary", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          const node_id = $("rn-node").value.trim();
+          if (!node_id) return;
+          const label = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Освобождение…";
+          panelReq(`/panel/api/admin/users/${id}/release-node`, "POST", { node_id }).then(() => {
+            closeModal();
+            showToast("Место освобождено.");
+            load3().catch(() => {
+            });
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = label;
+          });
+        } }
+      ]
+    );
+  }
+  function resetPassword(id, name) {
+    openModal(
+      `Сбросить пароль · ${name}`,
+      `<div class="field">
+      <label for="rp-pass">Новый пароль</label>
+      <input type="password" id="rp-pass" minlength="10" autocomplete="new-password">
+      <span class="help" style="color:var(--fg-3);font-size:11.5px">Пароль ≥ 10 символов.</span>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Сбросить", cls: "primary", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          const password = $("rp-pass").value;
+          if (password.length < 10) {
+            showToast("Пароль ≥ 10 символов", true);
+            return;
+          }
+          const label = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Сброс…";
+          panelReq(`/panel/api/admin/users/${id}`, "PATCH", { password }).then(() => {
+            closeModal();
+            showToast("Пароль обновлён.");
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = label;
+          });
+        } }
+      ]
+    );
+  }
+  function init5() {
+    $("users-create").addEventListener("click", createUser);
+    $("users-body").addEventListener("click", (e) => {
+      var _a;
+      const t = e.target;
+      const q = t.closest("[data-qedit]");
+      if (q) {
+        EDITING_QUOTA = Number(q.dataset.qedit);
+        render6();
+        (_a = $("q-in-" + EDITING_QUOTA)) == null ? void 0 : _a.focus();
+        return;
+      }
+      const qc = t.closest("[data-qcancel]");
+      if (qc) {
+        EDITING_QUOTA = null;
+        render6();
+        return;
+      }
+      const qs = t.closest("[data-qsave]");
+      if (qs) {
+        saveQuota(Number(qs.dataset.qsave), qs);
+        return;
+      }
+      const rot = t.closest("[data-rotate]");
+      if (rot) {
+        rotateKey(Number(rot.dataset.rotate), rot.dataset.name);
+        return;
+      }
+      const rev = t.closest("[data-revoke]");
+      if (rev) {
+        revokeKey(Number(rev.dataset.revoke), rev.dataset.name);
+        return;
+      }
+      const rel = t.closest("[data-release]");
+      if (rel) {
+        releaseNode(Number(rel.dataset.release), rel.dataset.name);
+        return;
+      }
+      const pwd = t.closest("[data-passwd]");
+      if (pwd) {
+        resetPassword(Number(pwd.dataset.passwd), pwd.dataset.name);
+        return;
+      }
+      const tg = t.closest("[data-toggle]");
+      if (tg) {
+        toggleDisabled(Number(tg.dataset.toggle));
+        return;
+      }
+    });
+  }
+
   // ui/pages/panel/main.ts
   var VIEW_META = {
     overview: { title: "Обзор" },
@@ -4508,6 +5008,7 @@
     dns: { title: "Мастера и DNS" },
     srmd: { title: "СРМД — распределение и масштабирование доменов" },
     events: { title: "Журнал событий" },
+    users: { title: "Пользователи" },
     settings: { title: "Настройки" }
   };
   function currentRoute() {
@@ -4542,6 +5043,10 @@
       loadSettings().then(() => {
         state.srmdLoaded = true;
       }).catch(() => {
+      });
+    }
+    if (r.view === "users") {
+      load3().catch(() => {
       });
     }
     renderAll();
@@ -4646,6 +5151,7 @@
   init3();
   init2();
   init();
+  init5();
   if (!localStorage.getItem(LS_KEY)) showLogin(false);
   route();
   refresh().catch((err) => {
