@@ -96,6 +96,40 @@ export function barChart(rows: BarRow[], opts: ChartOpts = {}): string {
   return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
 }
 
+/** Дольная доля пончика: значение + токен-цвет (без зависимостей). */
+export interface DonutSlice { name: string; value: number; color: string; }
+
+/** Круглый пончик: доли — дуги одного кольца (stroke-dasharray/offset),
+ *  старт сверху (rotate −90°). Только токен-цвета. Пусто (сумма ≤ 0) → "":
+ *  вызывающий рисует честное «нет данных», не пустое кольцо. Числа (%, байты)
+ *  — в HTML-легенде рядом: внутри растянутого SVG текст исказился бы. */
+export function donutChart(slices: DonutSlice[], opts: { size?: number } = {}): string {
+  const total = slices.reduce((s, x) => s + (isFinite(x.value) && x.value > 0 ? x.value : 0), 0);
+  if (total <= 0) return "";
+  const size = opts.size ?? 128;
+  const stroke = 18;
+  const cx = size / 2;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  let off = 0;
+  const arcs = slices.map((s) => {
+    const v = isFinite(s.value) && s.value > 0 ? s.value : 0;
+    const len = (v / total) * circ;
+    const seg = `<circle class="donut-arc" cx="${cx}" cy="${cx}" r="${r.toFixed(2)}" ` +
+      `stroke="${s.color}" stroke-width="${stroke}" fill="none" ` +
+      `stroke-dasharray="${len.toFixed(2)} ${(circ - len).toFixed(2)}" ` +
+      `stroke-dashoffset="${(-off).toFixed(2)}"/>`;
+    off += len;
+    return seg;
+  }).join("");
+  return `<svg class="donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+    <g transform="rotate(-90 ${cx} ${cx})">
+      <circle class="donut-track" cx="${cx}" cy="${cx}" r="${r.toFixed(2)}" stroke-width="${stroke}" fill="none"/>
+      ${arcs}
+    </g>
+  </svg>`;
+}
+
 /** Серия для интерактивной линии: подпись в тултипе + значения (null — пропуск)
  *  + готовые строки значений (иначе число как есть). */
 export interface LiveSeries {

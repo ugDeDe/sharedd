@@ -10,7 +10,7 @@
 
 import { $, esc, renderSection } from "../../lib/dom";
 import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
-import { barChart, chartTop, liveLineChart } from "../../lib/chart";
+import { barChart, chartTop, donutChart, liveLineChart } from "../../lib/chart";
 import type { LiveSeries } from "../../lib/chart";
 import { api } from "./api";
 import type { NodeDetail } from "./api";
@@ -501,28 +501,36 @@ function hostingHTML(d: NodeDetail): string {
         cr.map((p) => [fmtClock(p.at), fmtPct(p.cpu_percent), fmtPct(p.ram_percent)]))}`;
   }
 
+  // §7 Сеть: пончик принято/отдано с долями. Данные — сумма net_series за 24 ч,
+  // иначе fallback на накопительные *_total. Сумма 0 → честное «нет данных».
   const net = h.net_series ?? [];
+  const sum = (k: "ingress_bytes" | "egress_bytes"): number =>
+    net.length ? net.reduce((s, p) => s + (p[k] ?? 0), 0) : (h[k === "ingress_bytes" ? "net_ingress_bytes_total" : "net_egress_bytes_total"] ?? 0);
+  const ing = sum("ingress_bytes");
+  const egr = sum("egress_bytes");
+  const netTotal = ing + egr;
   let netHTML: string;
-  if (net.length < 2) {
+  if (netTotal <= 0) {
     netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано</span></div>
-      <span class="dim">данные копятся — пока мало точек</span>`;
+      <span class="dim">нет данных — трафик не зафиксирован</span>`;
   } else {
-    const x = net.map((p) => fmtClock(p.at));
-    const maxN = Math.max(...net.flatMap((p) => [p.ingress_bytes, p.egress_bytes]), 1);
-    const series: LiveSeries[] = [
-      { name: "Принято", color: "var(--info)", values: net.map((p) => p.ingress_bytes), texts: net.map((p) => fmtBytes(p.ingress_bytes)) },
-      { name: "Отдано", color: "var(--acc)", values: net.map((p) => p.egress_bytes), texts: net.map((p) => fmtBytes(p.egress_bytes)) },
-    ];
-    netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано, за интервал</span></div>
-      ${legend([["Принято", "var(--info)"], ["Отдано", "var(--acc)"]])}
-      <div class="chart-wrap" role="img" aria-label="Сетевой трафик за 24 часа, принято и отдано, максимум ${esc(fmtBytes(maxN))}">
-        <div class="chart-plot">
-          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(maxN))}</span><span>0</span></div>
-          ${liveLineChart(x, series, { max: maxN })}
+    const ingPct = (ing / netTotal) * 100;
+    const egrPct = 100 - ingPct;
+    const ingText = `${ingPct.toFixed(1)}%`;
+    const egrText = `${egrPct.toFixed(1)}%`;
+    netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано, за 24 ч</span></div>
+      <div class="donut-wrap" role="img" aria-label="Сеть за 24 часа: принято ${ingText} (${esc(fmtBytes(ing))}), отдано ${egrText} (${esc(fmtBytes(egr))})">
+        <div class="donut-plot">${donutChart([
+          { name: "Принято", value: ing, color: "var(--info)" },
+          { name: "Отдано", value: egr, color: "var(--acc)" },
+        ])}</div>
+        <div class="chart-legend donut-legend">
+          <span class="legend-static"><span class="legend-dot" style="background:var(--info)"></span>Принято <b class="mono">${ingText}</b> · ${esc(fmtBytes(ing))}</span>
+          <span class="legend-static"><span class="legend-dot" style="background:var(--acc)"></span>Отдано <b class="mono">${egrText}</b> · ${esc(fmtBytes(egr))}</span>
         </div>
       </div>
-      ${srTable("Хостинг — сеть", ["Время", "Принято", "Отдано"],
-        net.map((p) => [fmtClock(p.at), fmtBytes(p.ingress_bytes), fmtBytes(p.egress_bytes)]))}`;
+      ${srTable("Хостинг — сеть, доли за 24 часа", ["Принято", "Отдано", "доля %"],
+        [[fmtBytes(ing), fmtBytes(egr), `${ingText} / ${egrText}`]])}`;
   }
 
   return `<section class="card">${head}

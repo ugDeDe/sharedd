@@ -33,7 +33,8 @@
 - **Реестр `V1.1.7` выкачен** (2026-10-13 23:28) — графики: хостинг CPU/RAM/сеть
   как time-series (`history.host_metrics`, `hosting.cpu_ram_series`/`net_series`,
   24ч), интерактивные линии (crosshair/тултип), узкие колонки трафика. QA: PASS.
-  Бэкап `prev28` + `/var/backups/sharedd-20261013-232831`. ⚠️ CPU/RAM-график
+  Бэкап `prev28` + `/var/backups/sharedd-20261013-232831`. Сеть = **донат**
+  (Принято/Отдано + %) — `V1.1.8`, бэкап `prev29`. ⚠️ CPU/RAM-график
   наполняется по мере накопления (таблица новая).
 - **ad_tag на test-lk ИСПРАВЛЕН напрямую** (2026-10-13): `mtproxyl settings set
   AD_TAG 55f160fb2b7dbc466e72d57e3f79e72a` (settings.conf + telemt.toml), прокси

@@ -2355,6 +2355,29 @@
     border-radius: 2px;
     flex: none;
   }
+  .legend-static b {
+    color: var(--fg);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .donut-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+  }
+  .donut {
+    display: block;
+    flex: none;
+  }
+  .donut .donut-track {
+    stroke: var(--surf-3);
+  }
+  .donut-legend {
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 0;
+  }
   .h-bars {
     display: flex;
     flex-direction: column;
@@ -2544,7 +2567,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="d15c6c52be6a37d2">
+  <meta name="sharedd-build" content="57ac19b7c42fa1c0">
 </head>
 <body>
 
@@ -3340,6 +3363,30 @@
     }).join("");
     return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
   }
+  function donutChart(slices, opts = {}) {
+    var _a;
+    const total = slices.reduce((s, x) => s + (isFinite(x.value) && x.value > 0 ? x.value : 0), 0);
+    if (total <= 0) return "";
+    const size = (_a = opts.size) != null ? _a : 128;
+    const stroke = 18;
+    const cx = size / 2;
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    let off = 0;
+    const arcs = slices.map((s) => {
+      const v = isFinite(s.value) && s.value > 0 ? s.value : 0;
+      const len = v / total * circ;
+      const seg = `<circle class="donut-arc" cx="${cx}" cy="${cx}" r="${r.toFixed(2)}" stroke="${s.color}" stroke-width="${stroke}" fill="none" stroke-dasharray="${len.toFixed(2)} ${(circ - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`;
+      off += len;
+      return seg;
+    }).join("");
+    return `<svg class="donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+    <g transform="rotate(-90 ${cx} ${cx})">
+      <circle class="donut-track" cx="${cx}" cy="${cx}" r="${r.toFixed(2)}" stroke-width="${stroke}" fill="none"/>
+      ${arcs}
+    </g>
+  </svg>`;
+  }
   function liveLineChart(xLabels, series, opts = {}) {
     var _a;
     const svg = lineChart(series.map((s) => ({ values: s.values, color: s.color })), opts);
@@ -3794,29 +3841,40 @@
       )}`;
     }
     const net = (_b = h.net_series) != null ? _b : [];
+    const sum = (k) => {
+      var _a2;
+      return net.length ? net.reduce((s, p) => {
+        var _a3;
+        return s + ((_a3 = p[k]) != null ? _a3 : 0);
+      }, 0) : (_a2 = h[k === "ingress_bytes" ? "net_ingress_bytes_total" : "net_egress_bytes_total"]) != null ? _a2 : 0;
+    };
+    const ing = sum("ingress_bytes");
+    const egr = sum("egress_bytes");
+    const netTotal = ing + egr;
     let netHTML;
-    if (net.length < 2) {
+    if (netTotal <= 0) {
       netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано</span></div>
-      <span class="dim">данные копятся — пока мало точек</span>`;
+      <span class="dim">нет данных — трафик не зафиксирован</span>`;
     } else {
-      const x = net.map((p) => fmtClock(p.at));
-      const maxN = Math.max(...net.flatMap((p) => [p.ingress_bytes, p.egress_bytes]), 1);
-      const series = [
-        { name: "Принято", color: "var(--info)", values: net.map((p) => p.ingress_bytes), texts: net.map((p) => fmtBytes(p.ingress_bytes)) },
-        { name: "Отдано", color: "var(--acc)", values: net.map((p) => p.egress_bytes), texts: net.map((p) => fmtBytes(p.egress_bytes)) }
-      ];
-      netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано, за интервал</span></div>
-      ${legend([["Принято", "var(--info)"], ["Отдано", "var(--acc)"]])}
-      <div class="chart-wrap" role="img" aria-label="Сетевой трафик за 24 часа, принято и отдано, максимум ${esc(fmtBytes(maxN))}">
-        <div class="chart-plot">
-          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(maxN))}</span><span>0</span></div>
-          ${liveLineChart(x, series, { max: maxN })}
+      const ingPct = ing / netTotal * 100;
+      const egrPct = 100 - ingPct;
+      const ingText = `${ingPct.toFixed(1)}%`;
+      const egrText = `${egrPct.toFixed(1)}%`;
+      netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано, за 24 ч</span></div>
+      <div class="donut-wrap" role="img" aria-label="Сеть за 24 часа: принято ${ingText} (${esc(fmtBytes(ing))}), отдано ${egrText} (${esc(fmtBytes(egr))})">
+        <div class="donut-plot">${donutChart([
+        { name: "Принято", value: ing, color: "var(--info)" },
+        { name: "Отдано", value: egr, color: "var(--acc)" }
+      ])}</div>
+        <div class="chart-legend donut-legend">
+          <span class="legend-static"><span class="legend-dot" style="background:var(--info)"></span>Принято <b class="mono">${ingText}</b> · ${esc(fmtBytes(ing))}</span>
+          <span class="legend-static"><span class="legend-dot" style="background:var(--acc)"></span>Отдано <b class="mono">${egrText}</b> · ${esc(fmtBytes(egr))}</span>
         </div>
       </div>
       ${srTable(
-        "Хостинг — сеть",
-        ["Время", "Принято", "Отдано"],
-        net.map((p) => [fmtClock(p.at), fmtBytes(p.ingress_bytes), fmtBytes(p.egress_bytes)])
+        "Хостинг — сеть, доли за 24 часа",
+        ["Принято", "Отдано", "доля %"],
+        [[fmtBytes(ing), fmtBytes(egr), `${ingText} / ${egrText}`]]
       )}`;
     }
     return `<section class="card">${head}

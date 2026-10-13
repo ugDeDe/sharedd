@@ -175,6 +175,13 @@
 .legend-btn:hover { color: var(--fg); }
 .legend-btn[aria-pressed="false"] { color: var(--fg-3); opacity: .5; text-decoration: line-through; }
 .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.legend-static b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Пончик сети (specs/node-stats.md — граф D, «Сеть»): доли-дуги, старт сверху.
+   Числа (% и байты) — текстом в легенде: цвет не единственный сигнал. */
+.donut-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.donut { display: block; flex: none; }
+.donut .donut-track { stroke: var(--surf-3); }
+.donut-legend { flex-direction: column; gap: 6px; margin-bottom: 0; }
 /* График E — горизонтальные столбики (текущий снимок). */
 .h-bars { display: flex; flex-direction: column; gap: 7px; }
 .h-bar { display: grid; grid-template-columns: minmax(56px, 22%) 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
