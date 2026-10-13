@@ -1236,6 +1236,7 @@
     gap: 8px;
     cursor: pointer;
     font-size: 12.5px;
+    min-height: 24px;
   }
   .check input {
     position: absolute;
@@ -1297,6 +1298,120 @@
   .input-group .in-btn:hover {
     background: var(--surf-3);
     color: var(--fg);
+  }
+
+  /* ui/components/vars.css */
+  .vars-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vars-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .vars-empty {
+    color: var(--fg-3);
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  .vars-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 1.3fr) minmax(140px, 1.6fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .vars-row input[type=text],
+  .vars-row input[type=password],
+  .vars-row input:not([type]) {
+    background: var(--surf-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 7px 9px;
+    min-width: 0;
+    width: 100%;
+  }
+  .vars-row .input-group {
+    min-width: 0;
+    width: 100%;
+  }
+  .vars-row .input-group input {
+    width: 100%;
+    min-width: 0;
+  }
+  .vars-row input:focus-visible {
+    outline: none;
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .vars-row .vars-secret {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    white-space: nowrap;
+  }
+  .vars-row .vars-hint {
+    grid-column: 1 / -1;
+    color: var(--fg-3);
+    font-size: 11px;
+    margin-top: -2px;
+  }
+  .vars-row .vars-hint.bad {
+    color: var(--bad);
+  }
+  .vars-row .btn.sm {
+    justify-self: end;
+  }
+  .vars-row .field {
+    min-width: 0;
+  }
+  .vars-row-install {
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 2fr) minmax(120px, 1.4fr) auto;
+  }
+  .vars-row-install [data-vsource] {
+    font-size: 12px;
+  }
+  .vars-row [data-vreset] {
+    white-space: normal;
+    height: auto;
+    min-height: var(--ctl-h);
+    max-width: 100%;
+  }
+  .vars-row .in-btn[hidden] {
+    display: none;
+  }
+  .vars-row .vars-hint {
+    overflow-wrap: anywhere;
+  }
+  .vars-row-x {
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 1.4fr) auto;
+  }
+  .vars-row-x .vars-hint {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 720px) {
+    .vars-row,
+    .vars-row-x,
+    .vars-row-install {
+      grid-template-columns: 1fr 1fr;
+    }
+    .vars-row .vars-hint,
+    .vars-row-x .vars-hint {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 480px) {
+    .vars-row,
+    .vars-row-x,
+    .vars-row-install {
+      grid-template-columns: 1fr;
+    }
+    .vars-row .btn.sm {
+      justify-self: start;
+    }
   }
 
   /* ui/components/feed.css */
@@ -1940,6 +2055,30 @@
       transform: translateY(6px);
     }
   }
+  #update-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    z-index: 80;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 9px 12px 9px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--acc);
+    background: var(--surf);
+    color: var(--fg);
+    box-shadow: var(--sh-pop);
+    font-size: 12.5px;
+  }
+  #update-bar[hidden] {
+    display: none;
+  }
+  #update-bar .btn {
+    flex: none;
+  }
   .kv {
     display: flex;
     flex-direction: column;
@@ -2139,20 +2278,37 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
   }
   .modal-box h2 {
     font-size: 16px;
+    flex: none;
+  }
+  .modal-box.modal-wide {
+    max-width: min(1100px, 96vw);
+  }
+  .profile-editor textarea {
+    min-height: 260px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow: auto;
+    overflow-wrap: normal;
+    resize: vertical;
   }
   .modal-box .modal-body {
     color: var(--fg-2);
     font-size: 13px;
     line-height: 1.55;
+    overflow-y: auto;
+    min-height: 0;
   }
   .modal-box .modal-foot {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
     flex-wrap: wrap;
+    flex: none;
   }
   .modal-box .d {
     font-family: var(--mono);
@@ -2912,7 +3068,39 @@
       width: 100%;
     }
   }
+  .topo-item.has-masters {
+    height: auto;
+    min-height: 62px;
+    align-items: flex-start;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .topo-masters {
+    margin-top: 6px;
+  }
+  .topo-masters .chip {
+    font-size: 11px;
+    gap: 5px;
+    padding: 2px 8px;
+  }
+  .legacy-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .legacy-check {
+    min-height: 24px;
+  }
+  #legacy-err,
+  #legacy-warn {
+    color: var(--fg);
+  }
+  [hidden] {
+    display: none;
+  }
 </style>
+  <meta name="sharedd-build" content="ccbbafe8f9e0408d">
 </head>
 <body>
 
@@ -3106,6 +3294,78 @@
         </div>
         <div class="card-note">Нельзя заблокировать последнего активного администратора. Уменьшение квоты не удаляет существующие ноды, но блокирует новые сверх лимита. «Освободить место» нужно, когда нода удалена физически.</div>
       </section>
+
+      <!-- ═══ Дефолтная квота (plan-ui-batch.md §1.3) ═══════════════ -->
+      <section class="card" id="quota-card">
+        <div class="card-head">
+          <h2>Квота по умолчанию</h2>
+          <span class="hint" style="margin-left:0">выдаётся новому пользователю без явной квоты</span>
+        </div>
+        <div class="card-body cfg-body">
+          <div class="field">
+            <label for="udq-max">Дефолтная квота</label>
+            <input type="number" id="udq-max" min="0" max="1000000">
+            <span class="help">Целое 0..1000000. 0 = прежнее поведение (новый пользователь без квоты). Применяется к регистрациям по приглашению и к созданию из панели без явного значения.</span>
+          </div>
+          <div class="banner bad" id="udq-err" role="alert" hidden style="margin:0"></div>
+        </div>
+        <div class="card-foot"><button class="btn primary" id="udq-save">Сохранить квоту</button></div>
+        <div class="card-note">Значение хранится в конфигурации регистратора (<span class="mono">[users] default_max_nodes</span>) и применяется на лету. Уже созданных пользователей не затрагивает.</div>
+      </section>
+
+      <!-- ═══ Приглашения (invitations-legacy-ui.md §3) ═════════════ -->
+      <section class="card" id="invites-card">
+        <div class="card-head">
+          <h2>Приглашения</h2>
+          <span class="hint" style="margin-left:0">ссылка на N регистраций</span>
+          <button class="btn primary" style="margin-left:auto" id="invites-create">Создать приглашение</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Приглашение</th><th>Создано</th><th>Действует до</th><th>Регистраций</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="invites-body"><tr><td colspan="6"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="banner warn" id="invites-stale" hidden style="margin:0 18px 12px">Список мог устареть: последнее обновление не удалось.</div>
+        <div class="card-note">Ссылка приглашения показывается один раз при создании и не хранится в панели: потерянную ссылку нельзя вернуть — отзовите приглашение и создайте новое. Каждое использование приближает исчерпание; исчерпанное приглашение терминально. Отзыв не удаляет уже созданные аккаунты.</div>
+      </section>
+
+      <!-- ═══ Совместимость агентов (invitations-legacy-ui.md §5) ═══ -->
+      <section class="card" id="legacy-card">
+        <div class="card-head">
+          <h2>Совместимость агентов</h2>
+          <span class="hint" style="margin-left:0">общий Bearer-токен для машинных маршрутов</span>
+        </div>
+        <div class="card-body cfg-body">
+          <div class="legacy-row" id="legacy-row" hidden>
+            <label class="check legacy-check">
+              <input type="checkbox" id="legacy-check">
+              <span class="box"></span> Разрешить общий секрет
+            </label>
+            <span id="legacy-state-badge"></span>
+          </div>
+          <div id="legacy-load"><div class="skeleton" style="height:20px;margin:2px 0"></div></div>
+          <div class="banner bad" id="legacy-err" role="alert" hidden style="margin:0"></div>
+          <div class="banner warn" id="legacy-warn" hidden style="margin:0"></div>
+        </div>
+        <div class="card-note">Включено: старые агенты могут обращаться к регистратору с общим токеном на время миграции. Выключено: персональные учётные данные обязательны на всех машинных маршрутах, включая регистрацию, heartbeat, отчёты, retire и получение конфигурации. Сам переключатель не отправляет команду остановки прокси и не разрывает существующие соединения намеренно. Непереведённые агенты потеряют доступ к API; возможны последующие изменения доступности нод по обычным правилам пула.</div>
+      </section>
+
+      <!-- ═══ Профили установки (addendum-profiles-vps.md §3) ═════════ -->
+      <section class="card" id="profiles-card">
+        <div class="card-head">
+          <h2>Профили установки</h2>
+          <span class="hint" style="margin-left:0">профили шагов для создания серверов · версии append-only</span>
+          <button class="btn primary" style="margin-left:auto" id="profiles-create">Создать профиль</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Имя</th><th>Описание</th><th>Версий</th><th>Опубликован</th><th>Действия</th></tr></thead>
+            <tbody id="profiles-body"><tr><td colspan="5"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-note">Правка шагов создаёт новую версию — история версий не перезаписывается, а публикация сбрасывается: опубликуйте профиль заново. Шаги выполняются по SSH на VPS пользователя; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения, помеченные «секрет», маскируются в выводе операции.</div>
+      </section>
     </section>
 
     <!-- ═══ Настройки ═══════════════════════════════════════════════ -->
@@ -3168,6 +3428,33 @@
   var $ = (id) => document.getElementById(id);
   var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  function modalOpen() {
+    const m = document.getElementById("modal");
+    return !!m && m.classList.contains("show");
+  }
+  function stableSelector(el) {
+    if (!(el instanceof HTMLElement)) return "";
+    if (el.id) return "#" + CSS.escape(el.id);
+    for (const a of Array.from(el.attributes)) {
+      if (a.name.startsWith("data-")) return `[${a.name}="${CSS.escape(a.value)}"]`;
+    }
+    return "";
+  }
+  function renderSection(section, poll, render8) {
+    var _a;
+    if (poll && (modalOpen() || section != null && section.contains(document.activeElement))) return false;
+    const scrollY = window.scrollY;
+    const focus = stableSelector(document.activeElement);
+    render8();
+    if (focus) {
+      try {
+        (_a = document.querySelector(focus)) == null ? void 0 : _a.focus({ preventScroll: true });
+      } catch {
+      }
+    }
+    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+    return true;
+  }
   var ICONS = {
     masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,
     nodes: `<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>`,
@@ -3186,6 +3473,73 @@
     check: `<polyline points="20 6 9 17 4 12"/>`,
     back: `<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>`
   };
+
+  // ui/lib/update.ts
+  var MARKER_RE = /<meta\s+name="sharedd-build"\s+content="([^"]+)"/;
+  var SCROLL_KEY = "sharedd.restore-scroll";
+  var CHECK_MS = 6e4;
+  function loadedMarker() {
+    var _a;
+    return ((_a = document.querySelector('meta[name="sharedd-build"]')) == null ? void 0 : _a.content) || "";
+  }
+  async function checkForUpdate() {
+    const mine = loadedMarker();
+    if (!mine) return;
+    let html;
+    try {
+      const resp = await fetch(location.pathname + location.search, { cache: "no-store" });
+      if (!resp.ok) return;
+      html = await resp.text();
+    } catch {
+      return;
+    }
+    const m = MARKER_RE.exec(html);
+    if (!m || m[1] === mine) return;
+    const bar = document.getElementById("update-bar");
+    if (bar) bar.hidden = false;
+  }
+  function reloadPreservingView() {
+    try {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    } catch {
+    }
+    location.reload();
+  }
+  function initBuildWatch() {
+    var _a;
+    const bar = document.createElement("div");
+    bar.id = "update-bar";
+    bar.hidden = true;
+    bar.setAttribute("role", "status");
+    bar.innerHTML = `<span>Доступно обновление интерфейса —</span><button type="button" class="btn sm primary" id="update-reload">Обновить</button>`;
+    document.body.appendChild(bar);
+    (_a = document.getElementById("update-reload")) == null ? void 0 : _a.addEventListener("click", reloadPreservingView);
+    let saved = null;
+    try {
+      saved = sessionStorage.getItem(SCROLL_KEY);
+    } catch {
+    }
+    if (saved !== null) {
+      try {
+        sessionStorage.removeItem(SCROLL_KEY);
+      } catch {
+      }
+      const y = Number(saved);
+      if (Number.isFinite(y)) requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+    window.addEventListener("focus", () => {
+      checkForUpdate().catch(() => {
+      });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkForUpdate().catch(() => {
+      });
+    });
+    setInterval(() => {
+      if (!document.hidden) checkForUpdate().catch(() => {
+      });
+    }, CHECK_MS);
+  }
 
   // ui/lib/theme.ts
   var KEY = "sharedd.theme";
@@ -3277,7 +3631,11 @@
       showLogin(true);
       throw new Error("unauthorized");
     }
-    if (!resp.ok) throw new Error(data.error || "HTTP " + resp.status);
+    if (!resp.ok) {
+      const err = new Error(data.message || data.error || "HTTP " + resp.status);
+      err.code = data.error;
+      throw err;
+    }
     const msg = note || "Сохранено";
     const bits = [];
     if (data.persisted === false) bits.push("⚠ в файл НЕ записано: " + (data.persist_warning || ""));
@@ -3370,7 +3728,8 @@
     const masters = o.masters || [];
     const active = masters.filter((m) => !m.cname_target);
     const folded = masters.length - active.length;
-    const aliveMs = active.filter((m) => m.node_id && !m.dead).length;
+    const domainsTotal = active.length;
+    const liveDomains = active.filter((m) => (m.masters || []).some((x) => !x.dead) || m.node_id && !m.dead).length;
     const dnsErr = (_a = c.dns_errors_total) != null ? _a : 0;
     const card = (label, iconPath, valueHtml, valueCls, foot, chart = "") => `
     <div class="card metric">
@@ -3380,11 +3739,11 @@
       <div class="metric-foot">${foot}</div>
     </div>`;
     $("cards").innerHTML = card(
-      "Мастера",
+      "Домены с мастером",
       ICONS.masters,
-      `${aliveMs}<span class="sep">/</span>${active.length}`,
-      active.length > 0 && aliveMs === active.length ? "ok" : "bad",
-      `живых назначений${folded ? " · свёрнуто СРМД: " + folded : ""}`
+      `${liveDomains}<span class="sep">/</span>${domainsTotal}`,
+      domainsTotal > 0 && liveDomains === domainsTotal ? "ok" : "bad",
+      `домены с ≥1 живым мастером${folded ? " · свёрнуто СРМД: " + folded : ""}`
     ) + card(
       "Нод в пуле",
       ICONS.nodes,
@@ -3482,10 +3841,19 @@
     }
     return `<span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span>`;
   }
+  function topoMasterChip(ms) {
+    const dead = !!ms.dead;
+    const since = ms.since ? `<span class="dim">с ${fmtClock(ms.since)}</span>` : "";
+    const title = `${ms.node_id} · ${dead ? "мёртв" : "жив"}${ms.since ? " · с " + fmtClock(ms.since) : ""}`;
+    return `<span class="chip" title="${esc(title)}"><span class="mono">${esc(ms.node_id)}</span>${dead ? `<span class="badge warn">мёртв</span>` : ""}${since}</span>`;
+  }
   function domainItemHTML(m, id, pair) {
     const cls = m.node_id ? m.dead ? "sick" : "live" : "sick";
-    return `<div class="topo-item ${cls}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
-    <div class="topo-b"><div class="topo-t">${esc(m.domain)}</div><div class="topo-s">${domainSubtitle(m)}</div></div>
+    const masters = m.masters || [];
+    const slotBadge = m.slots_filled ? ` <span class="badge mono" title="занято/всего слотов домена">${esc(m.slots_filled)}</span>` : "";
+    const chips = masters.length ? `<div class="chips topo-masters">${masters.map(topoMasterChip).join("")}</div>` : "";
+    return `<div class="topo-item ${cls}${masters.length ? " has-masters" : ""}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
+    <div class="topo-b"><div class="topo-t">${esc(m.domain)}${slotBadge}</div><div class="topo-s">${domainSubtitle(m)}</div>${chips}</div>
     <div class="topo-r"><div class="topo-n">${m.clients != null ? m.clients : "—"}</div><div class="topo-u">клиентов</div></div>
   </div>`;
   }
@@ -4101,11 +4469,11 @@
     renderInto($("nd-events"), d.events || []);
     attachSparkHover(clientPts);
   }
-  async function load(id) {
+  async function load(id, poll = false) {
     const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
     if (state.nodeId === id) {
       state.node = d;
-      renderNodeDetail(d);
+      renderSection($("node-detail"), poll, () => renderNodeDetail(d));
     }
   }
   function render3(d) {
@@ -4406,6 +4774,21 @@
       <div class="cfg-foot"><button class="btn primary" id="s-rot-save">Сохранить ротацию</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="pool">
+      <div class="cfg-head">${icon(ICONS.masters)}<span>Мастера на домен</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-sel-masters">Мастеров на домен</label>
+          <input type="number" id="s-sel-masters" min="1" max="8">
+          <span class="help">Число слотов-мастеров для каждого managed-домена (1–8). Это НЕ
+            <span class="mono">[srmd] max_nodes_per_domain</span>: слоты селекции и создание доменов СРМД не связаны.</span>
+        </div>
+        <div class="note">При изменении набор A-записей домена будет перестроен под новое число слотов. DNS клиентов обновится сам; прокси-ссылки не меняются.</div>
+        <div class="banner bad" id="s-sel-err" role="alert" hidden style="margin:0"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-sel-save">Сохранить слоты</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.health)}<span>Globalping</span></div>
       <div class="cfg-body">
@@ -4507,6 +4890,7 @@
     $("s-nd-globalping").value = c.node_defaults.globalping_ms;
     $("s-nd-metrics").value = c.node_defaults.metrics_ms;
     $("s-nd-sync").value = c.node_defaults.sync_ms;
+    $("s-sel-masters").value = c.selection ? c.selection.masters_per_domain : 1;
     $("s-rot-ttl").value = c.rotation ? c.rotation.master_ttl_minutes : 30;
     $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
     $("s-hc-gp-validity").value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
@@ -4591,6 +4975,20 @@
         sync_ms: parseInt($("s-nd-sync").value, 10) || 0
       }
     }, "Интервалы сохранены").catch((e) => showToast(e.message, true));
+    $("s-sel-save").onclick = () => {
+      const errBox = $("s-sel-err");
+      errBox.hidden = true;
+      const n = parseInt($("s-sel-masters").value, 10);
+      if (!Number.isFinite(n) || n < 1 || n > 8) {
+        errBox.textContent = "Допустимо целое число 1..8.";
+        errBox.hidden = false;
+        return;
+      }
+      saveSection({ selection: { masters_per_domain: n } }, "Слоты мастеров сохранены").catch((e) => {
+        errBox.textContent = e.message;
+        errBox.hidden = false;
+      });
+    };
     $("s-rot-save").onclick = () => saveSection({ rotation: { master_ttl_minutes: Math.max(0, parseInt($("s-rot-ttl").value, 10) || 0) } }, "Лимит мастерства сохранён").catch((e) => showToast(e.message, true));
     $("s-hc-quar-save").onclick = () => saveSection({ healthcheck: {
       quarantine_attempts: Math.max(1, parseInt($("s-hc-quar").value, 10) || 3),
@@ -4610,6 +5008,15 @@
 
   // ui/pages/panel/views/users.ts
   var USERS = [];
+  var DTF = new Intl.DateTimeFormat(
+    "ru-RU",
+    { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }
+  );
+  var fmtDate = (unixSec) => DTF.format(new Date(unixSec * 1e3));
+  var fmtISO = (iso) => {
+    const d = new Date(iso);
+    return isNaN(+d) ? iso : DTF.format(d);
+  };
   async function panelReq(path, method = "GET", body) {
     const resp = await fetch(path, {
       method,
@@ -4622,12 +5029,19 @@
     if (resp.status === 204) return void 0;
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      const err = new Error(data.message || data.error || "HTTP " + resp.status);
+      const fallback = data.error === "control_unavailable" ? "Хранилище пользователей недоступно — обратитесь к администратору для проверки журнала регистратора" : void 0;
+      const err = new Error(data.message || fallback || data.error || "HTTP " + resp.status);
       err.code = data.error;
       err.status = resp.status;
       throw err;
     }
     return resp.json();
+  }
+  function isRetryableLoad(e) {
+    var _a;
+    if (e.code === "control_unavailable") return true;
+    const s = (_a = e.status) != null ? _a : 0;
+    return s >= 500 || s === 0;
   }
   var lastFocused = null;
   function setPageInert(on) {
@@ -4637,11 +5051,11 @@
       else el.removeAttribute("inert");
     });
   }
-  function openModal(title, body, actions) {
-    var _a;
-    lastFocused = document.activeElement;
+  function fillModal(title, body, actions, wide = false) {
+    var _a, _b;
     $("modal-title").textContent = title;
     $("modal-body").innerHTML = body;
+    (_a = $("modal").querySelector(".modal-box")) == null ? void 0 : _a.classList.toggle("modal-wide", wide);
     const foot = $("modal-foot");
     foot.replaceChildren();
     actions.forEach((a) => {
@@ -4654,7 +5068,11 @@
     });
     $("modal").classList.add("show");
     setPageInert(true);
-    (_a = foot.querySelector("button")) == null ? void 0 : _a.focus();
+    (_b = foot.querySelector("button")) == null ? void 0 : _b.focus();
+  }
+  function openModal(title, body, actions, wide = false) {
+    lastFocused = document.activeElement;
+    fillModal(title, body, actions, wide);
   }
   function closeModal() {
     $("modal").classList.remove("show");
@@ -4715,6 +5133,7 @@
     ${revoke}
     <button class="btn sm ghost" data-release="${u.id}" data-name="${esc(u.username)}">Освободить место</button>
     <button class="btn sm ghost" data-passwd="${u.id}" data-name="${esc(u.username)}">Сбросить пароль</button>
+    <button class="btn sm danger" data-udel="${u.id}" data-name="${esc(u.username)}">Удалить</button>
   </span>`;
   }
   function statusCell(u) {
@@ -4722,17 +5141,18 @@
     const action = u.disabled ? "Разблокировать" : "Заблокировать";
     return `<button class="btn sm ghost" data-toggle="${u.id}" title="${action}" aria-label="${action} пользователя ${esc(u.username)}" aria-pressed="${u.disabled}">${badge}</button>`;
   }
-  function render6() {
+  function render6(poll = false) {
     const body = $("users-body");
-    if (!USERS.length) {
-      body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+    renderSection(body, poll, () => {
+      if (!USERS.length) {
+        body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
       <span class="t">Пользователей нет</span>
       <span class="s">Создайте первого.</span></div></td></tr>`;
-      return;
-    }
-    body.innerHTML = USERS.map((u) => {
-      const pct = u.max_nodes > 0 ? Math.min(100, Math.round(u.used_nodes / u.max_nodes * 100)) : 0;
-      return `<tr data-uid="${u.id}">
+        return;
+      }
+      body.innerHTML = USERS.map((u) => {
+        const pct = u.max_nodes > 0 ? Math.min(100, Math.round(u.used_nodes / u.max_nodes * 100)) : 0;
+        return `<tr data-uid="${u.id}">
       <td data-label="Логин">${esc(u.username)}</td>
       <td data-label="Роль">${u.role === "admin" ? `<span class="badge special">админ</span>` : `<span class="badge">пользователь</span>`}</td>
       <td data-label="Квота">${quotaCell(u)}</td>
@@ -4741,10 +5161,17 @@
       <td data-label="Статус">${statusCell(u)}</td>
       <td data-label="Действия">${actionsCell(u)}</td>
     </tr>`;
-    }).join("");
+      }).join("");
+    });
   }
   async function load3() {
     var _a;
+    loadInvites().catch(() => {
+    });
+    loadLegacy().catch(() => {
+    });
+    loadUserQuota().catch(() => {
+    });
     try {
       const data = await panelReq("/panel/api/admin/users");
       USERS = data.users || [];
@@ -4757,6 +5184,65 @@
       (_a = $("users-retry")) == null ? void 0 : _a.addEventListener("click", () => load3().catch(() => {
       }));
     }
+  }
+  async function loadUserQuota() {
+    var _a, _b;
+    try {
+      const data = await panelReq("/panel/api/config");
+      const v = (_b = (_a = data.config) == null ? void 0 : _a.users) == null ? void 0 : _b.default_max_nodes;
+      $("udq-max").value = String(typeof v === "number" ? v : 0);
+    } catch {
+      $("udq-max").value = "";
+    }
+  }
+  function saveUserQuota(btn) {
+    const errBox = $("udq-err");
+    errBox.hidden = true;
+    const n = Number($("udq-max").value);
+    if (!Number.isInteger(n) || n < 0 || n > 1e6) {
+      errBox.textContent = "Допустимо целое число 0..1000000.";
+      errBox.hidden = false;
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Сохранение…";
+    saveSection({ users: { default_max_nodes: n } }, "Дефолтная квота сохранена").catch((e) => {
+      errBox.textContent = e.message;
+      errBox.hidden = false;
+    }).finally(() => {
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function deleteUser(id, name) {
+    openModal(
+      `Удалить пользователя «${name}»?`,
+      `<p style="margin:0;font-size:12.5px;line-height:1.55">Пользователь будет удалён полностью. Его ноды <b>останутся в пуле</b> — они перепривязываются к системному <span class="mono">legacy</span>, место в квоте освобождается; физически ноды не удаляются. Ключи, сессии, профили, свои серверы и операции пользователя будут удалены. Действие необратимо.</p>
+     <div class="banner bad" id="udel-err" role="alert" hidden style="margin:12px 0 0"></div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Удалить", cls: "danger", onClick: (ev) => {
+          const b = ev.currentTarget;
+          b.disabled = true;
+          b.textContent = "Удаление…";
+          panelReq(`/panel/api/admin/users/${id}`, "DELETE").then(() => {
+            closeModal();
+            showToast("Пользователь удалён. Его ноды остались в пуле.");
+            load3().catch(() => {
+            });
+          }).catch((e) => {
+            const box = document.getElementById("udel-err");
+            if (box) {
+              box.textContent = e.message;
+              box.hidden = false;
+            } else showToast(e.message, true);
+            b.disabled = false;
+            b.textContent = "Удалить";
+          });
+        } }
+      ]
+    );
   }
   function createUser() {
     openModal(
@@ -4964,6 +5450,290 @@
       ]
     );
   }
+  var INVITES = null;
+  var INVITES_LOAD_ERR = null;
+  var INVITE_BADGE = {
+    active: `<span class="badge ok"><i></i>Активно</span>`,
+    exhausted: `<span class="badge warn"><i></i>Исчерпано</span>`,
+    used: `<span class="badge info"><i></i>Использовано</span>`,
+    expired: `<span class="badge">Истекло</span>`,
+    revoked: `<span class="badge">Отозвано</span>`
+  };
+  var INVITE_SKELETON = `<tr><td colspan="6"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr>`;
+  function renderInvites(poll = false) {
+    const body = $("invites-body");
+    renderSection(body, poll, () => {
+      var _a;
+      if (INVITES_LOAD_ERR !== null) {
+        body.innerHTML = `<tr><td colspan="6"><div class="banner bad" style="margin:0;color:var(--fg)">
+      <span>Не удалось загрузить приглашения${INVITES_LOAD_ERR ? ": " + esc(INVITES_LOAD_ERR) : ""}</span>
+      <button class="btn sm" id="invites-retry" style="margin-left:auto">Повторить</button></div></td></tr>`;
+        (_a = $("invites-retry")) == null ? void 0 : _a.addEventListener("click", () => loadInvites().catch(() => {
+        }));
+        return;
+      }
+      if (INVITES === null) return;
+      if (!INVITES.length) {
+        body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <span class="t">Приглашений пока нет</span>
+      <span class="s">Создайте приглашение, чтобы разрешить регистрацию аккаунтов.</span></div></td></tr>`;
+        return;
+      }
+      body.innerHTML = INVITES.map((iv) => `<tr>
+    <td data-label="Приглашение"><span class="mono">${esc(iv.prefix)}</span></td>
+    <td data-label="Создано">${fmtDate(iv.created_at)}</td>
+    <td data-label="Действует до">${fmtDate(iv.expires_at)}</td>
+    <td data-label="Регистраций">${iv.used_count}/${iv.max_uses} использовано</td>
+    <td data-label="Статус">${INVITE_BADGE[iv.status] || `<span class="badge">${esc(iv.status)}</span>`}</td>
+    <td data-label="Действия">${iv.status === "active" ? `<button class="btn sm danger" data-irevoke="${iv.id}" aria-label="Отозвать приглашение ${iv.id}">Отозвать</button>` : `<span aria-hidden="true">—</span>`}</td>
+  </tr>`).join("");
+    });
+  }
+  async function loadInvites() {
+    if (INVITES === null) $("invites-body").innerHTML = INVITE_SKELETON;
+    try {
+      const data = await panelReq("/panel/api/admin/invites");
+      INVITES = [...data.invites || []].sort((a, b) => b.id - a.id);
+      INVITES_LOAD_ERR = null;
+      $("invites-stale").hidden = true;
+      $("invites-create").hidden = false;
+      renderInvites();
+    } catch (e) {
+      const err = e;
+      if (INVITES === null) {
+        INVITES_LOAD_ERR = err.message || "";
+        $("invites-create").hidden = true;
+        renderInvites();
+      } else {
+        $("invites-stale").hidden = false;
+      }
+    }
+  }
+  function createInvite() {
+    openModal(
+      "Создать приглашение",
+      `<div class="field" style="gap:12px">
+      <p style="margin:0;font-size:12.5px;line-height:1.5">Одно приглашение позволяет зарегистрировать несколько аккаунтов — их число задаётся ниже. После исчерпания или истечения срока ссылка не действует.</p>
+      <div><label for="inv-ttl">Срок действия</label>
+        <select id="inv-ttl">
+          <option value="24">24 часа</option>
+          <option value="72" selected>72 часа</option>
+          <option value="168">168 часов (7 дней)</option>
+          <option value="720">720 часов (30 дней)</option>
+        </select></div>
+      <div><label for="inv-max">Число регистраций</label>
+        <input type="number" id="inv-max" min="1" max="1000" value="1">
+        <span class="help" style="color:var(--fg-3);font-size:11.5px">Сколько аккаунтов можно создать по этой ссылке (1–1000). Счётчик не связан с квотой нод.</span></div>
+      <div class="banner bad" id="inv-create-err" role="alert" hidden style="margin:0"></div>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Создать приглашение", cls: "primary", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          const ttl = Number($("inv-ttl").value) || 72;
+          const max_uses = Number($("inv-max").value) || 1;
+          const errBox = $("inv-create-err");
+          errBox.hidden = true;
+          if (!Number.isFinite(max_uses) || max_uses < 1 || max_uses > 1e3) {
+            errBox.textContent = "Число регистраций: целое 1..1000.";
+            errBox.hidden = false;
+            return;
+          }
+          btn.disabled = true;
+          btn.textContent = "Создание…";
+          panelReq(
+            "/panel/api/admin/invites",
+            "POST",
+            { ttl_hours: ttl, max_uses }
+          ).then((r) => showCreatedInvite(r)).catch((e) => {
+            const msg = e.status === void 0 ? "Результат создания неизвестен. Проверьте список приглашений" : e.message;
+            if (e.status === void 0) loadInvites().catch(() => {
+            });
+            if ($("modal").classList.contains("show")) {
+              errBox.textContent = msg;
+              errBox.hidden = false;
+            } else {
+              showToast(msg, true);
+            }
+            btn.disabled = false;
+            btn.textContent = "Создать приглашение";
+          });
+        } }
+      ]
+    );
+  }
+  function showCreatedInvite(r) {
+    var _a;
+    fillModal(
+      "Приглашение создано",
+      `<div class="field" style="gap:12px">
+      <p style="margin:0;font-size:12.5px">Приглашение <span class="mono">${esc(r.prefix)}</span> · действует до ${esc(fmtDate(r.expires_at))} · регистраций: ${r.max_uses}</p>
+      <p style="margin:0;font-size:12.5px;line-height:1.55">Ссылка показывается только сейчас. Скопируйте её и передайте получателю. После закрытия получить её повторно нельзя.</p>
+      <input type="text" id="inv-url" class="mono" readonly value="${esc(r.invite_url)}"
+        aria-label="Ссылка приглашения"
+        style="height:auto;min-height:34px;padding:7px 11px;word-break:break-all">
+      <div class="banner bad" id="inv-copy-err" role="alert" hidden style="margin:0">Не удалось скопировать. Выделите ссылку и скопируйте вручную</div>
+    </div>`,
+      [
+        { label: "Копировать ссылку", onClick: (ev) => copyInviteLink(ev.currentTarget, r.invite_url) },
+        { label: "Закрыть", cls: "primary", onClick: () => {
+          closeModal();
+          loadInvites().catch(() => {
+          });
+        } }
+      ]
+    );
+    (_a = $("inv-url")) == null ? void 0 : _a.addEventListener("click", (ev) => ev.currentTarget.select());
+  }
+  function copyInviteLink(btn, url) {
+    var _a;
+    const errBox = $("inv-copy-err");
+    const reset = () => {
+      btn.textContent = "Копировать ссылку";
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(() => {
+        btn.textContent = "Скопировано";
+        showToast("Ссылка скопирована.");
+        if (errBox) errBox.hidden = true;
+        setTimeout(reset, 1500);
+      }, () => {
+        if (errBox) errBox.hidden = false;
+        reset();
+      });
+    } else {
+      if (errBox) errBox.hidden = false;
+      (_a = $("inv-url")) == null ? void 0 : _a.select();
+    }
+  }
+  function revokeInvite(id) {
+    openModal(
+      `Отозвать приглашение ${id}?`,
+      "По этой ссылке больше нельзя будет зарегистрироваться. Уже созданный аккаунт не изменится.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Отозвать", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Отзыв…";
+          panelReq(`/panel/api/admin/invites/${id}`, "DELETE").then(() => loadInvites().then(() => {
+            var _a;
+            closeModal();
+            const now = (_a = INVITES == null ? void 0 : INVITES.find((x) => x.id === id)) == null ? void 0 : _a.status;
+            if (now === "exhausted") showToast("Приглашение уже исчерпано — созданные аккаунты не изменены.", true);
+            else if (now === "expired") showToast("Приглашение уже истекло.", true);
+            else showToast("Приглашение отозвано.");
+          })).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Отозвать";
+          });
+        } }
+      ]
+    );
+  }
+  var LEGACY = null;
+  var LEGACY_BUSY = false;
+  function legacyWarnText(s) {
+    if (s.affected_nodes === null)
+      return "Число затронутых нод неизвестно. Проверьте миграцию агентов перед отключением";
+    if (s.affected_nodes > 0)
+      return `Ноды, зависящие от общего токена: ${s.affected_nodes}. После отключения их запросы к API будут отклоняться, пока они не перейдут на персональные учётные данные.` + (s.as_of ? ` Данные на ${fmtISO(s.as_of)}.` : "");
+    return "";
+  }
+  function applyLegacy(s) {
+    LEGACY = s;
+    renderSection($("legacy-card"), false, () => {
+      $("legacy-load").hidden = true;
+      $("legacy-err").hidden = true;
+      $("legacy-row").hidden = false;
+      const check = $("legacy-check");
+      check.disabled = false;
+      check.checked = s.enabled;
+      $("legacy-state-badge").innerHTML = s.enabled ? `<span class="badge ok"><i></i>Включено</span>` : `<span class="badge">Выключено</span>`;
+      const warn = $("legacy-warn");
+      const text = legacyWarnText(s);
+      warn.textContent = text;
+      warn.hidden = text === "";
+    });
+  }
+  async function loadLegacy(force = false) {
+    var _a;
+    if (!force && LEGACY_BUSY) return true;
+    $("legacy-load").hidden = false;
+    $("legacy-row").hidden = true;
+    $("legacy-err").hidden = true;
+    $("legacy-warn").hidden = true;
+    try {
+      applyLegacy(await panelReq("/panel/api/admin/legacy-secret"));
+      return true;
+    } catch (e) {
+      const err = e;
+      $("legacy-load").hidden = true;
+      $("legacy-row").hidden = true;
+      const box = $("legacy-err");
+      box.innerHTML = `<span>Не удалось загрузить режим совместимости${err.message ? ": " + esc(err.message) : ""}</span>
+      <button class="btn sm" id="legacy-retry" style="margin-left:auto">Повторить</button>`;
+      box.hidden = false;
+      (_a = $("legacy-retry")) == null ? void 0 : _a.addEventListener("click", () => loadLegacy(true).catch(() => {
+      }));
+      return false;
+    }
+  }
+  async function legacyFail(msg) {
+    if (!await loadLegacy(true)) return;
+    const box = $("legacy-err");
+    box.textContent = msg;
+    box.hidden = false;
+  }
+  async function saveLegacy(enabled) {
+    if (LEGACY_BUSY || !LEGACY) return;
+    LEGACY_BUSY = true;
+    const check = $("legacy-check");
+    check.disabled = true;
+    $("legacy-err").hidden = true;
+    $("legacy-state-badge").innerHTML = `<span class="badge">Сохранение…</span>`;
+    try {
+      const r = await panelReq(
+        "/panel/api/admin/legacy-secret",
+        "POST",
+        { enabled }
+      );
+      if (r.persisted !== true) {
+        await legacyFail("Изменение не сохранено постоянно. Проверьте состояние регистратора");
+        return;
+      }
+      applyLegacy({ ...LEGACY, enabled: r.enabled });
+      showToast(enabled ? "Общий секрет включён." : "Общий секрет отключён.");
+    } catch (e) {
+      const err = e;
+      if (err.status === void 0) await legacyFail("Результат сохранения неизвестен. Состояние перечитано.");
+      else await legacyFail("Не удалось сохранить режим. Изменение не подтверждено");
+    } finally {
+      LEGACY_BUSY = false;
+      check.disabled = false;
+    }
+  }
+  function confirmLegacyOff() {
+    const s = LEGACY;
+    const warn = s ? legacyWarnText(s) : "";
+    openModal(
+      "Отключить общий секрет?",
+      `<p style="margin:0;font-size:12.5px;line-height:1.55">После отключения общий Bearer-токен перестаёт приниматься на всех машинных маршрутах — регистрация, heartbeat, отчёты, retire, получение конфигурации. Существующие соединения при этом не разрываются: переключатель меняет только проверку доступа.</p>` + (warn ? `<div class="banner warn" role="alert" style="margin:10px 0 0">${esc(warn)}</div>` : "") + `<p style="margin:10px 0 0;font-size:12.5px">До отключения обновите агенты и проверьте персональные учётные данные.</p>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Отключить общий секрет", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Сохранение…";
+          saveLegacy(false).finally(() => closeModal());
+        } }
+      ]
+    );
+  }
+  function syncLegacyCheck() {
+    if (LEGACY) $("legacy-check").checked = LEGACY.enabled;
+  }
   function init5() {
     $("users-create").addEventListener("click", createUser);
     $("users-body").addEventListener("click", (e) => {
@@ -5010,6 +5780,501 @@
       const tg = t.closest("[data-toggle]");
       if (tg) {
         toggleDisabled(Number(tg.dataset.toggle), tg);
+        return;
+      }
+      const udel = t.closest("[data-udel]");
+      if (udel) {
+        deleteUser(Number(udel.dataset.udel), udel.dataset.name);
+        return;
+      }
+    });
+    $("udq-save").addEventListener("click", (e) => saveUserQuota(e.currentTarget));
+    $("invites-create").addEventListener("click", createInvite);
+    $("invites-body").addEventListener("click", (e) => {
+      const rv = e.target.closest("[data-irevoke]");
+      if (rv) revokeInvite(Number(rv.dataset.irevoke));
+    });
+    $("legacy-check").addEventListener("change", () => {
+      if (LEGACY_BUSY || !LEGACY) {
+        syncLegacyCheck();
+        return;
+      }
+      const check = $("legacy-check");
+      if (check.checked === LEGACY.enabled) {
+        syncLegacyCheck();
+        return;
+      }
+      if (!check.checked) {
+        check.checked = true;
+        confirmLegacyOff();
+      } else {
+        saveLegacy(true).catch(() => {
+        });
+      }
+    });
+  }
+
+  // ui/lib/vars.ts
+  var STANDARD = ["proxy_port", "proxy_sni", "proxy_secret", "ad_tag"];
+  var PROTECTED = ["node_id", "node_secret", "registry_url"];
+  var PROFILE_VARS_HELP = "{{ var }} подставляется в шаги на сервере (значение shell-квотится). Для proxy_port, proxy_sni и proxy_secret: значение установки → непустое значение профиля → регистратор. ad_tag — отдельная переменная без автоматического значения. Системные переменные не переопределяются. Серверная проверка — авторитетна.";
+  var PORT_WARNING = "Порт установки должен совпадать с [shared_proxy].port регистратора. Изменение здесь не меняет настройки регистратора или допуск ноды к мастерству.";
+  function isSecretVar(v) {
+    return !!v.secret || ["proxy_secret", "authkey", "password", "node_secret"].includes(v.name.trim());
+  }
+  var NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  function varNameHint(name) {
+    const n = name.trim();
+    if (!n) return "укажите имя переменной";
+    if (!NAME_RE.test(n)) return "имя: латиница/цифры/_, первый символ — буква или _";
+    if (PROTECTED.includes(n)) return "системная переменная — переопределение запрещено";
+    return null;
+  }
+  function parseVarsSchema(raw) {
+    if (!raw) return [];
+    try {
+      const o = JSON.parse(raw);
+      if (!Array.isArray(o.vars)) return [];
+      return o.vars.map((v) => {
+        var _a;
+        const r = v != null ? v : {};
+        return {
+          name: String((_a = r.name) != null ? _a : ""),
+          default: r.default == null ? "" : String(r.default),
+          description: r.description == null ? "" : String(r.description),
+          secret: !!r.secret
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+  function serializeVarsSchema(rows) {
+    const vars = rows.map((r) => {
+      var _a, _b;
+      return { name: r.name.trim(), def: (_a = r.default) != null ? _a : "", desc: ((_b = r.description) != null ? _b : "").trim(), secret: !!r.secret };
+    }).filter((r) => r.name !== "").map((r) => {
+      const o = { name: r.name };
+      if (r.def) o.default = r.def;
+      if (r.desc) o.description = r.desc;
+      if (r.secret) o.secret = true;
+      return o;
+    });
+    return vars.length ? JSON.stringify({ vars }) : "";
+  }
+  var EYE2 = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  var editorId = 0;
+  var profileBaselines = /* @__PURE__ */ new WeakMap();
+  function editorRows(rows) {
+    const existing = rows.map((r, order) => ({ ...r, order }));
+    return [
+      ...STANDARD.map((name) => {
+        var _a;
+        return (_a = existing.find((r) => r.name === name)) != null ? _a : { name, synthetic: true };
+      }),
+      ...existing.filter((r) => !STANDARD.includes(r.name))
+    ];
+  }
+  function renderVarsEditor(root, rows, opts = {}) {
+    var _a;
+    profileBaselines.delete(root);
+    const id = `vars-${++editorId}`;
+    const seeded = editorRows(rows);
+    let state3 = opts.snapshot ? [...seeded.map((v) => {
+      const saved = opts.snapshot.find((r) => r.name === v.name);
+      return saved ? { ...v, default: saved.default, override: saved.override } : v;
+    }), ...opts.snapshot.filter((r) => !seeded.some((v) => v.name === r.name))] : seeded;
+    let defaults;
+    let defaultsStatus = "Загрузка значений регистратора…";
+    const inheritance = (name) => {
+      const d = rows.find((r) => r.name === name && r.default !== void 0 && r.default !== "");
+      if (d) return { value: d.default, source: "Из профиля", placeholder: "Из профиля" };
+      if (!STANDARD.slice(0, 3).includes(name)) return { value: "", source: "Без значения по умолчанию", placeholder: "Не задано" };
+      const value = defaults ? name === "proxy_port" ? String(defaults.proxy_port) : name === "proxy_sni" ? defaults.proxy_sni : "" : "";
+      return { value, source: "Из регистратора", placeholder: !defaults ? "Значение регистратора недоступно в интерфейсе; применяется сервером" : name === "proxy_secret" ? defaults.proxy_secret_configured ? "Задаётся регистратором" : "Секрет регистратора не задан" : "Не задано регистратором" };
+    };
+    const fixed = (v) => STANDARD.includes(v.name) || !!opts.install && rows.some((r) => r.name === v.name);
+    const read = () => Array.from(root.querySelectorAll("[data-vrow]")).map((row, i) => {
+      var _a2, _b, _c, _d;
+      return {
+        ...state3[i],
+        name: row.querySelector("[data-vname]").value,
+        default: row.querySelector("[data-vdefault]").value,
+        description: (_b = (_a2 = row.querySelector("[data-vdesc]")) == null ? void 0 : _a2.value) != null ? _b : state3[i].description,
+        secret: (_d = (_c = row.querySelector("[data-vsecret]")) == null ? void 0 : _c.checked) != null ? _d : state3[i].secret,
+        override: row.dataset.override === "true"
+      };
+    });
+    const notify = () => {
+      var _a2;
+      state3 = read();
+      (_a2 = opts.onChange) == null ? void 0 : _a2.call(opts, state3, collectInstallVars(root));
+    };
+    const paint = () => {
+      root.innerHTML = `<div class="vars-rows">${state3.map((v, i) => {
+        var _a2, _b, _c, _d;
+        const key = `${id}-${i}`;
+        const protectedKey = PROTECTED.includes(v.name.trim());
+        const secret = isSecretVar(v);
+        const inherited = inheritance(v.name);
+        const value = protectedKey ? "" : opts.install && fixed(v) && !v.override ? inherited.value : (_a2 = v.default) != null ? _a2 : "";
+        const hint = v.name ? varNameHint(v.name) : null;
+        const label = opts.install ? "Значение для этой установки" : "Значение по умолчанию профиля";
+        return `<div class="vars-row${opts.install ? " vars-row-install" : ""}" data-vrow data-synthetic="${!!v.synthetic}" data-order="${(_b = v.order) != null ? _b : rows.length + i}" data-override="${!!v.override}" data-fixed="${fixed(v)}">
+        <div class="field"><label for="${key}-name">Имя переменной</label><input id="${key}-name" class="mono" data-vname autocomplete="off" spellcheck="false" value="${esc(v.name)}"${fixed(v) || protectedKey ? " readonly" : ""} aria-describedby="${key}-hint"></div>
+        <div class="field"><label for="${key}-value">${label}</label><div class="input-group">
+          <input id="${key}-value" type="${secret ? "password" : "text"}" data-vdefault autocomplete="off" spellcheck="false" value="${esc(value)}" placeholder="${esc(opts.install ? inherited.placeholder : "Пусто — наследовать")}" aria-describedby="${key}-hint ${key}-help"${protectedKey ? " disabled" : ""}>
+          <button type="button" class="in-btn" data-vreveal aria-label="Показать значение ${esc(v.name)}" aria-pressed="false"${secret && !protectedKey ? "" : " hidden"}>${icon(EYE2)}</button></div></div>
+        ${opts.install ? `<div class="field"><span data-vsource>${v.override ? "Для этой установки" : inherited.source}</span><button type="button" class="btn sm ghost" data-vreset${v.override ? "" : " disabled"} aria-label="Сбросить переопределение ${esc(v.name)}">Сбросить переопределение</button></div>` : `<div class="field"><label for="${key}-desc">Описание</label><input id="${key}-desc" data-vdesc value="${protectedKey ? "" : esc((_c = v.description) != null ? _c : "")}" autocomplete="off"${protectedKey ? " disabled" : ""}></div><label class="check vars-secret"><input type="checkbox" data-vsecret${v.secret ? " checked" : ""}${protectedKey ? " disabled" : ""}><span class="box"></span>секрет</label>`}
+        ${fixed(v) ? "" : `<button type="button" class="btn sm ghost" data-vremove aria-label="Удалить переменную ${esc(v.name)}">×</button>`}
+        <span id="${key}-hint" class="vars-hint${hint ? " bad" : ""}" data-vhint aria-live="polite">${hint ? esc(hint) : ""}</span>
+        <span id="${key}-help" class="vars-hint">${v.name === "proxy_port" ? PORT_WARNING : opts.install ? esc((_d = v.description) != null ? _d : "") : ""}</span>
+      </div>`;
+      }).join("")}</div><button type="button" class="btn sm" data-vars-add>Добавить переменную</button>
+      ${opts.install ? `<div class="help" data-defaults-status aria-live="polite">${esc(defaultsStatus)}</div>` : ""}
+      <div class="note"><b>Системные переменные · только чтение</b><br><span class="mono">node_id</span> — Выдаётся сервером<br><span class="mono">node_secret</span> — Выдаётся сервером; значение недоступно<br><span class="mono">registry_url</span> — Задаётся регистратором</div>`;
+      validateVarsEditor(root, false);
+    };
+    root.onclick = (e) => {
+      var _a2, _b, _c, _d, _e;
+      const t = e.target;
+      if (t.closest("[data-vars-add]")) {
+        state3 = [...read(), { name: "", override: true }];
+        paint();
+        (_a2 = root.querySelector("[data-vrow]:last-child [data-vname]")) == null ? void 0 : _a2.focus();
+        notify();
+        return;
+      }
+      const row = t.closest("[data-vrow]");
+      if (!row) return;
+      const inp = row.querySelector("[data-vdefault]");
+      const rev = t.closest("[data-vreveal]");
+      if (rev) {
+        inp.type = inp.type === "password" ? "text" : "password";
+        rev.setAttribute("aria-pressed", String(inp.type === "text"));
+        rev.setAttribute("aria-label", `${inp.type === "text" ? "Скрыть" : "Показать"} значение ${row.querySelector("[data-vname]").value}`);
+        return;
+      }
+      if (t.closest("[data-vreset]")) {
+        row.dataset.override = "false";
+        inp.value = row.dataset.fixed === "true" ? inheritance(row.querySelector("[data-vname]").value).value : "";
+        inp.type = isSecretVar(read()[Array.from(root.querySelectorAll("[data-vrow]")).indexOf(row)]) ? "password" : "text";
+        (_b = row.querySelector("[data-vreveal]")) == null ? void 0 : _b.setAttribute("aria-pressed", "false");
+        (_c = row.querySelector("[data-vreveal]")) == null ? void 0 : _c.setAttribute("aria-label", `Показать значение ${row.querySelector("[data-vname]").value}`);
+        row.querySelector("[data-vsource]").textContent = inheritance(row.querySelector("[data-vname]").value).source;
+        row.querySelector("[data-vreset]").disabled = true;
+        inp.focus();
+        validateVarsEditor(root, false);
+        notify();
+        return;
+      }
+      if (t.closest("[data-vremove]")) {
+        const idx = Array.from(root.querySelectorAll("[data-vrow]")).indexOf(row);
+        state3 = read().filter((_, i) => i !== idx);
+        paint();
+        (_e = (_d = root.querySelectorAll("[data-vname]")[Math.max(0, idx - 1)]) != null ? _d : root.querySelector("[data-vars-add]")) == null ? void 0 : _e.focus();
+        notify();
+      }
+    };
+    root.oninput = (e) => {
+      var _a2;
+      const inp = e.target;
+      const row = inp.closest("[data-vrow]");
+      if (!row) return;
+      if (opts.install) {
+        row.dataset.override = "true";
+        row.querySelector("[data-vsource]").textContent = "Для этой установки";
+        row.querySelector("[data-vreset]").disabled = false;
+      }
+      if (inp.matches("[data-vname], [data-vsecret]")) {
+        const value = row.querySelector("[data-vdefault]");
+        const secret = isSecretVar({ name: row.querySelector("[data-vname]").value, secret: (_a2 = row.querySelector("[data-vsecret]")) == null ? void 0 : _a2.checked });
+        const protectedKey = PROTECTED.includes(row.querySelector("[data-vname]").value.trim());
+        value.disabled = protectedKey;
+        if (protectedKey) value.value = "";
+        value.type = secret ? "password" : "text";
+        const reveal = row.querySelector("[data-vreveal]");
+        reveal.hidden = !secret || protectedKey;
+        reveal.setAttribute("aria-pressed", "false");
+        reveal.setAttribute("aria-label", `Показать значение ${row.querySelector("[data-vname]").value}`);
+      }
+      validateVarsEditor(root, false);
+      notify();
+    };
+    root.dataset.install = String(!!opts.install);
+    paint();
+    if (!opts.install) profileBaselines.set(root, { rows, displayed: serializeVarsSchema(collectVarsEditor(root)) });
+    if (opts.install) (_a = opts.defaults) == null ? void 0 : _a.then((d) => {
+      defaults = d;
+      root.querySelectorAll("[data-vrow]").forEach((row) => {
+        const n = row.querySelector("[data-vname]").value.trim();
+        const inp = row.querySelector("[data-vdefault]");
+        const inherited = inheritance(n);
+        inp.placeholder = inherited.placeholder;
+        if (row.dataset.fixed === "true" && row.dataset.override !== "true" && !PROTECTED.includes(n)) inp.value = inherited.value;
+      });
+      defaultsStatus = "Значения регистратора получены; при запуске используются актуальные настройки.";
+      root.querySelector("[data-defaults-status]").textContent = defaultsStatus;
+    }).catch((e) => {
+      defaultsStatus = `Значения регистратора недоступны: ${e.message}. Наследование применяется сервером.`;
+      root.querySelector("[data-defaults-status]").textContent = defaultsStatus;
+    });
+  }
+  function collectVarsEditor(root) {
+    const rows = Array.from(root.querySelectorAll("[data-vrow]")).map((row) => {
+      var _a, _b, _c, _d;
+      return {
+        name: row.querySelector("[data-vname]").value,
+        default: row.querySelector("[data-vdefault]").value,
+        description: (_b = (_a = row.querySelector("[data-vdesc]")) == null ? void 0 : _a.value) != null ? _b : "",
+        secret: (_d = (_c = row.querySelector("[data-vsecret]")) == null ? void 0 : _c.checked) != null ? _d : false,
+        synthetic: row.dataset.synthetic === "true",
+        order: Number(row.dataset.order)
+      };
+    }).filter((r) => !r.synthetic || !!r.default || !!r.description || r.secret).sort((a, b) => a.order - b.order);
+    const baseline = profileBaselines.get(root);
+    return baseline && baseline.displayed === serializeVarsSchema(rows) ? baseline.rows : rows;
+  }
+  function collectInstallVars(root) {
+    return Object.fromEntries(Array.from(root.querySelectorAll('[data-vrow][data-override="true"]')).map((row) => [
+      row.querySelector("[data-vname]").value.trim(),
+      row.querySelector("[data-vdefault]").value
+    ]).filter(([name]) => !!name));
+  }
+  function validateVarsEditor(root, focus = true) {
+    let first;
+    let message = null;
+    const seen = /* @__PURE__ */ new Set();
+    root.querySelectorAll("[data-vrow]").forEach((row) => {
+      var _a;
+      const name = row.querySelector("[data-vname]");
+      const value = row.querySelector("[data-vdefault]");
+      const n = name.value.trim();
+      let hint = n ? varNameHint(n) : value.value ? "укажите имя переменной" : null;
+      if (!hint && n && seen.has(n)) hint = "имя переменной уже используется";
+      seen.add(n);
+      const checkValue = root.dataset.install === "true" ? row.dataset.override === "true" : value.value !== "";
+      const valueHint = checkValue && n === "proxy_port" && (!/^\d+$/.test(value.value) || Number(value.value) < 1 || Number(value.value) > 65535) ? "Порт: целое число от 1 до 65535, без пробелов." : checkValue && n === "proxy_sni" && !value.value ? "Укажите SNI или сбросьте переопределение." : null;
+      name.setAttribute("aria-invalid", String(!!hint));
+      value.setAttribute("aria-invalid", String(!!valueHint));
+      const box = row.querySelector("[data-vhint]");
+      box.textContent = (_a = hint != null ? hint : valueHint) != null ? _a : "";
+      box.classList.toggle("bad", !!(hint || valueHint));
+      if (!message && (hint || valueHint)) {
+        first = hint ? name : value;
+        message = hint != null ? hint : valueHint;
+      }
+    });
+    if (focus) first == null ? void 0 : first.focus();
+    return message;
+  }
+
+  // ui/pages/panel/views/profiles.ts
+  var PROFILES = null;
+  var LOAD_ERR = null;
+  var AUTO_RETRIED = false;
+  var SKELETON = `<tr><td colspan="5"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr>`;
+  function rowHTML(p) {
+    var _a;
+    const pub = p.published ? `<span class="badge ok"><i></i>опубликован</span>` : `<span class="badge">черновик</span>`;
+    return `<tr data-pid="${p.id}">
+    <td data-label="Имя"><span class="mono">${esc(p.name)}</span></td>
+    <td data-label="Описание" class="wrap">${esc(p.description || "—")}</td>
+    <td data-label="Версий"><span class="mono">${(_a = p.versions) != null ? _a : "—"}</span></td>
+    <td data-label="Опубликован">${pub}</td>
+    <td data-label="Действия"><span class="u-acts">
+      <button class="btn sm" data-pedit="${p.id}">Изменить</button>
+      <button class="btn sm ghost" data-ppub="${p.id}">${p.published ? "Снять с публикации" : "Опубликовать"}</button>
+      <button class="btn sm danger" data-pdel="${p.id}" data-name="${esc(p.name)}">Удалить</button>
+    </span></td>
+  </tr>`;
+  }
+  function render7() {
+    const body = $("profiles-body");
+    renderSection(body, false, () => {
+      var _a;
+      if (LOAD_ERR !== null) {
+        body.innerHTML = `<tr><td colspan="5"><div class="banner bad" style="margin:0;color:var(--fg)">
+      <span>Не удалось загрузить профили${LOAD_ERR ? ": " + esc(LOAD_ERR) : ""}</span>
+      <button class="btn sm" id="profiles-retry" style="margin-left:auto">Повторить</button></div></td></tr>`;
+        (_a = $("profiles-retry")) == null ? void 0 : _a.addEventListener("click", () => {
+          AUTO_RETRIED = false;
+          load4().catch(() => {
+          });
+        });
+        return;
+      }
+      if (PROFILES === null) return;
+      if (!PROFILES.length) {
+        body.innerHTML = `<tr><td colspan="5"><div class="empty-state">
+      <span class="t">Профилей нет</span>
+      <span class="s">Создайте профиль установки — его шаги будут применять на новых серверах.</span></div></td></tr>`;
+        return;
+      }
+      body.innerHTML = PROFILES.map(rowHTML).join("");
+    });
+  }
+  async function load4() {
+    if (PROFILES === null) $("profiles-body").innerHTML = SKELETON;
+    try {
+      const data = await panelReq("/panel/api/admin/profiles");
+      PROFILES = data.profiles || [];
+      LOAD_ERR = null;
+      AUTO_RETRIED = false;
+      $("profiles-create").hidden = false;
+      render7();
+    } catch (e) {
+      const err = e;
+      if (PROFILES === null) {
+        LOAD_ERR = err.message || "";
+        $("profiles-create").hidden = false;
+        render7();
+        if (!AUTO_RETRIED && isRetryableLoad(err)) {
+          AUTO_RETRIED = true;
+          setTimeout(() => {
+            load4().catch(() => {
+            });
+          }, 2e3);
+        }
+      } else {
+        showToast("Не удалось обновить профили: " + err.message, true);
+      }
+    }
+  }
+  function editor(p) {
+    const isEdit = p !== null;
+    const nameField = isEdit ? `<div><label for="p-name">Имя</label><input type="text" id="p-name" class="mono" value="${esc(p.name)}">
+        <span class="help" style="color:var(--fg-3);font-size:11.5px">Переименование новых версий не создаёт.</span></div>` : `<div><label for="p-name">Имя</label><input type="text" id="p-name" class="mono" autocomplete="off"></div>`;
+    const pubField = isEdit ? "" : `<label class="check" style="margin:4px 0"><input type="checkbox" id="p-pub"><span class="box"></span> Опубликовать сразу</label>`;
+    openModal(
+      isEdit ? `Профиль · ${p.name}` : "Создать профиль",
+      `<div class="field profile-editor" style="gap:12px">
+      ${nameField}
+      <div><label for="p-desc">Описание</label><input type="text" id="p-desc" value="${isEdit ? esc(p.description) : ""}"></div>
+      <div><label for="p-steps">Шаги (shell-команды)</label>
+        <textarea id="p-steps" class="mono" rows="12" spellcheck="false" wrap="off" aria-describedby="p-steps-help">${isEdit ? esc(p.steps || "") : ""}</textarea>
+        <span id="p-steps-help" class="help" style="color:var(--fg-3);font-size:11.5px">Упорядоченный список: строка «# Название» открывает шаг, следующие строки — его shell-команда (могут быть многострочными). Шаги выполняются по SSH на VPS пользователя; первый упавший шаг прерывает профиль. Потолок 64 КиБ.</span></div>
+      <div class="field" style="gap:6px"><label>Переменные профиля</label>
+        <div class="vars-editor" id="p-vars"></div>
+        <span class="help">${esc(PROFILE_VARS_HELP)}</span></div>
+      ${pubField}
+      ${isEdit ? `<div class="note">Изменение шагов или переменных создаёт НОВУЮ версию: история версий не перезаписывается, а публикация сбрасывается — опубликуйте профиль заново.</div>` : ""}
+      <div class="banner bad" id="p-err" role="alert" hidden style="margin:0"></div>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: isEdit ? "Сохранить" : "Создать", cls: "primary", onClick: (ev) => save(ev.currentTarget, p) }
+      ],
+      true
+    );
+    renderVarsEditor($("p-vars"), parseVarsSchema(p == null ? void 0 : p.vars_schema));
+    $("p-name").focus();
+  }
+  function save(btn, p) {
+    var _a;
+    const isEdit = p !== null;
+    const errBox = $("p-err");
+    errBox.hidden = true;
+    const name = $("p-name").value.trim();
+    const description = $("p-desc").value.trim();
+    const steps = $("p-steps").value;
+    const rows = collectVarsEditor($("p-vars"));
+    const vars_schema = serializeVarsSchema(rows);
+    const versionChanged = !isEdit || steps !== (p.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p.vars_schema));
+    if (!name) {
+      errBox.textContent = "Укажите имя профиля.";
+      errBox.hidden = false;
+      $("p-name").focus();
+      return;
+    }
+    if (versionChanged && !steps.trim()) {
+      errBox.textContent = "Шаги обязательны.";
+      errBox.hidden = false;
+      $("p-steps").focus();
+      return;
+    }
+    const varErr = versionChanged ? validateVarsEditor($("p-vars")) : null;
+    if (varErr) {
+      errBox.textContent = varErr;
+      errBox.hidden = false;
+      return;
+    }
+    const body = { name, description };
+    if (versionChanged) {
+      body.steps = steps;
+      body.vars_schema = vars_schema;
+    }
+    if (!isEdit && ((_a = $("p-pub")) == null ? void 0 : _a.checked)) body.published = true;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = isEdit ? "Сохранение…" : "Создание…";
+    const path = isEdit ? `/panel/api/admin/profiles/${p.id}` : "/panel/api/admin/profiles";
+    panelReq(path, isEdit ? "PUT" : "POST", body).then(() => {
+      closeModal();
+      showToast(isEdit ? body.steps === void 0 ? "Профиль сохранён." : "Профиль сохранён (новая версия)." : "Профиль создан.");
+      load4().catch(() => {
+      });
+    }).catch((e) => {
+      const msg = e.code === "duplicate" || e.code === "duplicate_name" || /duplicate/i.test(e.message) ? "Профиль с таким именем уже существует" : e.message;
+      if ($("modal").classList.contains("show")) {
+        errBox.textContent = msg;
+        errBox.hidden = false;
+      } else showToast(msg, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function togglePublished(p) {
+    panelReq(`/panel/api/admin/profiles/${p.id}`, "PUT", { published: !p.published }).then(() => {
+      showToast(p.published ? "Снят с публикации." : "Опубликован.");
+      load4().catch(() => {
+      });
+    }).catch((e) => showToast(e.message, true));
+  }
+  function removeProfile(p) {
+    openModal(
+      `Удалить профиль «${p.name}»?`,
+      "Профиль и все его версии будут удалены. Уже созданные серверы не затрагиваются.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Удалить", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Удаление…";
+          panelReq(`/panel/api/admin/profiles/${p.id}`, "DELETE").then(() => {
+            closeModal();
+            showToast("Профиль удалён.");
+            load4().catch(() => {
+            });
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Удалить";
+          });
+        } }
+      ]
+    );
+  }
+  function init6() {
+    $("profiles-create").addEventListener("click", () => editor(null));
+    $("profiles-body").addEventListener("click", (e) => {
+      const t = e.target;
+      const ed = t.closest("[data-pedit]");
+      if (ed) {
+        const p = PROFILES == null ? void 0 : PROFILES.find((x) => x.id === Number(ed.dataset.pedit));
+        if (p) editor(p);
+        return;
+      }
+      const pub = t.closest("[data-ppub]");
+      if (pub) {
+        const p = PROFILES == null ? void 0 : PROFILES.find((x) => x.id === Number(pub.dataset.ppub));
+        if (p) togglePublished(p);
+        return;
+      }
+      const del = t.closest("[data-pdel]");
+      if (del) {
+        const p = PROFILES == null ? void 0 : PROFILES.find((x) => x.id === Number(del.dataset.pdel));
+        if (p) removeProfile(p);
         return;
       }
     });
@@ -5062,30 +6327,36 @@
     if (r.view === "users") {
       load3().catch(() => {
       });
+      load4().catch(() => {
+      });
     }
     renderAll();
   }
-  function renderAll() {
+  function renderAll(poll = false) {
     const o = state.ov;
     if (o) {
       renderHeader(o);
       renderBanner(o);
       const r2 = currentRoute();
       if (r2.view === "overview") {
-        render(o);
-        renderInto($("events-mini"), state.events.slice(0, 8));
+        renderSection($("view-overview"), poll, () => {
+          render(o);
+          renderInto($("events-mini"), state.events.slice(0, 8));
+        });
       } else if (r2.view === "nodes") {
-        render2(o);
+        renderSection($("view-nodes"), poll, () => render2(o));
       } else if (r2.view === "dns") {
-        render4(o);
+        renderSection($("view-dns"), poll, () => render4(o));
       } else if (r2.view === "srmd") {
-        render5(o);
+        renderSection($("view-srmd"), poll, () => render5(o));
       } else if (r2.view === "events") {
-        renderView();
+        renderSection($("view-events"), poll, () => renderView());
       }
     }
     const r = currentRoute();
-    if (r.view === "node" && state.node && state.nodeId === r.id) render3(state.node);
+    if (r.view === "node" && state.node && state.nodeId === r.id) {
+      renderSection($("view-node"), poll, () => render3(state.node));
+    }
   }
   function renderHeader(o) {
     $("hdr-sub").textContent = `доменов: ${o.domains.length} · SNI: ${o.tls_domain} · аптайм: ${fmtUptime(o.uptime_sec)}`;
@@ -5130,12 +6401,12 @@
     state.ov = ov;
     state.events = ev.events || [];
     const r = currentRoute();
-    if (r.view === "node") await load(r.id).catch(() => {
+    if (r.view === "node") await load(r.id, true).catch(() => {
     });
     $("last-upd").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
     $("live-text").textContent = "live";
     $("live-pill").className = "status-pill live";
-    renderAll();
+    renderAll(true);
   }
   function submitToken() {
     const t = $("token-input").value.trim();
@@ -5161,11 +6432,13 @@
   window.addEventListener("hashchange", route);
   setRefreshAll(refresh);
   initTheme();
+  initBuildWatch();
   init4();
   init3();
   init2();
   init();
   init5();
+  init6();
   if (!localStorage.getItem(LS_KEY)) showLogin(false);
   route();
   refresh().catch((err) => {

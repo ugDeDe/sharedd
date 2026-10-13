@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · кабинет</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+<!--{css}-->
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub" id="hdr-user">кабинет</div>
+        </div>
+      </div>
+      <div class="navwrap"><nav class="nav">
+        <a href="#/nodes" data-view="nodes">Мои ноды</a>
+        <a href="#/servers" data-view="servers">Серверы</a>
+        <a href="#/profiles" data-view="profiles">Мои профили</a>
+        <a href="#/beget" data-view="beget">Хостинги</a>
+        <a href="#/operations" data-view="operations">Операции</a>
+      </nav></div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+        <button class="icon-btn" id="logout-btn" type="button" title="Выйти" aria-label="Выйти">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <h1 id="view-title" class="view-title">Мои ноды</h1>
+
+  <main>
+    <!-- ═══ Мои ноды ════════════════════════════════════════════════ -->
+    <section class="view" id="view-nodes">
+      <div class="metrics" id="node-metrics"></div>
+      <div id="quota-banner"></div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ключ доступа</h2>
+          <span class="hint">ключ регистрации нод в пуле</span>
+        </div>
+        <div class="card-body" id="authkey-body"><div class="skeleton skel-line"></div></div>
+        <div class="card-note" id="authkey-note"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Мои ноды</h2>
+          <span class="hint" id="nodes-hint"></span>
+          <button class="btn ghost sm" style="margin-left:auto" id="nodes-reload">Обновить</button>
+        </div>
+        <div class="node-list" id="nodes-body"></div>
+        <div class="card-note">Ошибка здоровья или установки не создаёт новый сервер. Ресурс остаётся и доступен для повторной установки профиля. Платный заказ отправляется ровно один раз — повтор того же запроса не создаёт второй сервер.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Нода (детальная карточка, #/nodes/<id>) ═════════════════ -->
+    <section class="view" id="view-node" hidden>
+      <div style="margin-bottom:12px">
+        <a class="btn ghost sm" href="#/nodes">← К нодам</a>
+      </div>
+      <div id="node-detail"><div class="skeleton skel-block"></div></div>
+    </section>
+
+    <!-- ═══ Создать сервер ══════════════════════════════════════════ -->
+    <section class="view" id="view-create" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Создать сервер</h2>
+          <span class="hint">платный заказ у Beget · отправляется один раз</span>
+        </div>
+        <div class="wizard-steps" id="wiz-steps" role="list"></div>
+        <div id="wiz-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-foot" id="wiz-foot"></div>
+      </section>
+    </section>
+
+    <!-- ═══ Серверы (свои хосты + созданные у провайдера) ═══════════ -->
+    <section class="view" id="view-servers" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Серверы</h2>
+          <span class="hint">свои хосты и серверы провайдера</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="servers-reload">Обновить</button>
+          <button class="btn primary sm" id="srv-add" aria-controls="server-form" aria-expanded="false">Добавить сервер</button>
+        </div>
+        <form class="card-body" id="server-form" novalidate hidden>
+          <div class="srv-grid">
+            <div class="field">
+              <label for="sv-label">Название</label>
+              <input type="text" id="sv-label" maxlength="64" autocomplete="off" placeholder="Например, my-vps-1" required>
+            </div>
+            <div class="field">
+              <label for="sv-host">IP-адрес</label>
+              <input type="text" id="sv-host" class="mono" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="203.0.113.10" required>
+              <span class="help">Публичный IPv4. Приватные, локальные адреса и IP регистратора не принимаются.</span>
+            </div>
+            <div class="field">
+              <label for="sv-port">Порт SSH</label>
+              <input type="number" id="sv-port" min="1" max="65535" placeholder="22" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="sv-user">Пользователь SSH</label>
+              <input type="text" id="sv-user" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="root">
+              <span class="help">По умолчанию root.</span>
+            </div>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label>Способ входа</label>
+            <div class="seg" id="sv-authtype" role="radiogroup" aria-label="Способ входа">
+              <button type="button" role="radio" data-authtype="password" class="active" aria-checked="true" tabindex="0">Пароль</button>
+              <button type="button" role="radio" data-authtype="key" aria-checked="false" tabindex="-1">Приватный ключ</button>
+            </div>
+          </div>
+          <div class="field" id="sv-pass-wrap" style="margin-top:12px">
+            <label for="sv-pass">Пароль</label>
+            <div class="input-group">
+              <input type="password" id="sv-pass" autocomplete="new-password">
+              <button type="button" class="in-btn" data-reveal="sv-pass" aria-label="Показать пароль" title="Показать пароль">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="help">Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="field" id="sv-key-wrap" style="margin-top:12px" hidden>
+            <label for="sv-key">Приватный ключ</label>
+            <textarea id="sv-key" class="mono" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+            <input type="file" id="sv-key-file" accept=".pem,.key,.txt,.openssh,application/x-pem-file,application/octet-stream" aria-label="Загрузить файл ключа">
+            <span class="help">Вставьте OpenSSH/PEM-ключ (≤ 16 КиБ) или выберите файл. Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="banner bad" id="sv-err" role="alert" hidden style="margin:12px 0 0"></div>
+          <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="button" class="btn ghost" id="sv-cancel">Отмена</button>
+            <button type="submit" class="btn primary" id="sv-submit">Подключить сервер</button>
+          </div>
+        </form>
+        <div id="servers-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-note" id="servers-note">Подключение и установка выполняются на ваш существующий сервер по SSH. Новый сервер не создаётся и не оплачивается. «Повторить установку» использует тот же хост и ту же ноду — второй сервер не появляется. Нужен новый сервер у провайдера? <a href="#/create">Создать сервер</a> — платный заказ у хостинга.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Мои профили ═════════════════════════════════════════════ -->
+    <section class="view" id="view-profiles" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Мои профили</h2>
+          <span class="hint" id="profiles-hint" style="margin-left:0">локальные профили · видны только вам</span>
+          <button class="btn primary" style="margin-left:auto" id="profiles-create">Создать профиль</button>
+        </div>
+        <div id="profiles-disabled" hidden></div>
+        <div class="node-list" id="profiles-body"></div>
+        <div class="node-list" id="profiles-published" hidden></div>
+        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Правка шагов создаёт новую версию — история не перезаписывается. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Beget ═══════════════════════════════════════════════════ -->
+    <section class="view" id="view-beget" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Личный аккаунт Beget</h2>
+          <span class="hint">регистратор добавит SSH-ключ для установки</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="beget-reload">Обновить</button>
+        </div>
+        <div class="card-body" id="beget-status"><div class="skeleton skel-line"></div></div>
+        <div class="card-body" id="beget-ratelimit" role="alert" hidden></div>
+        <form class="card-body" id="beget-form" novalidate>
+          <div class="field">
+            <label for="bg-login">Логин Beget</label>
+            <input type="text" id="bg-login" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+          </div>
+          <div class="field">
+            <label for="bg-pass">Пароль Beget</label>
+            <div class="input-group">
+              <input type="password" id="bg-pass" autocomplete="new-password" required>
+              <button type="button" class="in-btn" data-reveal="bg-pass" aria-label="Показать пароль" title="Показать пароль">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="help">Пароль не отображается и не сохраняется в открытом виде. Регистратор добавит SSH-ключ для установки.</span>
+          </div>
+          <div class="field">
+            <label for="bg-code">Код (2FA)</label>
+            <input type="text" id="bg-code" class="mono" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false">
+            <span class="help">Необязательно: код подтверждения, если Beget его запросил.</span>
+          </div>
+          <div class="card-foot" style="margin:0 calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="submit" class="btn primary" id="beget-submit">Подключить</button>
+          </div>
+        </form>
+        <div class="card-note">Сейчас поддерживается только <b>Beget</b>. Подключение других хостингов появится позже — раздел уже назван «Хостинги».</div>
+      </section>
+    </section>
+
+    <!-- ═══ Операции ════════════════════════════════════════════════ -->
+    <section class="view" id="view-operations" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Операции</h2>
+          <span class="hint">журнал платных заказов · обновление каждые 5 с</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Создана</th><th>Тип</th><th>Нода</th><th>Состояние</th><th>Ошибка</th><th>Действие</th></tr></thead>
+            <tbody id="ops-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note" id="ops-note"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="page-foot">sharedd · кабинет · <span id="last-upd">ещё не обновлялось</span></footer>
+</div>
+
+<nav class="mobile-nav glass">
+  <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Ноды</span></a>
+  <a href="#/servers" data-view="servers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7" y2="7.5"/><line x1="7" y1="16.5" x2="7" y2="16.5"/></svg><span>Серверы</span></a>
+  <a href="#/profiles" data-view="profiles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Профили</span></a>
+  <a href="#/beget" data-view="beget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Хостинги</span></a>
+  <a href="#/operations" data-view="operations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Операции</span></a>
+</nav>
+
+<div id="toast" aria-live="polite"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script>
+<!--{js}-->
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+/* ═══ Модалка ═════════════════════════════════════════════════════════
+   Общая для links и кабинета: подтверждения и одноразовый показ ключа.
+   Кнопки/поля внутри — из form.css. */
+.modal {
+  position: fixed; inset: 0; z-index: 80; display: none; place-items: center; padding: 20px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+@supports not (background: color-mix(in srgb, red 50%, blue)) { .modal { background: var(--bg); } }
+.modal.show { display: grid; }
+.modal-box {
+  width: 100%; max-width: 400px; padding: 22px; border-radius: var(--r-xl);
+  display: flex; flex-direction: column; gap: 14px;
+  /* Ограничение по высоте viewport: длинное тело прокручивается, кнопки
+     действий остаются доступны (spec §2). dvh перекрывает vh там, где есть. */
+  max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px);
+}
+.modal-box h2 { font-size: 16px; flex: none; }
+/* Редактор профиля: тело — шаги + таблица переменных, 400px тесно.
+   Класс ставит openModal(..., wide) — см. users.ts / cabinet/main.ts. */
+.modal-box.modal-wide { max-width: min(1100px, 96vw); }
+/* Шаги: без мягкого переноса длинных команд (wrap="off"), комфортные строки. */
+.profile-editor textarea {
+  min-height: 260px; line-height: 1.5;
+  white-space: pre; overflow: auto; overflow-wrap: normal; resize: vertical;
+}
+.modal-box .modal-body { color: var(--fg-2); font-size: 13px; line-height: 1.55; overflow-y: auto; min-height: 0; }
+.modal-box .modal-foot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; flex: none; }
+/* links: заголовок-домен по центру */
+.modal-box .d { font-family: var(--mono); font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }

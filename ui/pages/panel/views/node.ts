@@ -5,7 +5,7 @@
    версии ДОСЛОВНО — renderNodeDetail/clientsSparkInteractive/attachSparkHover.
    Меняется только разметка. */
 
-import { $, esc } from "../../../lib/dom";
+import { $, esc, renderSection } from "../../../lib/dom";
 import { fmtDur, fmtAgo, fmtClock } from "../../../lib/format";
 import { api, state } from "../state";
 import { renderInto as renderEventsInto } from "./events";
@@ -201,11 +201,11 @@ function renderNodeDetail(d: any): void {
   attachSparkHover(clientPts);
 }
 
-export async function load(id: string): Promise<void> {
+export async function load(id: string, poll = false): Promise<void> {
   const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
   if (state.nodeId === id) {
     state.node = d;
-    renderNodeDetail(d);
+    renderSection($("node-detail"), poll, () => renderNodeDetail(d));
   }
 }
 

@@ -558,7 +558,8 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     z-index: 50;
     padding: 6px;
     border-radius: var(--r-xl);
-    grid-template-columns: repeat(6, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 2px;
   }
   .mobile-nav a {
@@ -1191,6 +1192,30 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       transform: translateY(6px);
     }
   }
+  #update-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    z-index: 80;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 9px 12px 9px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--acc);
+    background: var(--surf);
+    color: var(--fg);
+    box-shadow: var(--sh-pop);
+    font-size: 12.5px;
+  }
+  #update-bar[hidden] {
+    display: none;
+  }
+  #update-bar .btn {
+    flex: none;
+  }
   .kv {
     display: flex;
     flex-direction: column;
@@ -1498,6 +1523,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     gap: 8px;
     cursor: pointer;
     font-size: 12.5px;
+    min-height: 24px;
   }
   .check input {
     position: absolute;
@@ -1693,6 +1719,21 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   .quarantine-card {
     margin-top: var(--gap);
   }
+  .domains-card {
+    margin-bottom: var(--gap);
+  }
+  .link-masters {
+    margin-bottom: 6px;
+  }
+  .link-masters .chip {
+    height: 24px;
+    padding: 0 9px;
+    font-size: 11.5px;
+    cursor: default;
+  }
+  .link-masters .chip .badge {
+    height: 18px;
+  }
   .spark {
     width: 100%;
     height: 56px;
@@ -1766,7 +1807,11 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       width: 100%;
     }
   }
+  [hidden] {
+    display: none;
+  }
 </style>
+  <meta name="sharedd-build" content="7b49234f1aad7c5a">
 </head>
 <body>
 
@@ -1850,6 +1895,12 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       minute: "2-digit",
       second: "2-digit"
     });
+  }
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
   }
 
   // ui/lib/theme.ts
@@ -1944,9 +1995,79 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     <td data-label="Тип">${nodeTypeBadge(n.node_type)}</td>
   </tr>`;
   }
+  function masterChip(m) {
+    var _a, _b;
+    const uid = esc((_a = m.node_id) != null ? _a : "—");
+    const live = m.healthy !== false;
+    const ip = m.ip_masked ? `<span class="mono dim">${esc(m.ip_masked)}</span>` : "";
+    const st = live ? `<span class="badge ok">жив</span>` : `<span class="badge warn">мёртв</span>`;
+    let ttl = "", ttlTitle = "";
+    if (m.ttl_remaining_sec != null) {
+      if (m.ttl_remaining_sec > 0) {
+        ttl = `<span class="dim">⏱ ${fmtDur(m.ttl_remaining_sec)}</span>`;
+        ttlTitle = " · TTL " + fmtDur(m.ttl_remaining_sec);
+      } else {
+        ttl = `<span class="dim">переключение сейчас</span>`;
+        ttlTitle = " · TTL истёк";
+      }
+    }
+    const title = `${(_b = m.node_id) != null ? _b : ""} · ${live ? "жив" : "мёртв"}${ttlTitle}`;
+    return `<span class="chip link-master" title="${esc(title)}"><span class="mono">${uid}</span>${ip}${st}${ttl}</span>`;
+  }
+  function masterSort(a, b) {
+    var _a, _b;
+    const al = a.healthy !== false ? 0 : 1, bl = b.healthy !== false ? 0 : 1;
+    if (al !== bl) return al - bl;
+    return String((_a = a.node_id) != null ? _a : "").localeCompare(String((_b = b.node_id) != null ? _b : ""));
+  }
+  function parseSlots(sf) {
+    if (typeof sf !== "string" || !sf.includes("/")) return null;
+    const [u, t] = sf.split("/").map((x) => parseInt(x, 10));
+    if (!isFinite(u) || !isFinite(t)) return null;
+    return { used: u, total: t };
+  }
+  function slotsCell(sf) {
+    const p = parseSlots(sf);
+    if (!p) return sf == null ? `<span class="dim">—</span>` : `<span class="mono">${esc(sf)}</span>`;
+    const full = p.total > 0 && p.used >= p.total;
+    const pct = p.total > 0 ? Math.max(0, Math.min(100, p.used / p.total * 100)) : 0;
+    return `<div class="meter"><div class="meter-track"><span class="meter-fill ${full ? "ok" : "warn"}" style="width:${pct.toFixed(1)}%"></span></div><span class="meter-value mono">${esc(sf)}</span></div>`;
+  }
+  function domainRowHTML(dm) {
+    const masters = [...dm.masters || []].sort(masterSort);
+    const chips = masters.length ? `<span class="chips link-masters">${masters.map(masterChip).join("")}</span>` : "";
+    const count = masters.length ? `<span class="badge">${masters.length} ${plural(masters.length, "мастер", "мастера", "мастеров")}</span>` : "";
+    return `<tr>
+    <td class="mono" data-label="Домен" title="${esc(dm.domain)}" style="white-space:nowrap">${esc(dm.domain)}</td>
+    <td class="mono num" data-label="Порт">${dm.port != null ? esc(dm.port) : "—"}</td>
+    <td data-label="Мастера">${chips ? chips + count : `<span class="dim">—</span>`}</td>
+    <td data-label="Заполнено слотов">${slotsCell(dm.slots_filled)}</td>
+  </tr>`;
+  }
+  function domainsCardHTML(domains) {
+    let masters = 0, filled = 0, total = 0, hasSlots = false;
+    for (const dm of domains) {
+      masters += (dm.masters || []).length;
+      const p = parseSlots(dm.slots_filled);
+      if (p) {
+        filled += p.used;
+        total += p.total;
+        hasSlots = true;
+      }
+    }
+    const summary = `ссылок: ${domains.length} · мастеров: ${masters}` + (hasSlots ? ` · слоты: ${filled}/${total}` : "");
+    const body = domains.length ? `<div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Домен</th><th>Порт</th><th>Мастера</th><th>Заполнено слотов</th></tr></thead>
+        <tbody>${domains.map(domainRowHTML).join("")}</tbody></table></div>` : `<div class="empty-state">${icon(ICONS.info, 26)}<span class="t">Доменов-ссылок нет</span><span class="s">Managed-домены появятся здесь после настройки Cloudflare DNS.</span></div>`;
+    return `<section class="card domains-card">
+    <div class="card-head"><h2>Ссылки (домены)</h2><span class="hint">${esc(summary)}</span></div>
+    ${body}
+  </section>`;
+  }
   async function renderListView() {
     const d = await pubApi("/statistics/api/list");
     $("view-title").textContent = "Публичная статистика пула";
+    const domainsCard = Array.isArray(d.domains) ? domainsCardHTML(d.domains) : "";
     const rows = (d.nodes || []).map(listRowHTML).join("");
     const quarantineRows = (d.quarantine || []).map((n) => `<tr>
     <td class="mono" data-label="Нода">${esc(n.node_id)}</td>
@@ -1958,6 +2079,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   </tr>`).join("");
     $("root").innerHTML = `
     <div class="banner info">${icon(ICONS.info, 16)}<span>Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</span></div>
+    ${domainsCard}
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
       <div class="table-wrap"><table class="table-cards">

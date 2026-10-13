@@ -26,5 +26,11 @@ var DashboardHTML []byte
 //go:embed links.html
 var LinksHTML []byte
 
+//go:embed signin.html
+var SigninHTML []byte
+
+//go:embed cabinet.html
+var CabinetHTML []byte
+
 //go:embed fonts/inter-latin.woff2 fonts/inter-cyrillic.woff2
 var Fonts embed.FS

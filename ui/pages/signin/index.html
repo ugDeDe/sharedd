@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · вход</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+<!--{css}-->
+</style>
+</head>
+<body>
+
+<div class="wrap auth-wrap">
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub">вход в кабинет</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="card auth-card">
+    <div class="card-head">
+      <h2>Вход в кабинет</h2>
+      <span class="hint">sharedd · аренда нод</span>
+    </div>
+
+    <div class="tabrow" role="tablist" aria-label="Вход или регистрация">
+      <button type="button" class="chip active" role="tab" id="tab-login" aria-selected="true" aria-controls="panel-login" tabindex="0">Вход</button>
+      <button type="button" class="chip" role="tab" id="tab-register" aria-selected="false" aria-controls="panel-register" tabindex="-1">Регистрация</button>
+    </div>
+
+    <div class="banner bad" id="auth-alert" role="alert" hidden></div>
+
+    <form class="card-body auth-form" id="panel-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+      <div class="field">
+        <label for="li-user">Логин</label>
+        <input type="text" id="li-user" name="username" class="mono" autocomplete="username" autocapitalize="off" spellcheck="false" pattern="[a-z0-9_.-]{3,32}" minlength="3" maxlength="32" required>
+      </div>
+      <div class="field">
+        <label for="li-pass">Пароль</label>
+        <div class="input-group">
+          <input type="password" id="li-pass" name="password" autocomplete="current-password" minlength="10" required>
+          <button type="button" class="in-btn" data-reveal="li-pass" aria-label="Показать пароль" title="Показать пароль">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="card-foot auth-foot">
+        <button type="submit" class="btn primary full" id="li-submit">Войти</button>
+      </div>
+    </form>
+
+    <!-- Регистрация: вкладка остаётся доступной как объяснение. Без токена —
+         заглушка, с ?invite=<token> — форма (invitations-legacy-ui.md §4). -->
+    <div class="card-body auth-form" id="panel-register" role="tabpanel" aria-labelledby="tab-register" hidden>
+      <div class="banner bad" id="reg-invite-alert" role="alert" hidden>
+        <span id="reg-invite-alert-text"></span>
+        <button type="button" class="btn ghost sm" id="reg-dead-login">Войти</button>
+      </div>
+      <div class="reg-gate" id="reg-gate" hidden>
+        <p>Регистрация только по приглашению. Попросите администратора прислать ссылку</p>
+        <button type="button" class="btn ghost full" id="reg-gate-login">Войти</button>
+      </div>
+      <p class="reg-invite-note" id="reg-invite-note" hidden>Регистрация по приглашению</p>
+      <form id="reg-form" class="auth-form" hidden novalidate>
+        <div class="field">
+          <label for="rg-user">Логин</label>
+          <input type="text" id="rg-user" name="username" class="mono" autocomplete="username" autocapitalize="off" spellcheck="false" pattern="[a-z0-9_.-]{3,32}" minlength="3" maxlength="32" required>
+          <span class="help">3–32 символа: a–z, 0–9, <span class="mono">_ . -</span></span>
+        </div>
+        <div class="field">
+          <label for="rg-pass">Пароль</label>
+          <div class="input-group">
+            <input type="password" id="rg-pass" name="password" autocomplete="new-password" minlength="10" required>
+            <button type="button" class="in-btn" data-reveal="rg-pass" aria-label="Показать пароль" title="Показать пароль">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <span class="help">Пароль не короче 10 символов</span>
+        </div>
+        <div class="field">
+          <label for="rg-pass2">Повтор пароля</label>
+          <input type="password" id="rg-pass2" autocomplete="new-password" minlength="10" required>
+        </div>
+        <div class="card-foot auth-foot">
+          <button type="submit" class="btn primary full" id="rg-submit">Создать аккаунт</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <footer class="page-foot"><a href="/statistics">← статистика пула</a></footer>
+</div>
+
+<script>
+<!--{js}-->
+</script>
+</body>
+</html>

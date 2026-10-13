@@ -1,0 +1,45 @@
+/* Таблица переменных профиля (addendum-profiles-vps.md §6).
+   Общий компонент для редактора профиля (панель и кабинет) и шага визарда:
+   только раскладка поверх существующих .field/.check/.btn, без новых цветов. */
+
+.vars-editor { display: flex; flex-direction: column; gap: 8px; }
+.vars-rows { display: flex; flex-direction: column; gap: 6px; }
+.vars-empty { color: var(--fg-3); font-size: 12px; padding: 6px 0; }
+
+.vars-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 1.3fr) minmax(140px, 1.6fr) auto auto;
+  gap: 8px; align-items: center;
+}
+.vars-row input[type="text"], .vars-row input[type="password"], .vars-row input:not([type]) {
+  background: var(--surf-3); border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--fg); font: inherit; font-size: 12.5px; padding: 7px 9px; min-width: 0; width: 100%;
+}
+/* Секретное значение: input + «глаз» (.input-group/.in-btn из form.css). */
+.vars-row .input-group { min-width: 0; width: 100%; }
+.vars-row .input-group input { width: 100%; min-width: 0; }
+.vars-row input:focus-visible { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft); }
+.vars-row .vars-secret { font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+.vars-row .vars-hint { grid-column: 1 / -1; color: var(--fg-3); font-size: 11px; margin-top: -2px; }
+.vars-row .vars-hint.bad { color: var(--bad); }
+.vars-row .btn.sm { justify-self: end; }
+.vars-row .field { min-width: 0; }
+.vars-row-install { grid-template-columns: minmax(120px, 1fr) minmax(120px, 2fr) minmax(120px, 1.4fr) auto; }
+.vars-row-install [data-vsource] { font-size: 12px; }
+.vars-row [data-vreset] { white-space: normal; height: auto; min-height: var(--ctl-h); max-width: 100%; }
+.vars-row .in-btn[hidden] { display: none; }
+.vars-row .vars-hint { overflow-wrap: anywhere; }
+
+/* Своя переменная визарда: имя + значение + удалить. */
+.vars-row-x { grid-template-columns: minmax(120px, 1fr) minmax(120px, 1.4fr) auto; }
+.vars-row-x .vars-hint { grid-column: 1 / -1; }
+
+@media (max-width: 720px) {
+  .vars-row, .vars-row-x, .vars-row-install { grid-template-columns: 1fr 1fr; }
+  .vars-row .vars-hint, .vars-row-x .vars-hint { grid-column: 1 / -1; }
+}
+/* 320px: столбики в одну колонку, без горизонтальной прокрутки страницы. */
+@media (max-width: 480px) {
+  .vars-row, .vars-row-x, .vars-row-install { grid-template-columns: 1fr; }
+  .vars-row .btn.sm { justify-self: start; }
+}

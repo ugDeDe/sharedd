@@ -557,7 +557,8 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     z-index: 50;
     padding: 6px;
     border-radius: var(--r-xl);
-    grid-template-columns: repeat(6, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 2px;
   }
   .mobile-nav a {
@@ -1104,6 +1105,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     gap: 8px;
     cursor: pointer;
     font-size: 12.5px;
+    min-height: 24px;
   }
   .check input {
     position: absolute;
@@ -1288,6 +1290,30 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       transform: translateY(6px);
     }
   }
+  #update-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    z-index: 80;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 9px 12px 9px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--acc);
+    background: var(--surf);
+    color: var(--fg);
+    box-shadow: var(--sh-pop);
+    font-size: 12.5px;
+  }
+  #update-bar[hidden] {
+    display: none;
+  }
+  #update-bar .btn {
+    flex: none;
+  }
   .kv {
     display: flex;
     flex-direction: column;
@@ -1301,6 +1327,73 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   .kv-v {
     color: var(--fg);
     font-weight: 560;
+  }
+
+  /* ui/components/modal.css */
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .modal {
+      background: var(--bg);
+    }
+  }
+  .modal.show {
+    display: grid;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 400px;
+    padding: 22px;
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
+  }
+  .modal-box h2 {
+    font-size: 16px;
+    flex: none;
+  }
+  .modal-box.modal-wide {
+    max-width: min(1100px, 96vw);
+  }
+  .profile-editor textarea {
+    min-height: 260px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow: auto;
+    overflow-wrap: normal;
+    resize: vertical;
+  }
+  .modal-box .modal-body {
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.55;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .modal-box .modal-foot {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex: none;
+  }
+  .modal-box .d {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
   }
 
   /* ui/pages/links/page.css */
@@ -1362,41 +1455,10 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     gap: 6px;
     margin-left: auto;
   }
-  .modal {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    display: none;
-    place-items: center;
-    padding: 20px;
-    background: color-mix(in srgb, var(--bg) 78%, transparent);
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
-  }
-  @supports not (background: color-mix(in srgb, red 50%, blue)) {
-    .modal {
-      background: var(--bg);
-    }
-  }
-  .modal.show {
-    display: grid;
-  }
   .modal-box {
-    width: 100%;
     max-width: 340px;
-    padding: 22px;
-    border-radius: var(--r-xl);
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 14px;
     text-align: center;
-  }
-  .modal-box .d {
-    font-family: var(--mono);
-    font-size: 13.5px;
-    font-weight: 650;
-    overflow-wrap: anywhere;
   }
   .qr-canvas {
     width: 100%;
@@ -1419,7 +1481,11 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       width: 100%;
     }
   }
+  [hidden] {
+    display: none;
+  }
 </style>
+  <meta name="sharedd-build" content="549de69b25979d6c">
 </head>
 <body>
 

@@ -92,7 +92,13 @@ export async function saveSection(payload: unknown, note?: string): Promise<any>
   });
   const data = await resp.json().catch(() => ({} as any));
   if (resp.status === 401) { showLogin(true); throw new Error("unauthorized"); }
-  if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+  if (!resp.ok) {
+    // controlAPIError кладёт человекочитаемую причину в message, код — в error;
+    // для инлайн-показа валидации важнее именно текст (state: sharedd API).
+    const err = new Error(data.message || data.error || ("HTTP " + resp.status)) as Error & { code?: string };
+    err.code = data.error;
+    throw err;
+  }
   const msg = note || "Сохранено";
   const bits: string[] = [];
   if (data.persisted === false) bits.push("⚠ в файл НЕ записано: " + (data.persist_warning || ""));

@@ -1,0 +1,169 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/table.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/vars.css";
+@import "../../components/misc.css";
+@import "../../components/modal.css";
+@import "../../components/nodecard.css";
+@import "../../components/feed.css";
+
+/* ═══ Кабинет: только раскладка ═══════════════════════════════════════
+   Ни одной новой кнопки/поля/бейджа — всё из components/*. Ниже —
+   сетки, шаги визарда и одноразовый показ ключа. */
+.view-title { margin: 4px 2px 14px; }
+.view[hidden] { display: none; }
+.card { margin-bottom: var(--gap); }
+
+/* скелеты областей, пока нет данных */
+.skel-line { height: 20px; margin: 2px 0; }
+.skel-block { height: 120px; margin: var(--pad); }
+
+/* ═══ Визард ═══════════════════════════════════════════════════════════ */
+.wizard-steps {
+  display: flex; gap: 6px; padding: 14px var(--pad) 2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.wizard-steps::-webkit-scrollbar { display: none; }
+.wizard-step {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: var(--r-pill); border: 1px solid var(--line);
+  background: var(--surf); color: var(--fg-3); font-size: 12px; font-weight: 550;
+  white-space: nowrap;
+}
+.wizard-step .n {
+  display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--surf-3); color: var(--fg-3); font-size: 10.5px; font-weight: 650;
+}
+.wizard-step.active { background: var(--acc-soft); border-color: transparent; color: var(--acc); }
+.wizard-step.active .n { background: var(--acc); color: var(--acc-fg); }
+.wizard-step.done { color: var(--fg-2); }
+.wizard-step.done .n { background: var(--ok-soft); color: var(--ok); }
+
+.wiz-body { padding: var(--pad); display: flex; flex-direction: column; gap: 14px; }
+.wiz-body[hidden] { display: none; }
+.wiz-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+/* выбор региона/профиля — карточка-кнопка (раскладка, не новый控件) */
+.pick-list { display: flex; flex-direction: column; gap: 8px; }
+.pick {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surf-2); color: var(--fg); font: inherit; cursor: pointer;
+  transition: border-color .12s ease, background .12s ease;
+}
+.pick:hover { border-color: var(--fg-3); }
+.pick[aria-pressed="true"] { border-color: var(--acc); background: var(--acc-soft); }
+.pick[disabled] { opacity: .5; cursor: not-allowed; }
+.pick .dot {
+  width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--fg-3); flex: none;
+}
+.pick[aria-pressed="true"] .dot { border-color: var(--acc); box-shadow: inset 0 0 0 3px var(--acc); }
+.pick-b { min-width: 0; flex: 1; }
+.pick-t { font-size: 13px; font-weight: 600; }
+.pick-s { font-size: 11.5px; color: var(--fg-3); margin-top: 2px; }
+
+.wiz-foot { justify-content: space-between; }
+.wiz-foot .spacer { flex: 1 1 auto; }
+
+/* ═══ Одноразовый показ ключа ═════════════════════════════════════════ */
+.secret-reveal {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.secret-reveal .key {
+  font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere;
+  padding: 11px 13px; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surf-2); color: var(--fg); user-select: all;
+}
+.secret-reveal .warn-note { color: var(--warn); font-size: 12px; }
+
+/* ═══ Операции: бейдж состояния ══════════════════════════════════════ */
+.op-err { color: var(--fg-2); font-size: 12px; overflow-wrap: anywhere; }
+.row-highlight { background: var(--acc-soft); }
+#ops-note[hidden] { display: none; }
+
+/* Шаги операции (Фаза 3): индекс, имя, статус, длительность; лог — details. */
+.op-steps { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+.op-step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: baseline; gap: 4px 10px; padding: 7px var(--pad); }
+.op-step + .op-step { border-top: 1px solid var(--line-2); }
+.op-step-idx { color: var(--fg-3); font-size: 11px; }
+.op-step-name { font-weight: 560; overflow-wrap: anywhere; }
+.op-step-dur { font-size: 11.5px; }
+.op-step-logwrap { grid-column: 2 / -1; }
+.op-step-log { margin-top: 4px; }
+.op-step-log summary { cursor: pointer; font-size: 11.5px; color: var(--fg-3); }
+.op-step-log[open] summary { color: var(--fg-2); }
+.op-steps-empty { padding: 12px var(--pad); }
+.op-steps-row > td { padding: 0; background: var(--surf-2); }
+
+/* ═══ Детальная карточка ноды (Фаза 2) ════════════════════════════════
+   Разметка — только существующие .card/.table/.badge/.metrics/.kv/.feed. */
+.nd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: var(--pad); }
+.nd-ip-lead { font-size: 13.5px; color: var(--fg-2); }
+.nd-ip-lead .mono { color: var(--fg); }
+.nd-ip { color: var(--fg-3); font-size: 12.5px; margin-top: 4px; }
+.nd-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; max-width: 100%; }
+.nd-reason { flex-basis: 100%; color: var(--bad); font-size: 12.5px; }
+.nd-grid {
+  display: grid; gap: 10px 18px; padding: var(--pad);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.chart-cap { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 7px; font-size: 11.5px; color: var(--fg-3); }
+.chart-cap:first-child { margin-top: 0; }
+.chart-cap .hint { margin-left: auto; }
+
+/* Доступность по дням: столбик ok_pct на день. */
+.day-bars { display: flex; align-items: flex-end; gap: 8px; height: 64px; }
+.day-bar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.day-bar-track { width: 100%; height: 48px; border-radius: var(--r-xs); background: var(--surf-3); display: flex; align-items: flex-end; overflow: hidden; }
+.day-bar-fill { width: 100%; background: var(--fg-3); border-radius: var(--r-xs); }
+.day-bar-fill.ok { background: var(--ok); }
+.day-bar-fill.warn { background: var(--warn); }
+.day-bar-fill.bad { background: var(--bad); }
+.day-bar > span { font-size: 10.5px; white-space: nowrap; }
+
+/* ═══ Свои серверы (addendum-manual-servers.md §3) ════════════════════
+   Только раскладка поверх существующих .card/.field/.btn/.seg/.node-card. */
+.srv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.srv-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Дорожка сегментированного переключателя способа входа. */
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-md);
+  background: var(--track); box-shadow: inset 0 1px 2px var(--track-in);
+}
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--fg-2); cursor: pointer;
+  padding: 6px 13px; border-radius: var(--r-sm); font: inherit; font-size: 12.5px; font-weight: 520;
+  white-space: nowrap; transition: color .15s, background .15s;
+}
+.seg button:hover { color: var(--fg); }
+.seg button.active {
+  color: var(--fg); font-weight: 600; background: var(--thumb);
+  box-shadow: 0 1px 2px rgba(16, 23, 37, .1), inset 0 1px 0 var(--thumb-hi);
+}
+/* Загрузка файла ключа: нативный input, выровнен по высоте поля. */
+#sv-key-file { margin-top: 2px; font-size: 12px; color: var(--fg-2); }
+#sv-key { min-height: 120px; }
+/* Карточка своего сервера: действия в правой колонке, вывод — отдельной строкой. */
+.srv .node-side { flex-wrap: wrap; justify-content: flex-end; }
+.srv .srv-more { grid-column: 1 / -1; margin-top: 8px; }
+.srv-out {
+  white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; margin: 6px 0 0;
+}
+
+@media (max-width: 640px) {
+  .wiz-foot { flex-direction: column-reverse; }
+  .wiz-foot .btn { width: 100%; }
+  .card-head { padding-left: 12px; padding-right: 12px; }
+  .srv .node-side { justify-content: flex-start; }
+}
+
+/* Глобальная гарантия [hidden]: .banner/.btn/.node-card и прочие задают
+   display и перебивают UA-правило, поэтому «скрытое» (например пустой
+   красный #sv-err) рендерилось бы. Последнее правило файла: при равной
+   специфичности (0,1,0) перекрывает все display-объявления выше. */
+[hidden] { display: none; }

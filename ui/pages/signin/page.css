@@ -1,0 +1,53 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/misc.css";
+
+/* ═══ Страница входа ══════════════════════════════════════════════════
+   Только раскладка: центрирование карточки, ряд вкладок и полноширинная
+   кнопка. Все控件 — из components/*. */
+.auth-wrap { max-width: 400px; display: flex; flex-direction: column; min-height: 100vh; }
+.auth-wrap .topbar { margin-bottom: 4px; }
+.auth-card { margin: auto 0; }
+.auth-card .card-head { flex-direction: column; align-items: flex-start; gap: 2px; }
+.auth-card .card-head .hint { margin-left: 0; }
+
+.tabrow { display: flex; gap: 6px; padding: 12px var(--pad) 0; }
+.tabrow .chip { flex: 1; justify-content: center; }
+
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form[hidden] { display: none; }
+.auth-form .card-foot { margin: 4px calc(var(--pad) * -1) calc(var(--pad) * -1); }
+.auth-foot { justify-content: stretch; }
+.btn.full { width: 100%; }
+
+/* alert — общий .banner (misc.css); здесь только отступы внутри карточки.
+   [hidden] нужен явно: класс .banner задаёт display и перебивает UA-правило. */
+.auth-card .banner { margin: 12px var(--pad) 0; }
+.auth-card .banner[hidden] { display: none; }
+
+/* ── регистрация по приглашению (invitations-legacy-ui.md §4) ──────────
+   Обёртка #panel-register — tabpanel c .card-body (паддинг) и .auth-form
+   (flex/gap). Баннер внутри неё не нуждается в дополнительных полях. */
+#panel-register .banner { margin: 0; }
+#reg-invite-alert { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; color: var(--fg); }
+#reg-invite-alert[hidden] { display: none; }
+
+.reg-gate { display: flex; flex-direction: column; gap: 12px; }
+.reg-gate[hidden] { display: none; }
+.reg-gate p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.reg-invite-note { margin: 0; color: var(--fg-2); font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .auth-wrap { min-height: auto; }
+  .auth-card { margin: 10px 0 0; }
+}
+
+/* Глобальная гарантия [hidden]: классы (.banner/.btn/.chip) задают display
+   и перебивают UA-правило. Последнее правило файла — перекрывает их при
+   равной специфичности (0,1,0). */
+[hidden] { display: none; }

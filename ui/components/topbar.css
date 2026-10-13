@@ -79,7 +79,7 @@
   display: none;
   position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 50;
   padding: 6px; border-radius: var(--r-xl);
-  grid-template-columns: repeat(6, 1fr); gap: 2px;
+  grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px;
 }
 .mobile-nav a {
   display: flex; flex-direction: column; align-items: center; justify-content: center;

@@ -6,6 +6,7 @@
 @import "../../components/badge.css";
 @import "../../components/form.css";
 @import "../../components/misc.css";
+@import "../../components/modal.css";
 
 /* ═══ Страница прокси-ссылок ══════════════════════════════════════════ */
 .links-wrap { max-width: 1020px; }
@@ -29,18 +30,9 @@
 .link-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 
 /* ═══ QR ══════════════════════════════════════════════════════════════ */
-.modal {
-  position: fixed; inset: 0; z-index: 80; display: none; place-items: center; padding: 20px;
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-}
-@supports not (background: color-mix(in srgb, red 50%, blue)) { .modal { background: var(--bg); } }
-.modal.show { display: grid; }
 .modal-box {
-  width: 100%; max-width: 340px; padding: 22px; border-radius: var(--r-xl);
-  display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
+  max-width: 340px; align-items: center; text-align: center;
 }
-.modal-box .d { font-family: var(--mono); font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
 /* QR всегда чёрным по белому — под сканер, а не под тему страницы. */
 .qr-canvas {
   width: 100%; max-width: 260px; aspect-ratio: 1; image-rendering: pixelated;
@@ -51,3 +43,7 @@
   .user-head, .link-row { padding-left: 12px; padding-right: 12px; }
   .link-acts { margin-left: 0; width: 100%; }
 }
+
+/* Глобальная гарантия [hidden]: классы (.banner/.btn) задают display и
+   перебивают UA-правило. Последнее правило файла. */
+[hidden] { display: none; }

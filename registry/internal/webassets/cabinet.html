@@ -1236,6 +1236,7 @@
     gap: 8px;
     cursor: pointer;
     font-size: 12.5px;
+    min-height: 24px;
   }
   .check input {
     position: absolute;
@@ -1297,6 +1298,120 @@
   .input-group .in-btn:hover {
     background: var(--surf-3);
     color: var(--fg);
+  }
+
+  /* ui/components/vars.css */
+  .vars-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vars-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .vars-empty {
+    color: var(--fg-3);
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  .vars-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 1.3fr) minmax(140px, 1.6fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .vars-row input[type=text],
+  .vars-row input[type=password],
+  .vars-row input:not([type]) {
+    background: var(--surf-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 7px 9px;
+    min-width: 0;
+    width: 100%;
+  }
+  .vars-row .input-group {
+    min-width: 0;
+    width: 100%;
+  }
+  .vars-row .input-group input {
+    width: 100%;
+    min-width: 0;
+  }
+  .vars-row input:focus-visible {
+    outline: none;
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .vars-row .vars-secret {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    white-space: nowrap;
+  }
+  .vars-row .vars-hint {
+    grid-column: 1 / -1;
+    color: var(--fg-3);
+    font-size: 11px;
+    margin-top: -2px;
+  }
+  .vars-row .vars-hint.bad {
+    color: var(--bad);
+  }
+  .vars-row .btn.sm {
+    justify-self: end;
+  }
+  .vars-row .field {
+    min-width: 0;
+  }
+  .vars-row-install {
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 2fr) minmax(120px, 1.4fr) auto;
+  }
+  .vars-row-install [data-vsource] {
+    font-size: 12px;
+  }
+  .vars-row [data-vreset] {
+    white-space: normal;
+    height: auto;
+    min-height: var(--ctl-h);
+    max-width: 100%;
+  }
+  .vars-row .in-btn[hidden] {
+    display: none;
+  }
+  .vars-row .vars-hint {
+    overflow-wrap: anywhere;
+  }
+  .vars-row-x {
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 1.4fr) auto;
+  }
+  .vars-row-x .vars-hint {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 720px) {
+    .vars-row,
+    .vars-row-x,
+    .vars-row-install {
+      grid-template-columns: 1fr 1fr;
+    }
+    .vars-row .vars-hint,
+    .vars-row-x .vars-hint {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 480px) {
+    .vars-row,
+    .vars-row-x,
+    .vars-row-install {
+      grid-template-columns: 1fr;
+    }
+    .vars-row .btn.sm {
+      justify-self: start;
+    }
   }
 
   /* ui/components/misc.css */
@@ -1420,6 +1535,30 @@
       transform: translateY(6px);
     }
   }
+  #update-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    z-index: 80;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 9px 12px 9px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--acc);
+    background: var(--surf);
+    color: var(--fg);
+    box-shadow: var(--sh-pop);
+    font-size: 12.5px;
+  }
+  #update-bar[hidden] {
+    display: none;
+  }
+  #update-bar .btn {
+    flex: none;
+  }
   .kv {
     display: flex;
     flex-direction: column;
@@ -1463,20 +1602,37 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
   }
   .modal-box h2 {
     font-size: 16px;
+    flex: none;
+  }
+  .modal-box.modal-wide {
+    max-width: min(1100px, 96vw);
+  }
+  .profile-editor textarea {
+    min-height: 260px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow: auto;
+    overflow-wrap: normal;
+    resize: vertical;
   }
   .modal-box .modal-body {
     color: var(--fg-2);
     font-size: 13px;
     line-height: 1.55;
+    overflow-y: auto;
+    min-height: 0;
   }
   .modal-box .modal-foot {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
     flex-wrap: wrap;
+    flex: none;
   }
   .modal-box .d {
     font-family: var(--mono);
@@ -1639,6 +1795,131 @@
       margin-left: 0;
       width: 100%;
     }
+  }
+
+  /* ui/components/feed.css */
+  .feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+  }
+  .feed-item {
+    display: flex;
+    gap: 11px;
+    padding: 11px var(--pad);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .feed-item:last-child {
+    border-bottom: 0;
+  }
+  .feed-item:hover {
+    background: var(--surf-2);
+  }
+  .feed-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex: none;
+    background: var(--fg-3);
+  }
+  .feed-dot.ok {
+    background: var(--ok);
+  }
+  .feed-dot.warn {
+    background: var(--warn);
+  }
+  .feed-dot.bad {
+    background: var(--bad);
+  }
+  .feed-dot.info {
+    background: var(--acc);
+  }
+  .feed-body {
+    min-width: 0;
+    flex: 1;
+  }
+  .feed-head {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .feed-kind {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .feed-time {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-family: var(--mono);
+    flex: none;
+  }
+  .feed-detail {
+    font-size: 12px;
+    color: var(--fg-2);
+    margin-top: 2px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .feed-detail code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--fg);
+  }
+  .feed {
+    position: relative;
+  }
+  .feed-day {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px var(--pad) 8px 44px;
+    background:
+      linear-gradient(
+        180deg,
+        var(--surf) 62%,
+        transparent);
+    font-size: 10.5px;
+    font-weight: 640;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .feed-day span {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: var(--surf-2);
+    border: 1px solid var(--line-2);
+  }
+  .feed-item {
+    position: relative;
+    padding-left: 44px;
+  }
+  .feed-item::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  .feed-item:last-child::before {
+    bottom: 50%;
+  }
+  .feed-dot {
+    position: absolute;
+    left: 17px;
+    top: 15px;
+    margin: 0;
+    z-index: 1;
+    box-shadow: 0 0 0 3px var(--surf);
+  }
+  .feed-item:hover .feed-dot {
+    box-shadow: 0 0 0 3px var(--surf-2);
   }
 
   /* ui/pages/cabinet/page.css */
@@ -1816,6 +2097,211 @@
   #ops-note[hidden] {
     display: none;
   }
+  .op-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0;
+  }
+  .op-step {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 7px var(--pad);
+  }
+  .op-step + .op-step {
+    border-top: 1px solid var(--line-2);
+  }
+  .op-step-idx {
+    color: var(--fg-3);
+    font-size: 11px;
+  }
+  .op-step-name {
+    font-weight: 560;
+    overflow-wrap: anywhere;
+  }
+  .op-step-dur {
+    font-size: 11.5px;
+  }
+  .op-step-logwrap {
+    grid-column: 2 / -1;
+  }
+  .op-step-log {
+    margin-top: 4px;
+  }
+  .op-step-log summary {
+    cursor: pointer;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .op-step-log[open] summary {
+    color: var(--fg-2);
+  }
+  .op-steps-empty {
+    padding: 12px var(--pad);
+  }
+  .op-steps-row > td {
+    padding: 0;
+    background: var(--surf-2);
+  }
+  .nd-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: var(--pad);
+  }
+  .nd-ip-lead {
+    font-size: 13.5px;
+    color: var(--fg-2);
+  }
+  .nd-ip-lead .mono {
+    color: var(--fg);
+  }
+  .nd-ip {
+    color: var(--fg-3);
+    font-size: 12.5px;
+    margin-top: 4px;
+  }
+  .nd-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    max-width: 100%;
+  }
+  .nd-reason {
+    flex-basis: 100%;
+    color: var(--bad);
+    font-size: 12.5px;
+  }
+  .nd-grid {
+    display: grid;
+    gap: 10px 18px;
+    padding: var(--pad);
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .chart-cap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 14px 0 7px;
+    font-size: 11.5px;
+    color: var(--fg-3);
+  }
+  .chart-cap:first-child {
+    margin-top: 0;
+  }
+  .chart-cap .hint {
+    margin-left: auto;
+  }
+  .day-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 64px;
+  }
+  .day-bar {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+  .day-bar-track {
+    width: 100%;
+    height: 48px;
+    border-radius: var(--r-xs);
+    background: var(--surf-3);
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+  .day-bar-fill {
+    width: 100%;
+    background: var(--fg-3);
+    border-radius: var(--r-xs);
+  }
+  .day-bar-fill.ok {
+    background: var(--ok);
+  }
+  .day-bar-fill.warn {
+    background: var(--warn);
+  }
+  .day-bar-fill.bad {
+    background: var(--bad);
+  }
+  .day-bar > span {
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .srv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .srv-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    background: var(--track);
+    box-shadow: inset 0 1px 2px var(--track-in);
+  }
+  .seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+    padding: 6px 13px;
+    border-radius: var(--r-sm);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 520;
+    white-space: nowrap;
+    transition: color .15s, background .15s;
+  }
+  .seg button:hover {
+    color: var(--fg);
+  }
+  .seg button.active {
+    color: var(--fg);
+    font-weight: 600;
+    background: var(--thumb);
+    box-shadow: 0 1px 2px rgba(16, 23, 37, .1), inset 0 1px 0 var(--thumb-hi);
+  }
+  #sv-key-file {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--fg-2);
+  }
+  #sv-key {
+    min-height: 120px;
+  }
+  .srv .node-side {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .srv .srv-more {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+  }
+  .srv-out {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 160px;
+    overflow: auto;
+    margin: 6px 0 0;
+  }
   @media (max-width: 640px) {
     .wiz-foot {
       flex-direction: column-reverse;
@@ -1827,8 +2313,15 @@
       padding-left: 12px;
       padding-right: 12px;
     }
+    .srv .node-side {
+      justify-content: flex-start;
+    }
+  }
+  [hidden] {
+    display: none;
   }
 </style>
+  <meta name="sharedd-build" content="510d42d139bad5ed">
 </head>
 <body>
 
@@ -1845,8 +2338,9 @@
       </div>
       <div class="navwrap"><nav class="nav">
         <a href="#/nodes" data-view="nodes">Мои ноды</a>
-        <a href="#/create" data-view="create">Создать сервер</a>
-        <a href="#/beget" data-view="beget">Beget</a>
+        <a href="#/servers" data-view="servers">Серверы</a>
+        <a href="#/profiles" data-view="profiles">Мои профили</a>
+        <a href="#/beget" data-view="beget">Хостинги</a>
         <a href="#/operations" data-view="operations">Операции</a>
       </nav></div>
       <div class="topbar-right">
@@ -1890,6 +2384,14 @@
       </section>
     </section>
 
+    <!-- ═══ Нода (детальная карточка, #/nodes/<id>) ═════════════════ -->
+    <section class="view" id="view-node" hidden>
+      <div style="margin-bottom:12px">
+        <a class="btn ghost sm" href="#/nodes">← К нодам</a>
+      </div>
+      <div id="node-detail"><div class="skeleton skel-block"></div></div>
+    </section>
+
     <!-- ═══ Создать сервер ══════════════════════════════════════════ -->
     <section class="view" id="view-create" hidden>
       <section class="card">
@@ -1903,6 +2405,85 @@
       </section>
     </section>
 
+    <!-- ═══ Серверы (свои хосты + созданные у провайдера) ═══════════ -->
+    <section class="view" id="view-servers" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Серверы</h2>
+          <span class="hint">свои хосты и серверы провайдера</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="servers-reload">Обновить</button>
+          <button class="btn primary sm" id="srv-add" aria-controls="server-form" aria-expanded="false">Добавить сервер</button>
+        </div>
+        <form class="card-body" id="server-form" novalidate hidden>
+          <div class="srv-grid">
+            <div class="field">
+              <label for="sv-label">Название</label>
+              <input type="text" id="sv-label" maxlength="64" autocomplete="off" placeholder="Например, my-vps-1" required>
+            </div>
+            <div class="field">
+              <label for="sv-host">IP-адрес</label>
+              <input type="text" id="sv-host" class="mono" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="203.0.113.10" required>
+              <span class="help">Публичный IPv4. Приватные, локальные адреса и IP регистратора не принимаются.</span>
+            </div>
+            <div class="field">
+              <label for="sv-port">Порт SSH</label>
+              <input type="number" id="sv-port" min="1" max="65535" placeholder="22" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="sv-user">Пользователь SSH</label>
+              <input type="text" id="sv-user" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="root">
+              <span class="help">По умолчанию root.</span>
+            </div>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label>Способ входа</label>
+            <div class="seg" id="sv-authtype" role="radiogroup" aria-label="Способ входа">
+              <button type="button" role="radio" data-authtype="password" class="active" aria-checked="true" tabindex="0">Пароль</button>
+              <button type="button" role="radio" data-authtype="key" aria-checked="false" tabindex="-1">Приватный ключ</button>
+            </div>
+          </div>
+          <div class="field" id="sv-pass-wrap" style="margin-top:12px">
+            <label for="sv-pass">Пароль</label>
+            <div class="input-group">
+              <input type="password" id="sv-pass" autocomplete="new-password">
+              <button type="button" class="in-btn" data-reveal="sv-pass" aria-label="Показать пароль" title="Показать пароль">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="help">Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="field" id="sv-key-wrap" style="margin-top:12px" hidden>
+            <label for="sv-key">Приватный ключ</label>
+            <textarea id="sv-key" class="mono" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+            <input type="file" id="sv-key-file" accept=".pem,.key,.txt,.openssh,application/x-pem-file,application/octet-stream" aria-label="Загрузить файл ключа">
+            <span class="help">Вставьте OpenSSH/PEM-ключ (≤ 16 КиБ) или выберите файл. Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="banner bad" id="sv-err" role="alert" hidden style="margin:12px 0 0"></div>
+          <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="button" class="btn ghost" id="sv-cancel">Отмена</button>
+            <button type="submit" class="btn primary" id="sv-submit">Подключить сервер</button>
+          </div>
+        </form>
+        <div id="servers-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-note" id="servers-note">Подключение и установка выполняются на ваш существующий сервер по SSH. Новый сервер не создаётся и не оплачивается. «Повторить установку» использует тот же хост и ту же ноду — второй сервер не появляется. Нужен новый сервер у провайдера? <a href="#/create">Создать сервер</a> — платный заказ у хостинга.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Мои профили ═════════════════════════════════════════════ -->
+    <section class="view" id="view-profiles" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Мои профили</h2>
+          <span class="hint" id="profiles-hint" style="margin-left:0">локальные профили · видны только вам</span>
+          <button class="btn primary" style="margin-left:auto" id="profiles-create">Создать профиль</button>
+        </div>
+        <div id="profiles-disabled" hidden></div>
+        <div class="node-list" id="profiles-body"></div>
+        <div class="node-list" id="profiles-published" hidden></div>
+        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Правка шагов создаёт новую версию — история не перезаписывается. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
+      </section>
+    </section>
+
     <!-- ═══ Beget ═══════════════════════════════════════════════════ -->
     <section class="view" id="view-beget" hidden>
       <section class="card">
@@ -1912,6 +2493,7 @@
           <button class="btn ghost sm" style="margin-left:auto" id="beget-reload">Обновить</button>
         </div>
         <div class="card-body" id="beget-status"><div class="skeleton skel-line"></div></div>
+        <div class="card-body" id="beget-ratelimit" role="alert" hidden></div>
         <form class="card-body" id="beget-form" novalidate>
           <div class="field">
             <label for="bg-login">Логин Beget</label>
@@ -1927,10 +2509,16 @@
             </div>
             <span class="help">Пароль не отображается и не сохраняется в открытом виде. Регистратор добавит SSH-ключ для установки.</span>
           </div>
+          <div class="field">
+            <label for="bg-code">Код (2FA)</label>
+            <input type="text" id="bg-code" class="mono" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false">
+            <span class="help">Необязательно: код подтверждения, если Beget его запросил.</span>
+          </div>
           <div class="card-foot" style="margin:0 calc(var(--pad) * -1) calc(var(--pad) * -1);">
             <button type="submit" class="btn primary" id="beget-submit">Подключить</button>
           </div>
         </form>
+        <div class="card-note">Сейчас поддерживается только <b>Beget</b>. Подключение других хостингов появится позже — раздел уже назван «Хостинги».</div>
       </section>
     </section>
 
@@ -1957,8 +2545,9 @@
 
 <nav class="mobile-nav glass">
   <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Ноды</span></a>
-  <a href="#/create" data-view="create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Создать</span></a>
-  <a href="#/beget" data-view="beget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Beget</span></a>
+  <a href="#/servers" data-view="servers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7" y2="7.5"/><line x1="7" y1="16.5" x2="7" y2="16.5"/></svg><span>Серверы</span></a>
+  <a href="#/profiles" data-view="profiles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Профили</span></a>
+  <a href="#/beget" data-view="beget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Хостинги</span></a>
   <a href="#/operations" data-view="operations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Операции</span></a>
 </nav>
 
@@ -1977,8 +2566,111 @@
   // ui/lib/dom.ts
   var $ = (id) => document.getElementById(id);
   var esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  var icon = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  function modalOpen() {
+    const m = document.getElementById("modal");
+    return !!m && m.classList.contains("show");
+  }
+  function stableSelector(el) {
+    if (!(el instanceof HTMLElement)) return "";
+    if (el.id) return "#" + CSS.escape(el.id);
+    for (const a of Array.from(el.attributes)) {
+      if (a.name.startsWith("data-")) return `[${a.name}="${CSS.escape(a.value)}"]`;
+    }
+    return "";
+  }
+  function renderSection(section, poll, render2) {
+    var _a;
+    if (poll && (modalOpen() || section != null && section.contains(document.activeElement))) return false;
+    const scrollY = window.scrollY;
+    const focus = stableSelector(document.activeElement);
+    render2();
+    if (focus) {
+      try {
+        (_a = document.querySelector(focus)) == null ? void 0 : _a.focus({ preventScroll: true });
+      } catch {
+      }
+    }
+    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+    return true;
+  }
+
+  // ui/lib/update.ts
+  var MARKER_RE = /<meta\s+name="sharedd-build"\s+content="([^"]+)"/;
+  var SCROLL_KEY = "sharedd.restore-scroll";
+  var CHECK_MS = 6e4;
+  function loadedMarker() {
+    var _a;
+    return ((_a = document.querySelector('meta[name="sharedd-build"]')) == null ? void 0 : _a.content) || "";
+  }
+  async function checkForUpdate() {
+    const mine = loadedMarker();
+    if (!mine) return;
+    let html;
+    try {
+      const resp = await fetch(location.pathname + location.search, { cache: "no-store" });
+      if (!resp.ok) return;
+      html = await resp.text();
+    } catch {
+      return;
+    }
+    const m = MARKER_RE.exec(html);
+    if (!m || m[1] === mine) return;
+    const bar = document.getElementById("update-bar");
+    if (bar) bar.hidden = false;
+  }
+  function reloadPreservingView() {
+    try {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    } catch {
+    }
+    location.reload();
+  }
+  function initBuildWatch() {
+    var _a;
+    const bar = document.createElement("div");
+    bar.id = "update-bar";
+    bar.hidden = true;
+    bar.setAttribute("role", "status");
+    bar.innerHTML = `<span>Доступно обновление интерфейса —</span><button type="button" class="btn sm primary" id="update-reload">Обновить</button>`;
+    document.body.appendChild(bar);
+    (_a = document.getElementById("update-reload")) == null ? void 0 : _a.addEventListener("click", reloadPreservingView);
+    let saved = null;
+    try {
+      saved = sessionStorage.getItem(SCROLL_KEY);
+    } catch {
+    }
+    if (saved !== null) {
+      try {
+        sessionStorage.removeItem(SCROLL_KEY);
+      } catch {
+      }
+      const y = Number(saved);
+      if (Number.isFinite(y)) requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+    window.addEventListener("focus", () => {
+      checkForUpdate().catch(() => {
+      });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkForUpdate().catch(() => {
+      });
+    });
+    setInterval(() => {
+      if (!document.hidden) checkForUpdate().catch(() => {
+      });
+    }, CHECK_MS);
+  }
 
   // ui/lib/format.ts
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    if (d > 0) return `${d}д ${h}ч`;
+    if (h > 0) return `${h}ч ${m}м`;
+    if (m > 0) return `${m}м ${s}с`;
+    return `${s}с`;
+  }
   function fmtAgo(iso) {
     if (!iso) return "—";
     const sec = (Date.now() - new Date(iso).getTime()) / 1e3;
@@ -2025,6 +2717,261 @@
     });
   }
 
+  // ui/lib/vars.ts
+  var STANDARD = ["proxy_port", "proxy_sni", "proxy_secret", "ad_tag"];
+  var PROTECTED = ["node_id", "node_secret", "registry_url"];
+  var PROFILE_VARS_HELP = "{{ var }} подставляется в шаги на сервере (значение shell-квотится). Для proxy_port, proxy_sni и proxy_secret: значение установки → непустое значение профиля → регистратор. ad_tag — отдельная переменная без автоматического значения. Системные переменные не переопределяются. Серверная проверка — авторитетна.";
+  var PORT_WARNING = "Порт установки должен совпадать с [shared_proxy].port регистратора. Изменение здесь не меняет настройки регистратора или допуск ноды к мастерству.";
+  function isSecretVar(v) {
+    return !!v.secret || ["proxy_secret", "authkey", "password", "node_secret"].includes(v.name.trim());
+  }
+  var NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  function varNameHint(name) {
+    const n = name.trim();
+    if (!n) return "укажите имя переменной";
+    if (!NAME_RE.test(n)) return "имя: латиница/цифры/_, первый символ — буква или _";
+    if (PROTECTED.includes(n)) return "системная переменная — переопределение запрещено";
+    return null;
+  }
+  function parseVarsSchema(raw) {
+    if (!raw) return [];
+    try {
+      const o = JSON.parse(raw);
+      if (!Array.isArray(o.vars)) return [];
+      return o.vars.map((v) => {
+        var _a;
+        const r = v != null ? v : {};
+        return {
+          name: String((_a = r.name) != null ? _a : ""),
+          default: r.default == null ? "" : String(r.default),
+          description: r.description == null ? "" : String(r.description),
+          secret: !!r.secret
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+  function serializeVarsSchema(rows) {
+    const vars = rows.map((r) => {
+      var _a, _b;
+      return { name: r.name.trim(), def: (_a = r.default) != null ? _a : "", desc: ((_b = r.description) != null ? _b : "").trim(), secret: !!r.secret };
+    }).filter((r) => r.name !== "").map((r) => {
+      const o = { name: r.name };
+      if (r.def) o.default = r.def;
+      if (r.desc) o.description = r.desc;
+      if (r.secret) o.secret = true;
+      return o;
+    });
+    return vars.length ? JSON.stringify({ vars }) : "";
+  }
+  var EYE = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  var editorId = 0;
+  var profileBaselines = /* @__PURE__ */ new WeakMap();
+  function editorRows(rows) {
+    const existing = rows.map((r, order) => ({ ...r, order }));
+    return [
+      ...STANDARD.map((name) => {
+        var _a;
+        return (_a = existing.find((r) => r.name === name)) != null ? _a : { name, synthetic: true };
+      }),
+      ...existing.filter((r) => !STANDARD.includes(r.name))
+    ];
+  }
+  function renderVarsEditor(root, rows, opts = {}) {
+    var _a;
+    profileBaselines.delete(root);
+    const id = `vars-${++editorId}`;
+    const seeded = editorRows(rows);
+    let state = opts.snapshot ? [...seeded.map((v) => {
+      const saved = opts.snapshot.find((r) => r.name === v.name);
+      return saved ? { ...v, default: saved.default, override: saved.override } : v;
+    }), ...opts.snapshot.filter((r) => !seeded.some((v) => v.name === r.name))] : seeded;
+    let defaults;
+    let defaultsStatus = "Загрузка значений регистратора…";
+    const inheritance = (name) => {
+      const d = rows.find((r) => r.name === name && r.default !== void 0 && r.default !== "");
+      if (d) return { value: d.default, source: "Из профиля", placeholder: "Из профиля" };
+      if (!STANDARD.slice(0, 3).includes(name)) return { value: "", source: "Без значения по умолчанию", placeholder: "Не задано" };
+      const value = defaults ? name === "proxy_port" ? String(defaults.proxy_port) : name === "proxy_sni" ? defaults.proxy_sni : "" : "";
+      return { value, source: "Из регистратора", placeholder: !defaults ? "Значение регистратора недоступно в интерфейсе; применяется сервером" : name === "proxy_secret" ? defaults.proxy_secret_configured ? "Задаётся регистратором" : "Секрет регистратора не задан" : "Не задано регистратором" };
+    };
+    const fixed = (v) => STANDARD.includes(v.name) || !!opts.install && rows.some((r) => r.name === v.name);
+    const read = () => Array.from(root.querySelectorAll("[data-vrow]")).map((row, i) => {
+      var _a2, _b, _c, _d;
+      return {
+        ...state[i],
+        name: row.querySelector("[data-vname]").value,
+        default: row.querySelector("[data-vdefault]").value,
+        description: (_b = (_a2 = row.querySelector("[data-vdesc]")) == null ? void 0 : _a2.value) != null ? _b : state[i].description,
+        secret: (_d = (_c = row.querySelector("[data-vsecret]")) == null ? void 0 : _c.checked) != null ? _d : state[i].secret,
+        override: row.dataset.override === "true"
+      };
+    });
+    const notify = () => {
+      var _a2;
+      state = read();
+      (_a2 = opts.onChange) == null ? void 0 : _a2.call(opts, state, collectInstallVars(root));
+    };
+    const paint = () => {
+      root.innerHTML = `<div class="vars-rows">${state.map((v, i) => {
+        var _a2, _b, _c, _d;
+        const key = `${id}-${i}`;
+        const protectedKey = PROTECTED.includes(v.name.trim());
+        const secret = isSecretVar(v);
+        const inherited = inheritance(v.name);
+        const value = protectedKey ? "" : opts.install && fixed(v) && !v.override ? inherited.value : (_a2 = v.default) != null ? _a2 : "";
+        const hint = v.name ? varNameHint(v.name) : null;
+        const label = opts.install ? "Значение для этой установки" : "Значение по умолчанию профиля";
+        return `<div class="vars-row${opts.install ? " vars-row-install" : ""}" data-vrow data-synthetic="${!!v.synthetic}" data-order="${(_b = v.order) != null ? _b : rows.length + i}" data-override="${!!v.override}" data-fixed="${fixed(v)}">
+        <div class="field"><label for="${key}-name">Имя переменной</label><input id="${key}-name" class="mono" data-vname autocomplete="off" spellcheck="false" value="${esc(v.name)}"${fixed(v) || protectedKey ? " readonly" : ""} aria-describedby="${key}-hint"></div>
+        <div class="field"><label for="${key}-value">${label}</label><div class="input-group">
+          <input id="${key}-value" type="${secret ? "password" : "text"}" data-vdefault autocomplete="off" spellcheck="false" value="${esc(value)}" placeholder="${esc(opts.install ? inherited.placeholder : "Пусто — наследовать")}" aria-describedby="${key}-hint ${key}-help"${protectedKey ? " disabled" : ""}>
+          <button type="button" class="in-btn" data-vreveal aria-label="Показать значение ${esc(v.name)}" aria-pressed="false"${secret && !protectedKey ? "" : " hidden"}>${icon(EYE)}</button></div></div>
+        ${opts.install ? `<div class="field"><span data-vsource>${v.override ? "Для этой установки" : inherited.source}</span><button type="button" class="btn sm ghost" data-vreset${v.override ? "" : " disabled"} aria-label="Сбросить переопределение ${esc(v.name)}">Сбросить переопределение</button></div>` : `<div class="field"><label for="${key}-desc">Описание</label><input id="${key}-desc" data-vdesc value="${protectedKey ? "" : esc((_c = v.description) != null ? _c : "")}" autocomplete="off"${protectedKey ? " disabled" : ""}></div><label class="check vars-secret"><input type="checkbox" data-vsecret${v.secret ? " checked" : ""}${protectedKey ? " disabled" : ""}><span class="box"></span>секрет</label>`}
+        ${fixed(v) ? "" : `<button type="button" class="btn sm ghost" data-vremove aria-label="Удалить переменную ${esc(v.name)}">×</button>`}
+        <span id="${key}-hint" class="vars-hint${hint ? " bad" : ""}" data-vhint aria-live="polite">${hint ? esc(hint) : ""}</span>
+        <span id="${key}-help" class="vars-hint">${v.name === "proxy_port" ? PORT_WARNING : opts.install ? esc((_d = v.description) != null ? _d : "") : ""}</span>
+      </div>`;
+      }).join("")}</div><button type="button" class="btn sm" data-vars-add>Добавить переменную</button>
+      ${opts.install ? `<div class="help" data-defaults-status aria-live="polite">${esc(defaultsStatus)}</div>` : ""}
+      <div class="note"><b>Системные переменные · только чтение</b><br><span class="mono">node_id</span> — Выдаётся сервером<br><span class="mono">node_secret</span> — Выдаётся сервером; значение недоступно<br><span class="mono">registry_url</span> — Задаётся регистратором</div>`;
+      validateVarsEditor(root, false);
+    };
+    root.onclick = (e) => {
+      var _a2, _b, _c, _d, _e;
+      const t = e.target;
+      if (t.closest("[data-vars-add]")) {
+        state = [...read(), { name: "", override: true }];
+        paint();
+        (_a2 = root.querySelector("[data-vrow]:last-child [data-vname]")) == null ? void 0 : _a2.focus();
+        notify();
+        return;
+      }
+      const row = t.closest("[data-vrow]");
+      if (!row) return;
+      const inp = row.querySelector("[data-vdefault]");
+      const rev = t.closest("[data-vreveal]");
+      if (rev) {
+        inp.type = inp.type === "password" ? "text" : "password";
+        rev.setAttribute("aria-pressed", String(inp.type === "text"));
+        rev.setAttribute("aria-label", `${inp.type === "text" ? "Скрыть" : "Показать"} значение ${row.querySelector("[data-vname]").value}`);
+        return;
+      }
+      if (t.closest("[data-vreset]")) {
+        row.dataset.override = "false";
+        inp.value = row.dataset.fixed === "true" ? inheritance(row.querySelector("[data-vname]").value).value : "";
+        inp.type = isSecretVar(read()[Array.from(root.querySelectorAll("[data-vrow]")).indexOf(row)]) ? "password" : "text";
+        (_b = row.querySelector("[data-vreveal]")) == null ? void 0 : _b.setAttribute("aria-pressed", "false");
+        (_c = row.querySelector("[data-vreveal]")) == null ? void 0 : _c.setAttribute("aria-label", `Показать значение ${row.querySelector("[data-vname]").value}`);
+        row.querySelector("[data-vsource]").textContent = inheritance(row.querySelector("[data-vname]").value).source;
+        row.querySelector("[data-vreset]").disabled = true;
+        inp.focus();
+        validateVarsEditor(root, false);
+        notify();
+        return;
+      }
+      if (t.closest("[data-vremove]")) {
+        const idx = Array.from(root.querySelectorAll("[data-vrow]")).indexOf(row);
+        state = read().filter((_, i) => i !== idx);
+        paint();
+        (_e = (_d = root.querySelectorAll("[data-vname]")[Math.max(0, idx - 1)]) != null ? _d : root.querySelector("[data-vars-add]")) == null ? void 0 : _e.focus();
+        notify();
+      }
+    };
+    root.oninput = (e) => {
+      var _a2;
+      const inp = e.target;
+      const row = inp.closest("[data-vrow]");
+      if (!row) return;
+      if (opts.install) {
+        row.dataset.override = "true";
+        row.querySelector("[data-vsource]").textContent = "Для этой установки";
+        row.querySelector("[data-vreset]").disabled = false;
+      }
+      if (inp.matches("[data-vname], [data-vsecret]")) {
+        const value = row.querySelector("[data-vdefault]");
+        const secret = isSecretVar({ name: row.querySelector("[data-vname]").value, secret: (_a2 = row.querySelector("[data-vsecret]")) == null ? void 0 : _a2.checked });
+        const protectedKey = PROTECTED.includes(row.querySelector("[data-vname]").value.trim());
+        value.disabled = protectedKey;
+        if (protectedKey) value.value = "";
+        value.type = secret ? "password" : "text";
+        const reveal = row.querySelector("[data-vreveal]");
+        reveal.hidden = !secret || protectedKey;
+        reveal.setAttribute("aria-pressed", "false");
+        reveal.setAttribute("aria-label", `Показать значение ${row.querySelector("[data-vname]").value}`);
+      }
+      validateVarsEditor(root, false);
+      notify();
+    };
+    root.dataset.install = String(!!opts.install);
+    paint();
+    if (!opts.install) profileBaselines.set(root, { rows, displayed: serializeVarsSchema(collectVarsEditor(root)) });
+    if (opts.install) (_a = opts.defaults) == null ? void 0 : _a.then((d) => {
+      defaults = d;
+      root.querySelectorAll("[data-vrow]").forEach((row) => {
+        const n = row.querySelector("[data-vname]").value.trim();
+        const inp = row.querySelector("[data-vdefault]");
+        const inherited = inheritance(n);
+        inp.placeholder = inherited.placeholder;
+        if (row.dataset.fixed === "true" && row.dataset.override !== "true" && !PROTECTED.includes(n)) inp.value = inherited.value;
+      });
+      defaultsStatus = "Значения регистратора получены; при запуске используются актуальные настройки.";
+      root.querySelector("[data-defaults-status]").textContent = defaultsStatus;
+    }).catch((e) => {
+      defaultsStatus = `Значения регистратора недоступны: ${e.message}. Наследование применяется сервером.`;
+      root.querySelector("[data-defaults-status]").textContent = defaultsStatus;
+    });
+  }
+  function collectVarsEditor(root) {
+    const rows = Array.from(root.querySelectorAll("[data-vrow]")).map((row) => {
+      var _a, _b, _c, _d;
+      return {
+        name: row.querySelector("[data-vname]").value,
+        default: row.querySelector("[data-vdefault]").value,
+        description: (_b = (_a = row.querySelector("[data-vdesc]")) == null ? void 0 : _a.value) != null ? _b : "",
+        secret: (_d = (_c = row.querySelector("[data-vsecret]")) == null ? void 0 : _c.checked) != null ? _d : false,
+        synthetic: row.dataset.synthetic === "true",
+        order: Number(row.dataset.order)
+      };
+    }).filter((r) => !r.synthetic || !!r.default || !!r.description || r.secret).sort((a, b) => a.order - b.order);
+    const baseline = profileBaselines.get(root);
+    return baseline && baseline.displayed === serializeVarsSchema(rows) ? baseline.rows : rows;
+  }
+  function collectInstallVars(root) {
+    return Object.fromEntries(Array.from(root.querySelectorAll('[data-vrow][data-override="true"]')).map((row) => [
+      row.querySelector("[data-vname]").value.trim(),
+      row.querySelector("[data-vdefault]").value
+    ]).filter(([name]) => !!name));
+  }
+  function validateVarsEditor(root, focus = true) {
+    let first;
+    let message = null;
+    const seen = /* @__PURE__ */ new Set();
+    root.querySelectorAll("[data-vrow]").forEach((row) => {
+      var _a;
+      const name = row.querySelector("[data-vname]");
+      const value = row.querySelector("[data-vdefault]");
+      const n = name.value.trim();
+      let hint = n ? varNameHint(n) : value.value ? "укажите имя переменной" : null;
+      if (!hint && n && seen.has(n)) hint = "имя переменной уже используется";
+      seen.add(n);
+      const checkValue = root.dataset.install === "true" ? row.dataset.override === "true" : value.value !== "";
+      const valueHint = checkValue && n === "proxy_port" && (!/^\d+$/.test(value.value) || Number(value.value) < 1 || Number(value.value) > 65535) ? "Порт: целое число от 1 до 65535, без пробелов." : checkValue && n === "proxy_sni" && !value.value ? "Укажите SNI или сбросьте переопределение." : null;
+      name.setAttribute("aria-invalid", String(!!hint));
+      value.setAttribute("aria-invalid", String(!!valueHint));
+      const box = row.querySelector("[data-vhint]");
+      box.textContent = (_a = hint != null ? hint : valueHint) != null ? _a : "";
+      box.classList.toggle("bad", !!(hint || valueHint));
+      if (!message && (hint || valueHint)) {
+        first = hint ? name : value;
+        message = hint != null ? hint : valueHint;
+      }
+    });
+    if (focus) first == null ? void 0 : first.focus();
+    return message;
+  }
+
   // ui/pages/cabinet/api.ts
   var redirecting = false;
   function gotoSignin() {
@@ -2033,13 +2980,23 @@
     location.replace("/signin");
   }
   function csrf() {
-    const m = document.cookie.match(/(?:^|;\s*)sharedd_csrf=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
+    const m = document.cookie.match(/(?:^|;\s*)__Host-sharedd_csrf=([^;]+)/);
+    return m ? decodeURIComponent(m[1]).trim() : "";
+  }
+  function csrfError() {
+    const e = new Error("Сессия устарела или истекла. Войдите заново.");
+    e.code = "csrf_invalid";
+    e.status = 403;
+    return e;
   }
   async function req(path, method = "GET", body) {
     const headers = {};
     if (body !== void 0) headers["Content-Type"] = "application/json";
-    if (method !== "GET" && method !== "HEAD") headers["X-CSRF-Token"] = csrf();
+    if (method !== "GET" && method !== "HEAD") {
+      const token = csrf();
+      if (!token) throw csrfError();
+      headers["X-CSRF-Token"] = token;
+    }
     const resp = await fetch(path, {
       method,
       headers,
@@ -2053,24 +3010,47 @@
     if (resp.status === 204) return void 0;
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      const err = new Error(data.message || data.error || "HTTP " + resp.status);
+      if (data.error === "csrf_invalid") throw csrfError();
+      const fallback = data.error === "control_unavailable" ? "Хранилище пользователей недоступно — обратитесь к администратору для проверки журнала регистратора" : void 0;
+      const err = new Error(data.message || fallback || data.error || "HTTP " + resp.status);
       err.code = data.error;
       err.status = resp.status;
+      err.reason = data.reason;
       throw err;
     }
     return resp.json();
   }
   var api = {
     me: () => req("/api/me"),
+    installDefaults: () => req("/api/me/install-defaults"),
     nodes: () => req("/api/me/nodes"),
     authkey: () => req("/api/me/authkey"),
-    profiles: () => req("/api/me/profiles"),
+    // Полный ключ — ОДИН раз; отзывает все прежние ключи пользователя.
+    rotateAuthkey: () => req("/api/me/authkey/rotate", "POST"),
+    revokeAuthkey: () => req("/api/me/authkey", "DELETE"),
+    servers: () => req("/api/me/servers"),
+    createServer: (body) => req("/api/me/servers", "POST", body),
+    checkServer: (id) => req(`/api/me/servers/${id}/check`, "POST"),
+    // Повтор установки — тот же сервер/нода (idem_key = manual-<id>), ноль
+    // провайдерских вызовов; нового сервера не создаётся.
+    installServer: (id, body) => req(`/api/me/servers/${id}/install`, "POST", body != null ? body : {}),
+    deleteServer: (id) => req(`/api/me/servers/${id}`, "DELETE"),
+    myProfiles: () => req("/api/me/profiles"),
+    createProfile: (body) => req("/api/me/profiles", "POST", body),
+    // Копия видимого профиля (опубликованного или своего) в свой черновик:
+    // «<имя> (моя копия)», лимит max_user_profiles; шаги/vars_schema — дословно.
+    copyProfile: (id) => req(`/api/me/profiles/${id}/copy`, "POST", {}),
+    updateProfile: (id, body) => req(`/api/me/profiles/${id}`, "PUT", body),
+    deleteProfile: (id) => req(`/api/me/profiles/${id}`, "DELETE"),
     begetLink: () => req("/api/me/beget/link"),
-    connectBeget: (login, password) => req("/api/me/beget/link", "PUT", { login, password }),
+    connectBeget: (login, password, code) => req("/api/me/beget/link", "PUT", { login, password, code: code || void 0 }),
     regions: () => req("/api/me/beget/regions"),
     createVps: (body) => req("/api/me/vps", "POST", body),
+    nodeDetail: (id) => req(`/api/me/nodes/${encodeURIComponent(id)}/detail`),
     operations: () => req("/api/me/operations"),
     cancelOperation: (id) => req(`/api/me/operations/${id}/cancel`, "POST"),
+    // Повтор установки на УЖЕ созданный VPS: backend не делает CreateVps.
+    retryInstall: (id, body) => req(`/api/me/operations/${id}/retry-install`, "POST", body != null ? body : {}),
     deleteNode: (id) => req(`/api/me/nodes/${encodeURIComponent(id)}`, "DELETE"),
     logout: () => req("/api/auth/logout", "POST")
   };
@@ -2081,13 +3061,381 @@
     return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   }
 
+  // ui/pages/cabinet/node-detail.ts
+  var EMPTY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
+  var STATUS_META = {
+    healthy: { label: "здорова", cls: "ok" },
+    unhealthy: { label: "нездорова", cls: "bad" },
+    quarantined: { label: "карантин Globalping", cls: "warn" },
+    deleting: { label: "удаляется", cls: "warn" },
+    offline: { label: "нет данных", cls: "" }
+  };
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+  };
+  var EV_LABEL = {
+    node_registered: { label: "Регистрация ноды", dot: "info" },
+    node_replaced: { label: "Нода вытеснена", dot: "warn" },
+    node_expired: { label: "Нода отвалилась", dot: "warn" },
+    node_pruned: { label: "Удалена (неактивна)", dot: "warn" },
+    tcp_down: { label: "TCP недоступен", dot: "bad" },
+    tcp_up: { label: "TCP восстановлен", dot: "ok" },
+    metrics_down: { label: "Метрики в отказе", dot: "bad" },
+    metrics_up: { label: "Метрики восстановлены", dot: "ok" },
+    globalping_blocked: { label: "Блокировка (GP)", dot: "bad" },
+    globalping_recovered: { label: "GP восстановлен", dot: "ok" },
+    queue_joined: { label: "В очереди мастеров", dot: "info" },
+    queue_left: { label: "Вышла из очереди", dot: "warn" },
+    master_elected: { label: "МАСТЕР ИЗБРАН", dot: "ok" },
+    master_lost: { label: "Мастер потерян", dot: "bad" },
+    dns_updated: { label: "DNS обновлён", dot: "info" },
+    dns_error: { label: "Ошибка DNS", dot: "bad" },
+    dns_deleted: { label: "DNS запись удалена", dot: "warn" },
+    node_quarantined: { label: "Карантин (GP)", dot: "warn" },
+    quarantine_recovered: { label: "Вышла из карантина", dot: "ok" },
+    node_terminated: { label: "Нода завершена (бан)", dot: "bad" },
+    ban_lifted: { label: "Бан снят (смена IP)", dot: "info" },
+    ip_blocked: { label: "IP заблокирован", dot: "bad" }
+  };
+  var DETAIL_ID = "";
+  var DETAIL = null;
+  var DETAIL_ERR = null;
+  var DETAIL_RETRY = false;
+  function openNodeDetail(id) {
+    DETAIL_ID = id;
+    DETAIL = null;
+    DETAIL_ERR = null;
+    DETAIL_RETRY = false;
+    const el = $("node-detail");
+    if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
+    load(false);
+  }
+  function closeNodeDetail() {
+    DETAIL_ID = "";
+    DETAIL = null;
+    DETAIL_ERR = null;
+  }
+  function load(poll) {
+    if (!DETAIL_ID) return;
+    const id = DETAIL_ID;
+    api.nodeDetail(id).then((d) => {
+      if (id !== DETAIL_ID) return;
+      DETAIL = d;
+      DETAIL_ERR = null;
+      DETAIL_RETRY = false;
+      render(poll);
+    }).catch((e) => {
+      var _a;
+      if (id !== DETAIL_ID) return;
+      if (e.message === "unauthorized") return;
+      DETAIL_ERR = { msg: e.status === 404 ? "Нода не найдена или недоступна." : e.message, status: e.status };
+      DETAIL = null;
+      render(poll);
+      if (poll && e.status !== 404 && !DETAIL_RETRY && ((_a = e.status) != null ? _a : 0) >= 500) {
+        DETAIL_RETRY = true;
+        setTimeout(() => load(true), 2e3);
+      }
+    });
+  }
+  function pollNodeDetail() {
+    if (DETAIL_ID) load(true);
+  }
+  function render(poll) {
+    const el = $("node-detail");
+    if (!el) return;
+    renderSection(el, poll, () => {
+      if (DETAIL_ERR) {
+        el.innerHTML = `<div class="empty-state">${EMPTY_SVG}
+        <span class="t">Не удалось открыть ноду</span>
+        <span class="s">${esc(DETAIL_ERR.msg)}</span>
+        <a class="btn sm" href="#/nodes" style="margin-top:6px">← К нодам</a></div>`;
+        return;
+      }
+      if (!DETAIL) {
+        el.innerHTML = `<div class="skeleton skel-block"></div>`;
+        return;
+      }
+      el.innerHTML = detailHTML(DETAIL);
+    });
+  }
+  function fmtBytes(n) {
+    if (n === null || n === void 0) return "нет данных";
+    const u = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+    let v = n, i = 0;
+    while (v >= 1024 && i < u.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+  }
+  function fmtPct(n) {
+    return n === null || n === void 0 ? "—" : `${n.toFixed(1)}%`;
+  }
+  function nd(label) {
+    return `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v dim">нет данных</span></div>`;
+  }
+  function chip(ok, okText, badText) {
+    return ok ? `<span class="badge ok">${esc(okText)}</span>` : `<span class="badge bad">${esc(badText)}</span>`;
+  }
+  function spark(pts) {
+    if (pts.length < 2) return `<span class="dim">накапливается — пока мало точек</span>`;
+    const max = Math.max(...pts, 1);
+    const step = 100 / (pts.length - 1);
+    const d = pts.map((v, i) => `${(i * step).toFixed(1)},${(26 - 3 - v / max * 20).toFixed(1)}`).join(" ");
+    return `<svg class="metric-spark" viewBox="0 0 100 26" preserveAspectRatio="none">
+    <polyline points="${d}" fill="none" stroke="var(--acc)" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+  function detailHTML(d) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const n = d.node;
+    if (!n) {
+      return `<div class="empty-state">${EMPTY_SVG}<span class="t">Нода вне пула</span>
+      <span class="s">Параметры недоступны — нода не зарегистрирована в пуле.</span></div>`;
+    }
+    const meta = STATUS_META[n.status] || STATUS_META.offline;
+    const nt = n.node_type ? NODE_TYPE_META[n.node_type] : void 0;
+    const q = n.quarantine;
+    return `
+  <div class="card nd-head">
+    <div>
+      <div class="nd-ip-lead"><span class="mono">${esc(n.ip || "—")}${n.port ? ":" + n.port : ""}</span>
+        · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+      <div class="nd-ip">нода <span class="mono">${esc(n.node_id)}</span></div>
+    </div>
+    <div class="nd-chips">
+      <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
+      ${n.is_master ? `<span class="badge gold">★ мастер</span>` : ""}
+      ${nt ? `<span class="badge ${nt.cls}" title="${esc(nt.title)}">${esc(nt.label)}</span>` : ""}
+      ${q ? `<span class="badge warn"><i></i>карантин</span>` : ""}
+    </div>
+    ${n.unhealthy_reason ? `<div class="nd-reason">${esc(n.unhealthy_reason)}</div>` : ""}
+    <button class="btn danger sm" data-del="${esc(n.node_id)}" style="margin-left:auto">Удалить ноду</button>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Параметры</h2><span class="hint">${esc(n.node_id)}</span></div>
+    <div class="nd-grid">
+      <div class="kv"><span class="kv-k">IP</span><span class="kv-v mono">${esc(n.ip || "—")}</span></div>
+      <div class="kv"><span class="kv-k">Порт</span><span class="kv-v mono">${n.port || "—"}</span></div>
+      <div class="kv"><span class="kv-k">Регион</span><span class="kv-v">${esc(n.region || "—")}</span></div>
+      <div class="kv"><span class="kv-k">Аптайм</span><span class="kv-v">${esc(fmtDur(n.uptime_sec))}</span></div>
+      <div class="kv"><span class="kv-k">Heartbeat</span><span class="kv-v">${esc(fmtDur(n.heartbeat_age_sec))} назад</span></div>
+      <div class="kv"><span class="kv-k">Отчёт</span><span class="kv-v">${n.report_age_sec < 0 ? "—" : esc(fmtDur(n.report_age_sec)) + " назад"}</span></div>
+      <div class="kv"><span class="kv-k">Роль</span><span class="kv-v">${n.is_master ? "мастер" : n.queue_position > 0 ? `очередь #${n.queue_position}` : "вне очереди"}</span></div>
+      <div class="kv"><span class="kv-k">Домены</span><span class="kv-v mono">${esc((n.master.domains || []).join(", ") || "—")}</span></div>
+      <div class="kv"><span class="kv-k">Слоты</span><span class="kv-v">${n.master.slots_filled} / ${n.master.slots_total}</span></div>
+      <div class="kv"><span class="kv-k">TTL мастерства</span><span class="kv-v">${n.master.ttl_remaining_sec != null ? esc(fmtDur(n.master.ttl_remaining_sec)) : "—"}</span></div>
+      <div class="kv"><span class="kv-k">Мастерство</span><span class="kv-v">${n.master.master_stints > 0 ? esc(fmtDur(n.master.master_time_sec)) + ` · ${n.master.master_stints} stint` : "—"}</span></div>
+      <div class="kv"><span class="kv-k">Quarantine</span><span class="kv-v">${q ? `${q.attempts} попыток · с ${esc(fmtClock(new Date(q.entered_at * 1e3).toISOString()))}` : "—"}</span></div>
+    </div>
+  </section>
+
+  ${availabilityHTML(d)}
+
+  <section class="card">
+    <div class="card-head"><h2>История IP</h2><span class="hint">по журналу событий</span></div>
+    ${d.ip_history && d.ip_history.length ? `<div class="table-wrap"><table class="table-cards">
+          <thead><tr><th>IP</th><th>Впервые</th><th>Последний раз</th><th class="num">Событий</th></tr></thead>
+          <tbody>${d.ip_history.map((r) => `<tr>
+            <td class="mono" data-label="IP">${esc(r.ip || "—")}</td>
+            <td class="mono" data-label="Впервые">${esc(fmtClock(r.first_seen))}</td>
+            <td class="mono" data-label="Последний раз">${esc(fmtClock(r.last_seen))}</td>
+            <td class="num" data-label="Событий">${fmtNum(r.events)}</td>
+          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.ip_history === null ? "нет данных" : "записей нет"}</div>`}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Последние проверки</h2><span class="hint">tcp · globalping · отчёт</span></div>
+    ${d.last_checks.length ? `<div class="table-wrap"><table class="table-cards">
+          <thead><tr><th>Время</th><th>Источник</th><th>Итог</th><th>Детали</th></tr></thead>
+          <tbody>${d.last_checks.map((c) => `<tr>
+            <td class="mono" data-label="Время">${esc(fmtClock(c.at))}</td>
+            <td data-label="Источник">${esc(sourceLabel(c.source))}</td>
+            <td data-label="Итог">${chip(c.ok, "ок", "провал")}</td>
+            <td class="wrap" data-label="Детали">${esc(c.detail || "—")}</td>
+          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">проверок пока нет</div>`}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Хостинг</h2><span class="hint">CPU / RAM / сеть</span></div>
+    <div class="nd-grid">
+      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : (_a = d.hosting) == null ? void 0 : _a.cpu_percent))}</span></div>
+      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : (_b = d.hosting) == null ? void 0 : _b.ram_percent))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes((_c = d.hosting) == null ? void 0 : _c.net_ingress_bytes_total))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes((_d = d.hosting) == null ? void 0 : _d.net_egress_bytes_total))}</span></div>
+    </div>
+  </section>
+
+  ${connectionsHTML(d)}
+
+  <section class="card">
+    <div class="card-head"><h2>Уникальные IP по пользователям</h2><span class="hint">из снимка telemt</span></div>
+    ${((_f = (_e = d.users) == null ? void 0 : _e.unique_ips_by_user) == null ? void 0 : _f.length) ? `<div class="table-wrap"><table class="table-cards">
+          <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th></tr></thead>
+          <tbody>${d.users.unique_ips_by_user.map((u) => `<tr>
+            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
+            <td class="num" data-label="Уникальных IP">${fmtNum(u.unique_ips)}</td>
+          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
+    <div class="card-head"><h2>Трафик по пользователям</h2><span class="hint">за 24 часа</span></div>
+    ${((_h = (_g = d.users) == null ? void 0 : _g.traffic_by_user) == null ? void 0 : _h.length) && !d.absent.includes("users.traffic_by_user") ? `<div class="table-wrap"><table class="table-cards">
+          <thead><tr><th>Пользователь</th><th class="num">Принято</th><th class="num">Отдано</th></tr></thead>
+          <tbody>${d.users.traffic_by_user.map((u) => `<tr>
+            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
+            <td class="num" data-label="Принято">${esc(fmtBytes(u.ingress_bytes))}</td>
+            <td class="num" data-label="Отдано">${esc(fmtBytes(u.egress_bytes))}</td>
+          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
+  </section>
+
+  ${telemtHTML(d)}
+
+  <section class="card">
+    <div class="card-head"><h2>DC и endpoints</h2></div>
+    <div class="nd-grid card-body">${nd("DC и endpoints")}</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Качество и здоровье</h2></div>
+    <div class="nd-grid card-body">${nd("Качество и здоровье")}</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>События ноды</h2><span class="hint">последние ${d.events.length}</span></div>
+    <ul class="feed" id="nd-events" style="max-height:none">
+      ${d.events.length ? d.events.map(eventRow).join("") : `<li class="empty-state"><span class="t">Событий пока нет</span></li>`}
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Действия</h2><span class="hint">проверка · конфиг · переустановка</span></div>
+    <div class="nd-grid card-body">${nd("Действия ноды")}</div>
+  </section>`;
+  }
+  function sourceLabel(s) {
+    switch (s) {
+      case "tcp":
+        return "TCP-проба";
+      case "globalping":
+        return "Globalping";
+      case "health_report":
+        return "Отчёт metrics";
+      default:
+        return s;
+    }
+  }
+  function availabilityHTML(d) {
+    const a = d.availability;
+    if (!a) {
+      return `<section class="card"><div class="card-head"><h2>Доступность</h2></div>
+      <div class="table-empty">нет данных</div></section>`;
+    }
+    const bars = a.daily.map((day) => {
+      const pct = Math.max(0, Math.min(100, day.ok_pct));
+      const cls = pct >= 99 ? "ok" : pct >= 95 ? "warn" : "bad";
+      const [, m, dd] = day.date.split("-");
+      const title = `${day.date}: ok ${day.ok_pct.toFixed(1)}% (tcp ${day.tcp_ok}/${day.tcp_total}, отчёты ${day.reports_ok}/${day.reports_total})`;
+      return `<div class="day-bar" title="${esc(title)}">
+      <div class="day-bar-track"><div class="day-bar-fill ${cls}" style="height:${pct}%"></div></div>
+      <span class="dim">${esc(dd)}.${esc(m)}</span></div>`;
+    }).join("");
+    const overallCls = availColor(a.overall_pct);
+    return `<section class="card">
+    <div class="card-head"><h2>Доступность</h2><span class="hint">окно ${a.window_days} дней</span></div>
+    <div class="card-body">
+      <div class="metrics" style="margin-bottom:14px">
+        <div class="card metric">
+          <div class="metric-label">Общая доступность</div>
+          <div class="metric-value ${overallCls}" style="font-size:24px">${a.overall_pct.toFixed(1)}%</div>
+          <div class="metric-foot">отчётов ok: ${a.reports_ok}/${a.reports_total}</div>
+        </div>
+        <div class="card metric">
+          <div class="metric-label">GP верификации</div>
+          <div class="metric-value ${availColor(a.gp_verified_pct)}" style="font-size:24px">${a.gp_verified_pct.toFixed(1)}%</div>
+          <div class="metric-foot">проверок: ${a.gp_checks_total}</div>
+        </div>
+      </div>
+      <div class="chart-cap">По дням <span class="hint">${a.daily.length} ${plural(a.daily.length, "день", "дня", "дней")}</span></div>
+      ${a.daily.length ? `<div class="day-bars">${bars}</div>` : `<span class="dim">пока нет точек за окно</span>`}
+    </div>
+  </section>`;
+  }
+  function availColor(p) {
+    return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
+  }
+  function connectionsHTML(d) {
+    const c = d.connections_24h;
+    if (!c) {
+      return `<section class="card"><div class="card-head"><h2>Соединения 24ч</h2></div>
+      <div class="table-empty">нет данных</div></section>`;
+    }
+    const series = c.series.map((p) => p.writers);
+    const kv = (label, v) => `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v === void 0 || v === null ? "нет данных" : fmtNum(v)}</span></div>`;
+    return `<section class="card">
+    <div class="card-head"><h2>Соединения 24ч</h2></div>
+    <div class="card-body">
+      <div class="nd-grid" style="padding:0;margin-bottom:12px">
+        ${kv("Писатели (сейчас)", c.current_writers)}
+        ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
+        ${kv("Соединения пользователей", c.current_user_connections)}
+      </div>
+      <div class="chart-cap">Writers по отчётам <span class="hint">${c.series.length} ${plural(c.series.length, "точка", "точки", "точек")}</span></div>
+      ${spark(series)}
+      ${c.note ? `<div class="card-note" style="padding:10px 0 0">${esc(c.note)}</div>` : ""}
+    </div>
+  </section>`;
+  }
+  function telemtHTML(d) {
+    const t = d.telemt;
+    const snap = t == null ? void 0 : t.metrics_snapshot;
+    const keys = snap ? Object.keys(snap).sort() : [];
+    if (!t || !snap || !keys.length) {
+      return `<section class="card"><div class="card-head"><h2>Статистика telemt</h2></div>
+      <div class="table-empty">нет данных</div></section>`;
+    }
+    return `<section class="card">
+    <div class="card-head"><h2>Статистика telemt</h2><span class="hint">снимок метрик</span></div>
+    <div class="card-body" style="padding-bottom:0">
+      <div class="nd-grid" style="padding:0">
+        <div class="kv"><span class="kv-k">Метрик в снимке</span><span class="kv-v">${keys.length}</span></div>
+        <div class="kv"><span class="kv-k">Собрано</span><span class="kv-v">${t.collected_at ? esc(fmtAgo(t.collected_at)) : "—"}</span></div>
+      </div>
+    </div>
+    <details class="op-step-log" style="margin:12px var(--pad) var(--pad)">
+      <summary>Показать снимок (${keys.length})</summary>
+      <div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Метрика</th><th class="num">Значение</th></tr></thead>
+        <tbody>${keys.map((k) => `<tr>
+          <td class="mono wrap" data-label="Метрика">${esc(k)}</td>
+          <td class="num mono" data-label="Значение">${fmtNum(snap[k])}</td>
+        </tr>`).join("")}</tbody></table></div>
+    </details>
+  </section>`;
+  }
+  function eventRow(ev) {
+    const m = EV_LABEL[ev.type] || { label: ev.type, dot: "" };
+    const parts = [ev.domain].filter(Boolean).map((v) => `<code>${esc(v)}</code>`);
+    const detail = ev.detail ? esc(ev.detail) : "";
+    const line = [parts.join(" "), detail].filter(Boolean).join(parts.length && detail ? " — " : "");
+    return `<li class="feed-item">
+    <span class="feed-dot ${m.dot}"></span>
+    <div class="feed-body">
+      <div class="feed-head"><span class="feed-kind">${esc(m.label)}</span>
+        <span class="feed-time" title="${esc(ev.at)}">${esc(fmtClock(ev.at))}</span></div>
+      ${line ? `<div class="feed-detail">${line}</div>` : ""}
+    </div></li>`;
+  }
+
   // ui/pages/cabinet/main.ts
   var ME = null;
   var NODES = [];
+  var SERVERS = [];
   var OPS = [];
-  var OPEN_NODES = /* @__PURE__ */ new Set();
+  var OPEN_OPS = /* @__PURE__ */ new Set();
+  var OPEN_LOGS = /* @__PURE__ */ new Set();
   var HIGHLIGHT_OP = 0;
-  var STATUS_META = {
+  var STATUS_META2 = {
     healthy: { label: "здорова", cls: "ok" },
     unhealthy: { label: "нездорова", cls: "bad" },
     quarantined: { label: "карантин Globalping", cls: "warn" },
@@ -2098,12 +3446,21 @@
     pending: { label: "ожидает", cls: "info" },
     sent: { label: "отправлено провайдеру", cls: "info" },
     confirmed: { label: "подтверждено", cls: "ok" },
+    installing: { label: "установка профиля", cls: "info" },
+    waiting_vps: { label: "ждём готовности VPS", cls: "warn" },
+    done: { label: "готово", cls: "ok" },
     unknown: { label: "неизвестно · ручной разбор", cls: "special" },
     failed: { label: "ошибка", cls: "bad" },
     deleting: { label: "удаляется", cls: "warn" },
     deleted: { label: "удалено", cls: "" }
   };
-  var EMPTY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
+  var EMPTY_SVG2 = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
+  function isRetryableLoad(e) {
+    var _a;
+    if (e.code === "control_unavailable") return true;
+    const s = (_a = e.status) != null ? _a : 0;
+    return s >= 500 || s === 0;
+  }
   var toastTimer;
   function showToast(text, isErr = false) {
     const t = $("toast");
@@ -2121,11 +3478,12 @@
       else el.removeAttribute("inert");
     });
   }
-  function openModal(title, body, actions) {
-    var _a;
+  function openModal(title, body, actions, wide = false) {
+    var _a, _b;
     lastFocused = document.activeElement;
     $("modal-title").textContent = title;
     $("modal-body").innerHTML = body;
+    (_a = $("modal").querySelector(".modal-box")) == null ? void 0 : _a.classList.toggle("modal-wide", wide);
     const foot = $("modal-foot");
     foot.replaceChildren();
     actions.forEach((a) => {
@@ -2139,7 +3497,7 @@
     const m = $("modal");
     m.classList.add("show");
     setPageInert(true);
-    (_a = foot.querySelector("button")) == null ? void 0 : _a.focus();
+    (_b = foot.querySelector("button")) == null ? void 0 : _b.focus();
   }
   function closeModal() {
     $("modal").classList.remove("show");
@@ -2184,35 +3542,50 @@
   var VIEWS = {
     nodes: "Мои ноды",
     create: "Создать сервер",
-    beget: "Beget",
+    servers: "Серверы",
+    profiles: "Мои профили",
+    beget: "Хостинги",
     operations: "Операции"
   };
   function currentView() {
     const p = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
     return VIEWS[p[0]] ? p[0] : "nodes";
   }
+  function routeNodeId() {
+    const p = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+    return p[0] === "nodes" && p[1] ? decodeURIComponent(p[1]) : "";
+  }
   function route() {
     const v = currentView();
+    const nodeId = routeNodeId();
+    const viewId = nodeId ? "view-node" : "view-" + v;
+    const nav = nodeId ? "nodes" : v;
     document.querySelectorAll(".view").forEach((el) => {
-      el.hidden = el.id !== "view-" + v;
+      el.hidden = el.id !== viewId;
     });
-    document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === v));
-    $("view-title").textContent = VIEWS[v];
-    if (v === "create") wizard.enter();
-    if (v === "beget") loadBeget();
+    document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === nav));
+    $("view-title").textContent = nodeId ? "Нода " + nodeId : VIEWS[v];
+    if (v !== "servers") clearServerSecret();
+    if (v === "create" && !nodeId) wizard.enter();
+    else wizard.leave();
+    if (v === "beget" && !nodeId) loadBeget();
+    if (v === "servers" && !nodeId) loadServers();
+    if (v === "profiles" && !nodeId) loadProfiles();
+    if (nodeId) openNodeDetail(nodeId);
+    else closeNodeDetail();
     renderAll();
   }
-  function availColor(p) {
+  function availColor2(p) {
     return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
   }
   function nodeCardHTML(n) {
-    const meta = STATUS_META[n.status] || STATUS_META.offline;
+    const meta = STATUS_META2[n.status] || STATUS_META2.offline;
     const quar = n.quarantine != null;
     const master = (n.master_domains || []).length > 0;
     const dc2 = n.status === "offline" ? "unknown" : n.dc2_ok ? "ok" : "bad";
     const dc2Title = n.dc2_ok ? "DC2 доступен" : "DC2 недоступен — отказ здоровья не пересоздаёт VPS";
-    const open = OPEN_NODES.has(n.node_id) ? " open" : "";
-    return `<div class="node-card${master ? " master" : ""}${open}" data-id="${esc(n.node_id)}">
+    return `<div class="node-card${master ? " master" : ""}" data-id="${esc(n.node_id)}" role="link" tabindex="0"
+      aria-label="Открыть ноду ${esc(n.node_id)}">
     <div class="node-main">
       <div class="node-top">
         <span class="node-id mono">${esc(n.node_id)}</span>
@@ -2229,36 +3602,34 @@
     </div>
     <div class="node-side">
       <div class="meter node-meter">
-        <div class="meter-track"><div class="meter-fill ${availColor(n.availability)}" style="width:${Math.max(0, Math.min(100, n.availability))}%"></div></div>
+        <div class="meter-track"><div class="meter-fill ${availColor2(n.availability)}" style="width:${Math.max(0, Math.min(100, n.availability))}%"></div></div>
         <span class="meter-value">${n.availability.toFixed(1)}%</span>
       </div>
     </div>
-    <div class="node-more">
-      <div class="kv"><span class="kv-k">Домены</span><span class="kv-v mono">${esc((n.master_domains || []).join(", ") || "—")}</span></div>
-      <div class="kv"><span class="kv-k">Карантин</span><span class="kv-v">${quar ? `${n.quarantine.attempts} попыток · с ${esc(fmtClock(new Date(n.quarantine.entered_at * 1e3).toISOString()))}` : "—"}</span></div>
-      <button class="btn sm danger node-del" data-del="${esc(n.node_id)}" style="margin-left:auto">Удалить ноду</button>
-    </div>
   </div>`;
   }
-  function renderNodes() {
+  function renderNodes(poll = false) {
     const body = $("nodes-body");
-    $("nodes-hint").textContent = NODES.length ? `${NODES.length} ${plural(NODES.length, "нода", "ноды", "нод")}` : "";
-    if (!NODES.length) {
-      body.innerHTML = `<div class="empty-state">${EMPTY_SVG}
+    renderSection(body, poll, () => {
+      $("nodes-hint").textContent = NODES.length ? `${NODES.length} ${plural(NODES.length, "нода", "ноды", "нод")}` : "";
+      if (!NODES.length) {
+        body.innerHTML = `<div class="empty-state">${EMPTY_SVG2}
       <span class="t">Пока нет нод</span>
-      <span class="s">Создайте сервер в разделе «Создать сервер» — нода появится после регистрации в пуле.</span></div>`;
-      return;
-    }
-    body.innerHTML = NODES.map(nodeCardHTML).join("");
+      <span class="s">Создайте сервер в разделе «Серверы» — нода появится после регистрации в пуле.</span></div>`;
+        return;
+      }
+      body.innerHTML = NODES.map(nodeCardHTML).join("");
+    });
   }
-  function renderMetrics() {
+  function renderMetrics(poll = false) {
     if (!ME) return;
     const used = ME.used_nodes, max = ME.max_nodes;
     const pool = NODES.filter((n) => n.status !== "offline").length;
     const problems = NODES.filter((n) => !n.dc2_ok || n.quarantine).length;
     const pct = max > 0 ? Math.min(100, Math.round(used / max * 100)) : 0;
     const quotaCls = max > 0 && used >= max ? "warn" : "ok";
-    $("node-metrics").innerHTML = `
+    renderSection($("node-metrics"), poll, () => {
+      $("node-metrics").innerHTML = `
     <div class="card metric">
       <div class="metric-label">Квота нод</div>
       <div class="metric-value">${fmtNum(used)}<span class="sep">/</span>${fmtNum(max)}</div>
@@ -2276,82 +3647,881 @@
       <div class="metric-value ${problems ? "bad" : ""}">${fmtNum(problems)}</div>
       <div class="metric-foot">DC2 или карантин</div>
     </div>`;
-    const qb = $("quota-banner");
-    if (max > 0 && used >= max) {
-      qb.innerHTML = `<div class="banner warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span>Квота исчерпана: новая регистрация заблокирована. Освободите место или запросите лимит у администратора.</span></div>`;
-    } else {
-      qb.replaceChildren();
+      const qb = $("quota-banner");
+      if (max > 0 && used >= max) {
+        qb.innerHTML = `<div class="banner warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Квота исчерпана: новая регистрация заблокирована. Освободите место или запросите лимит у администратора.</span></div>`;
+      } else {
+        qb.replaceChildren();
+      }
+    });
+  }
+  function copyText(btn, text) {
+    const orig = btn.textContent || "";
+    const ok = () => {
+      btn.textContent = "Скопировано";
+      setTimeout(() => {
+        btn.textContent = orig;
+      }, 1500);
+    };
+    const fail = () => {
+      btn.textContent = "Не удалось";
+      showToast("Не удалось скопировать — выделите ключ и скопируйте вручную.", true);
+      setTimeout(() => {
+        btn.textContent = orig;
+      }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(ok, fail);
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    document.body.removeChild(ta);
+    copied ? ok() : fail();
+  }
+  function renderAuthkey(a, poll = false) {
+    const body = $("authkey-body");
+    renderSection(body, poll, () => {
+      const badge = a.active ? `<span class="badge ok"><i></i>активен</span>` : `<span class="badge">отозван</span>`;
+      const prefix = a.prefix ? `${esc(a.prefix)}…` : "—";
+      const created = a.created_at ? fmtAgo(new Date(a.created_at * 1e3).toISOString()) : "—";
+      body.innerHTML = `<div class="kv" style="gap:8px">
+      <span class="kv-k">Ключ доступа</span>
+      <span class="kv-v mono">${prefix}</span>
+      <span>${badge} <span class="dim">создан ${esc(created)}</span></span>
+    </div>
+    <div class="banner info" style="margin:12px 0 0"><span>Один ключ покрывает <b>все</b> ваши VPS. Раздельных ключей на сервер нет.</span></div>
+    <div class="srv-actions" style="margin-top:12px">
+      <button type="button" class="btn primary" id="ak-rotate">${a.active ? "Перевыпустить" : "Выпустить"}</button>
+      <button type="button" class="btn danger" id="ak-revoke"${a.active ? "" : " disabled"}>Отозвать</button>
+    </div>`;
+      $("authkey-note").textContent = "Перевыпуск немедленно отзывает старый ключ: ноды, которые ещё не зарегистрированы с ним, потребуют новый. Отзыв запрещает новые регистрации ключом — уже работающие ноды продолжают работать.";
+      $("ak-rotate").addEventListener("click", rotateAuthkey);
+      $("ak-revoke").addEventListener("click", confirmRevokeAuthkey);
+    });
+  }
+  var AK_RETRY_DONE = false;
+  function loadAuthkey(poll = false) {
+    api.authkey().then((a) => {
+      AK_RETRY_DONE = false;
+      renderAuthkey(a, poll);
+    }).catch((e) => {
+      var _a;
+      if (e.message === "unauthorized") return;
+      const body = $("authkey-body");
+      if ($("ak-rotate")) {
+        if (!AK_RETRY_DONE) showToast("Не удалось обновить ключ доступа: " + e.message, true);
+      } else {
+        body.innerHTML = `<div class="banner bad" role="alert"><span>Не удалось загрузить ключ доступа: ${esc(e.message)}</span>
+          <button class="btn sm" id="ak-retry" style="margin-left:auto">Повторить</button></div>`;
+        (_a = $("ak-retry")) == null ? void 0 : _a.addEventListener("click", () => {
+          AK_RETRY_DONE = false;
+          loadAuthkey();
+        });
+      }
+      if (!AK_RETRY_DONE && isRetryableLoad(e)) {
+        AK_RETRY_DONE = true;
+        setTimeout(loadAuthkey, 2e3);
+      }
+    });
+  }
+  function rotateAuthkey() {
+    const btn = $("ak-rotate");
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Выпуск…";
+    api.rotateAuthkey().then((r) => {
+      openModal(
+        "Новый ключ доступа",
+        `<div class="secret-reveal">
+          <div class="warn-note">Ключ показывается один раз. Сохраните его сейчас — позже он недоступен.</div>
+          <div class="key" id="ak-key" tabindex="0">${esc(r.authkey)}</div>
+          <div class="dim" style="font-size:11.5px">Перевыпуск немедленно отозвал прежний ключ. Ноды, которые ещё не зарегистрированы с ключом, потребуют новый; уже работающие ноды продолжат работу.</div>
+          <div class="dim" style="font-size:11.5px">Один ключ подходит для <b>всех</b> ваших VPS.</div>
+        </div>`,
+        [
+          { label: "Копировать", onClick: (ev) => copyText(ev.currentTarget, r.authkey) },
+          { label: "Закрыть", cls: "primary", onClick: () => {
+            closeModal();
+            refresh().catch(() => {
+            });
+          } }
+        ],
+        true
+      );
+      btn.disabled = false;
+      btn.textContent = label;
+    }).catch((e) => {
+      showToast(e.message, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function confirmRevokeAuthkey() {
+    openModal(
+      "Отозвать ключ доступа?",
+      "Новые регистрации нод с этим ключом будут запрещены. Уже работающие ноды продолжат работу — отзыв их не затрагивает.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Отозвать", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Отзыв…";
+          api.revokeAuthkey().then(() => {
+            closeModal();
+            showToast("Ключ отозван.");
+            refresh().catch(() => {
+            });
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Отозвать";
+          });
+        } }
+      ]
+    );
+  }
+  function serverState(s) {
+    var _a;
+    const st = (_a = s.operation) == null ? void 0 : _a.state;
+    if (st === "installing" || st === "pending" || st === "sent" || st === "confirmed")
+      return { key: "installing", label: "устанавливается", cls: "info" };
+    if (st === "done") return { key: "done", label: "установлен", cls: "ok" };
+    if (st === "deleted") return { key: "deleted", label: "удалено", cls: "" };
+    if (st === "failed" || st === "unknown")
+      return { key: "failed", label: "ошибка установки", cls: "bad" };
+    if (s.last_error) return { key: "failed", label: "ошибка", cls: "bad" };
+    if (s.verified_at) return { key: "checked", label: "проверен", cls: "ok" };
+    return { key: "new", label: "новый", cls: "" };
+  }
+  function serverCardHTML(s) {
+    const meta = serverState(s);
+    const op = s.operation;
+    const installing = meta.key === "installing";
+    const authLabel = s.auth_type === "key" ? "приватный ключ" : "пароль";
+    let installBtn = "";
+    if (!installing && meta.key !== "done" && meta.key !== "deleted") {
+      const retry = meta.key === "failed";
+      installBtn = `<button class="btn sm${retry ? "" : " primary"}" data-sinstall="${s.id}" data-sretry="${retry ? 1 : 0}">${retry ? "Повторить установку" : "Установить"}</button>`;
+    }
+    const opHtml = op ? `<div class="kv" style="gap:6px">
+      <span class="kv-k">Операция #${op.id} · ${esc(op.kind)}</span>
+      <span class="kv-v"><span class="badge ${(OP_META[op.state] || { cls: "" }).cls}"><i></i>${esc((OP_META[op.state] || { label: op.state }).label)}</span></span>
+    </div>${op.last_error ? `<pre class="op-err srv-out">${esc(op.last_error)}</pre>` : ""}` : "";
+    return `<div class="node-card srv" data-sid="${s.id}">
+    <div class="node-main">
+      <div class="node-top">
+        <span class="node-id">${esc(s.label)}</span>
+        <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
+        <span class="badge">${esc(authLabel)}</span>
+      </div>
+      <div class="node-sub">
+        <span class="mono">${esc(s.host)}:${s.port}</span>
+        <span>пользователь <span class="mono">${esc(s.ssh_user)}</span></span>
+        ${s.node_id ? `<span>нода <span class="mono">${esc(s.node_id)}</span></span>` : ""}
+        <span class="dim">подключён ${esc(fmtAgo(new Date(s.created_at * 1e3).toISOString()))}</span>
+      </div>
+      ${s.last_error && !op ? `<div class="node-problem" title="${esc(s.last_error)}">${esc(s.last_error)}</div>` : ""}
+    </div>
+    <div class="node-side">
+      <button class="btn sm" data-scheck="${s.id}"${installing ? " disabled" : ""}>Проверить доступ</button>
+      ${installBtn}
+      <button class="btn sm danger" data-sdel="${s.id}"${installing ? " disabled" : ""}>Удалить</button>
+    </div>
+    ${opHtml ? `<div class="srv-more">${opHtml}</div>` : ""}
+  </div>`;
+  }
+  function renderServers(poll = false) {
+    var _a;
+    const body = $("servers-body");
+    const hadFocus = body.contains(document.activeElement);
+    const rendered = renderSection(body, poll, () => {
+      if (!SERVERS.length) {
+        body.innerHTML = `<div class="empty-state">${EMPTY_SVG2}
+      <span class="t">Серверы не подключены</span>
+      <span class="s">Нажмите «Добавить сервер»: укажите IP и пароль или SSH-ключ. Сервер не создаётся и не оплачивается.</span></div>`;
+        return;
+      }
+      body.innerHTML = `<div class="node-list">${SERVERS.map(serverCardHTML).join("")}</div>`;
+    });
+    if (rendered && hadFocus && !SERVERS.length) (_a = document.getElementById("servers-reload")) == null ? void 0 : _a.focus();
+  }
+  var SRV_RETRY_DONE = false;
+  function loadServers(poll = false) {
+    api.servers().then((r) => {
+      SERVERS = r.servers || [];
+      SRV_RETRY_DONE = false;
+      renderServers(poll);
+    }).catch((e) => {
+      var _a;
+      SERVERS = [];
+      $("servers-body").innerHTML = `<div class="empty-state"><span class="t">Не удалось загрузить серверы</span>
+        <span class="s">${esc(e.message)}</span><button class="btn sm" id="srv-retry">Повторить</button></div>`;
+      (_a = $("srv-retry")) == null ? void 0 : _a.addEventListener("click", () => {
+        SRV_RETRY_DONE = false;
+        loadServers();
+      });
+      if (!SRV_RETRY_DONE && isRetryableLoad(e)) {
+        SRV_RETRY_DONE = true;
+        setTimeout(loadServers, 2e3);
+      }
+    });
+  }
+  function installErrText(e) {
+    switch (e.code) {
+      case "quota_exceeded":
+        return "Квота исчерпана: освободите место или запросите лимит у администратора.";
+      case "ssh_unavailable":
+        return "SSH-доступ недоступен: проверьте адрес, порт и секрет.";
+      case "already_done":
+        return "Установка на этот сервер уже завершена.";
+      case "in_progress":
+        return "Установка уже выполняется — дождитесь завершения.";
+      case "not_found":
+        return "Сервер не найден.";
+      case "profile_unavailable":
+        return "Профиль недоступен для установки: он не опубликован.";
+      default:
+        return e.message;
     }
   }
-  function renderAuthkey(a) {
-    const badge = a.active ? `<span class="badge ok"><i></i>активен</span>` : `<span class="badge">отозван</span>`;
-    const prefix = a.prefix ? `${esc(a.prefix)}…` : "—";
-    const created = a.created_at ? fmtAgo(new Date(a.created_at * 1e3).toISOString()) : "—";
-    $("authkey-body").innerHTML = `<div class="kv" style="gap:8px">
-    <span class="kv-k">Ключ доступа</span>
-    <span class="kv-v mono">${prefix}</span>
-    <span>${badge} <span class="dim">создан ${esc(created)}</span></span>
-  </div>`;
-    $("authkey-note").textContent = "Выпуск и отзыв ключа — через администратора.";
+  var installDefaults;
+  function loadInstallDefaults() {
+    return installDefaults != null ? installDefaults : installDefaults = api.installDefaults();
   }
-  function cancelCell(o) {
-    if (o.state === "pending") return `<button class="btn sm" data-cancel="${o.id}">Отменить</button>`;
-    if (o.state === "sent") return `<button class="btn sm" disabled title="Заказ уже отправлен провайдеру — отмена невозможна">Отменить</button>`;
-    return `<span class="dim">—</span>`;
+  function renderInstallVars(decls, snapshot, onChange) {
+    const wrap = $("sv-install-vars");
+    if (!wrap) return;
+    wrap.replaceChildren();
+    const ed = document.createElement("div");
+    ed.className = "vars-editor";
+    wrap.appendChild(ed);
+    renderVarsEditor(ed, decls, { install: true, defaults: loadInstallDefaults(), snapshot, onChange });
   }
-  function renderOperations() {
+  function installProfileDecls(m, id) {
+    const p = [...m.published || [], ...m.profiles || []].find((x) => id ? x.id === id : x.name === "sharedd-node");
+    return p ? parseVarsSchema(p.vars_schema) : [];
+  }
+  function openInstall(s, isRetry) {
+    openModal(
+      isRetry ? `Повторить установку · ${s.label}` : `Установка · ${s.label}`,
+      `<div class="banner info" style="margin:0 0 12px"><span>Установка выполняется по SSH на ваш существующий сервер <span class="mono">${esc(s.host)}:${s.port}</span>. Новый сервер не создаётся и не оплачивается.</span></div>
+     <div class="field" id="sv-install-prof-wrap">
+       <label for="sv-install-prof">Профиль установки</label>
+        <select id="sv-install-prof" disabled><option value="">Загрузка профиля…</option></select>
+       <span class="help" id="sv-profile-status" aria-live="polite">Загрузка профилей…</span>
+     </div>
+     <div class="field" style="gap:6px;margin-top:12px">
+       <label>Переменные установки</label>
+       <div id="sv-install-vars"><div class="vars-editor"></div></div>
+        <span class="help">${esc(PROFILE_VARS_HELP)} Сброс удаляет переопределение; пустой секрет или ad_tag можно задать явно.</span>
+     </div>
+     <div class="banner bad" id="sv-install-err" role="alert" hidden style="margin:12px 0 0"></div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: isRetry ? "Повторить установку" : "Установить", cls: "primary", onClick: (ev) => doInstall(ev.currentTarget, s, isRetry) }
+      ],
+      true
+    );
+    let pendingRows;
+    if (isRetry) $("sv-install-vars").textContent = "Загрузка переменных исходного профиля…";
+    else renderInstallVars([], void 0, (rows) => {
+      pendingRows = rows;
+    });
+    const originalSelect = $("sv-install-prof");
+    const load2 = () => {
+      api.myProfiles().then((m) => {
+        var _a;
+        const sel = $("sv-install-prof");
+        if (sel !== originalSelect || !document.body.contains(sel)) return;
+        if (isRetry) {
+          const id = (_a = s.operation) == null ? void 0 : _a.profile_id;
+          if (id === void 0 || !Number.isInteger(id) || id < 0) throw new Error("Исходный профиль операции недоступен");
+          const p = [...m.published || [], ...m.profiles || []].find((p2) => id ? p2.id === id : p2.name === "sharedd-node");
+          if (!p || !(m.published || []).some((x) => x.id === p.id) && !m.enabled) throw new Error("Исходный профиль недоступен для повторной установки");
+          sel.innerHTML = `<option value="${id}">${esc(p.name)}</option>`;
+          $("sv-profile-status").textContent = "Повтор использует исходный профиль операции; сменить его нельзя.";
+          renderInstallVars(parseVarsSchema(p.vars_schema));
+          sel.dataset.ready = "true";
+          delete sel.dataset.loadError;
+          return;
+        }
+        const opts = ['<option value="0">Стандартный профиль</option>'];
+        for (const p of m.published || []) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
+        for (const p of m.profiles || [])
+          if (!(m.published || []).some((x) => x.id === p.id)) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
+        sel.innerHTML = opts.join("");
+        sel.disabled = false;
+        sel.dataset.ready = "true";
+        delete sel.dataset.loadError;
+        $("sv-profile-status").textContent = "Смена профиля сбрасывает переменные этой установки.";
+        let selected = sel.value;
+        sel.addEventListener("change", () => {
+          const ed = document.querySelector("#sv-install-vars .vars-editor");
+          if (ed && Object.keys(collectInstallVars(ed)).length && !window.confirm("Смена профиля сбросит введённые переменные установки. Продолжить?")) {
+            sel.value = selected;
+            return;
+          }
+          selected = sel.value;
+          renderInstallVars(installProfileDecls(m, Number(sel.value) || 0));
+        });
+        renderInstallVars(installProfileDecls(m, 0), pendingRows);
+      }).catch(() => {
+        if ($("sv-install-prof") !== originalSelect) return;
+        $("sv-profile-status").innerHTML = `Не удалось загрузить ${isRetry ? "исходный профиль операции" : "профили"}. <button type="button" class="btn sm" id="sv-profile-retry">Повторить</button>`;
+        if (isRetry) $("sv-install-vars").textContent = "Переменные исходного профиля недоступны. Повторная установка заблокирована до загрузки профиля.";
+        $("sv-profile-retry").addEventListener("click", () => {
+          $("sv-profile-status").textContent = "Загрузка профилей…";
+          load2();
+        });
+        originalSelect.dataset.loadError = "true";
+      });
+    };
+    load2();
+  }
+  function doInstall(btn, s, isRetry) {
+    var _a;
+    const sel = $("sv-install-prof");
+    const profile_id = isRetry ? (_a = s.operation) == null ? void 0 : _a.profile_id : sel ? Number(sel.value) || 0 : 0;
+    const errBox = $("sv-install-err");
+    const ed = document.querySelector("#sv-install-vars .vars-editor");
+    if (!sel || sel.dataset.ready !== "true") {
+      errBox.textContent = (sel == null ? void 0 : sel.dataset.loadError) ? "Профили недоступны. Нажмите «Повторить» у списка профилей." : "Дождитесь загрузки профилей.";
+      errBox.hidden = false;
+      return;
+    }
+    const nameErr = ed ? validateVarsEditor(ed) : null;
+    if (nameErr) {
+      if (errBox && document.body.contains(errBox)) {
+        errBox.textContent = nameErr;
+        errBox.hidden = false;
+      }
+      return;
+    }
+    const vars = ed ? collectInstallVars(ed) : {};
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = isRetry ? "Повтор…" : "Запуск…";
+    api.installServer(s.id, { profile_id, vars }).then(() => {
+      closeModal();
+      showToast(isRetry ? "Повтор установки запущен. Новый сервер не создаётся." : "Установка запущена.");
+      loadServers();
+    }).catch((e) => {
+      btn.disabled = false;
+      btn.textContent = label;
+      const box = $("sv-install-err");
+      const msg = installErrText(e);
+      if (box && document.body.contains(box)) {
+        box.textContent = msg;
+        box.hidden = false;
+      } else showToast(msg, true);
+    });
+  }
+  function checkServer(s) {
+    showToast("Проверка SSH-доступа…");
+    api.checkServer(s.id).then((r) => {
+      showToast(r.verified ? "Доступ по SSH подтверждён." : "SSH недоступен: " + (r.last_error || "неизвестная ошибка"), !r.verified);
+      loadServers();
+    }).catch((e) => showToast(e.message, true));
+  }
+  function confirmDeleteServer(s) {
+    openModal(
+      `Удалить сервер «${s.label}»?`,
+      "Запись будет удалена, место в квоте освободится. Нода (если создана) остаётся в пуле — её удаление отдельным действием в «Мои ноды». Сам сервер не затрагивается.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Удалить", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Удаление…";
+          api.deleteServer(s.id).then(() => {
+            closeModal();
+            showToast("Сервер удалён.");
+            loadServers();
+            refresh().catch(() => {
+            });
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Удалить";
+          });
+        } }
+      ]
+    );
+  }
+  var svAuthType = "password";
+  function setAuthType(t, focus = false) {
+    svAuthType = t;
+    document.querySelectorAll("#sv-authtype button[data-authtype]").forEach((b) => {
+      const on = b.dataset.authtype === t;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on ? 0 : -1;
+      if (on && focus) b.focus();
+    });
+    $("sv-pass-wrap").hidden = t !== "password";
+    $("sv-key-wrap").hidden = t !== "key";
+    if (t === "password") {
+      $("sv-key").value = "";
+      $("sv-key-file").value = "";
+    } else {
+      $("sv-pass").value = "";
+    }
+  }
+  function clearServerSecret() {
+    $("sv-pass").value = "";
+    $("sv-key").value = "";
+    $("sv-key-file").value = "";
+  }
+  function submitServerForm(e) {
+    e.preventDefault();
+    const errBox = $("sv-err");
+    errBox.hidden = true;
+    const showErr = (m) => {
+      errBox.textContent = m;
+      errBox.hidden = false;
+    };
+    const label = $("sv-label").value.trim();
+    const host = $("sv-host").value.trim();
+    const portRaw = $("sv-port").value.trim();
+    const user = $("sv-user").value.trim();
+    const pass = $("sv-pass").value;
+    const key = $("sv-key").value;
+    if (!label) {
+      showErr("Укажите название.");
+      return;
+    }
+    if (!host) {
+      showErr("Укажите IP-адрес.");
+      return;
+    }
+    if (svAuthType === "password" && !pass) {
+      showErr("Введите пароль или переключитесь на вход по ключу.");
+      return;
+    }
+    if (svAuthType === "key" && !key.trim()) {
+      showErr("Вставьте приватный ключ или выберите файл.");
+      return;
+    }
+    const port = portRaw ? Number(portRaw) : 22;
+    if (SERVERS.some((s) => s.host === host && s.port === port)) {
+      showErr("Этот адрес уже подключён. Откройте его в списке или удалите прежнюю запись.");
+      return;
+    }
+    const btn = $("sv-submit");
+    const label0 = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Подключение…";
+    const body = { label, host };
+    if (portRaw) body.port = Number(portRaw);
+    if (user) body.ssh_user = user;
+    if (svAuthType === "password") body.password = pass;
+    else body.private_key = key;
+    api.createServer(body).then(() => {
+      clearServerSecret();
+      ["sv-label", "sv-host", "sv-port", "sv-user"].forEach((id) => {
+        $(id).value = "";
+      });
+      toggleServerForm(false);
+      showToast("Сервер подключён.");
+      loadServers();
+    }).catch((e2) => showErr(e2.message || "Не удалось подключить сервер.")).finally(() => {
+      btn.disabled = false;
+      btn.textContent = label0;
+    });
+  }
+  function toggleServerForm(open) {
+    const form = $("server-form");
+    form.hidden = !open;
+    $("srv-add").setAttribute("aria-expanded", String(open));
+    if (open) $("sv-label").focus();
+    else clearServerSecret();
+  }
+  function initServerForm() {
+    $("server-form").addEventListener("submit", submitServerForm);
+    $("srv-add").addEventListener("click", () => toggleServerForm($("server-form").hidden));
+    $("sv-cancel").addEventListener("click", () => toggleServerForm(false));
+    const group = $("sv-authtype");
+    const radios = () => Array.from(group.querySelectorAll("button[data-authtype]"));
+    radios().forEach((b) => b.addEventListener("click", () => setAuthType(b.dataset.authtype)));
+    group.addEventListener("keydown", (e) => {
+      if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(e.key)) return;
+      e.preventDefault();
+      const list = radios();
+      const i = list.indexOf(document.activeElement);
+      const dir = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+      const next = list[(i + dir + list.length) % list.length];
+      setAuthType(next.dataset.authtype, true);
+    });
+    setAuthType(svAuthType);
+    $("sv-key-file").addEventListener("change", (e) => {
+      var _a;
+      const f = (_a = e.target.files) == null ? void 0 : _a[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        $("sv-key").value = String(rd.result || "");
+      };
+      rd.onerror = () => showToast("Не удалось прочитать файл ключа.", true);
+      rd.readAsText(f);
+    });
+  }
+  var STEP_META = {
+    running: { label: "выполняется", cls: "info" },
+    ok: { label: "готово", cls: "ok" },
+    error: { label: "ошибка", cls: "bad" }
+  };
+  function fmtStepMs(ms) {
+    if (!ms) return "—";
+    return ms >= 1e3 ? (ms / 1e3).toFixed(1) + " с" : ms + " мс";
+  }
+  function stepsHTML(o) {
+    const steps = o.steps || [];
+    if (!steps.length) return `<div class="op-steps-empty dim">пошаговый журнал недоступен</div>`;
+    return `<div class="op-steps">${steps.map((s) => {
+      const meta = STEP_META[s.status] || { label: s.status, cls: "" };
+      const key = `${o.id}:${s.idx}`;
+      const out = s.output ? `<details class="op-step-log" data-oplog="${key}"${OPEN_LOGS.has(key) ? " open" : ""}>
+          <summary>лог</summary><pre class="op-err srv-out">${esc(s.output)}</pre></details>` : "";
+      return `<div class="op-step">
+      <span class="op-step-idx mono">${s.idx + 1}</span>
+      <span class="op-step-name">${esc(s.name)}</span>
+      <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
+      <span class="op-step-dur dim mono">${esc(fmtStepMs(s.duration_ms))}</span>
+      <div class="op-step-logwrap">${out}</div>
+    </div>`;
+    }).join("")}</div>`;
+  }
+  function actionCell(o) {
+    const steps = (o.steps || []).length ? `<button class="btn sm ghost" data-optoggle="${o.id}" aria-expanded="${OPEN_OPS.has(o.id)}">${OPEN_OPS.has(o.id) ? "Скрыть шаги" : `Шаги (${o.steps.length})`}</button>` : "";
+    if (o.state === "pending") return `${steps}<button class="btn sm" data-cancel="${o.id}">Отменить</button>`;
+    if (o.state === "sent") return `${steps}<button class="btn sm" disabled title="Заказ уже отправлен провайдеру — отмена невозможна">Отменить</button>`;
+    if ((o.state === "failed" || o.state === "waiting_vps") && o.has_vps !== false)
+      return `${steps}<button class="btn sm" data-retry="${o.id}">Повторить установку</button>`;
+    return steps || `<span class="dim">—</span>`;
+  }
+  function renderOperations(poll = false) {
     const body = $("ops-body");
     const note = $("ops-note");
     const hasUnknown = OPS.some((o) => o.state === "unknown");
-    if (!OPS.length) {
-      body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+    const hasWaiting = OPS.some((o) => o.state === "waiting_vps");
+    renderSection(body, poll, () => {
+      if (!OPS.length) {
+        body.innerHTML = `<tr><td colspan="6"><div class="empty-state">
       <span class="t">Операций пока нет</span>
       <span class="s">Здесь появится журнал заказов серверов.</span></div></td></tr>`;
-    } else {
-      body.innerHTML = OPS.map((o) => {
-        const meta = OP_META[o.state] || { label: o.state, cls: "" };
-        const hl = o.id === HIGHLIGHT_OP ? ' class="row-highlight"' : "";
-        return `<tr data-op="${o.id}"${hl}>
+      } else {
+        body.innerHTML = OPS.map((o) => {
+          const meta = OP_META[o.state] || { label: o.state, cls: "" };
+          const hl = o.id === HIGHLIGHT_OP ? ' class="row-highlight"' : "";
+          const open = OPEN_OPS.has(o.id);
+          return `<tr data-op="${o.id}"${hl}>
         <td data-label="Создана" class="mono">${esc(fmtClock(new Date(o.created_at * 1e3).toISOString()))}</td>
         <td data-label="Тип">${esc(o.kind)}</td>
         <td data-label="Нода" class="mono">${esc(o.node_id || "—")}</td>
         <td data-label="Состояние"><span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span></td>
         <td data-label="Ошибка" class="wrap"><span class="op-err">${esc(o.last_error || "—")}</span></td>
-        <td data-label="Действие">${cancelCell(o)}</td>
+        <td data-label="Действие">${actionCell(o)}</td>
+      </tr>
+      <tr class="op-steps-row" data-opsteps="${o.id}"${open ? "" : " hidden"}>
+        <td colspan="6">${stepsHTML(o)}</td>
       </tr>`;
-      }).join("");
-    }
-    note.hidden = !hasUnknown;
-    note.textContent = hasUnknown ? "Ответ провайдера потерян. Повторный платный заказ запрещён; регистратор сверяет ресурс у провайдера. Если сверка не удалась, запись остаётся для ручного разбора — создайте обращение к администратору с этим id." : "";
+        }).join("");
+      }
+      const notes = [];
+      if (hasUnknown) {
+        notes.push("Ответ провайдера потерян. Повторный платный заказ запрещён; регистратор сверяет ресурс у провайдера. Если сверка не удалась, запись остаётся для ручного разбора — создайте обращение к администратору с этим id.");
+      }
+      if (hasWaiting) {
+        notes.push("«Ждём готовности VPS»: платный заказ подтверждён, но сервер не дошёл до RUNNING в отведённое окно. Установка ещё не запущена, место в квоте занято — новый заказ невозможен. «Повторить установку» переиспользует тот же сервер и не покупает второй.");
+      }
+      note.hidden = !notes.length;
+      note.textContent = notes.join(" ");
+    });
   }
-  function renderBeget(link) {
+  function retryErrText(e) {
+    switch (e.code) {
+      case "no_vps":
+        return "Сервер ещё не создан — повтор установки невозможен";
+      case "in_progress":
+        return "Операция ещё выполняется — дождитесь завершения";
+      case "already_done":
+        return "Операция уже завершена";
+      default:
+        return e.message;
+    }
+  }
+  function renderBeget(link, poll = false) {
     const el = $("beget-status");
-    if (link.verified) {
-      el.innerHTML = `<div class="kv" style="gap:8px">
+    renderSection(el, poll, () => {
+      if (link.verified) {
+        el.innerHTML = `<div class="kv" style="gap:8px">
       <span class="kv-v">Статус</span>
       <span><span class="badge ok"><i></i>подключён</span></span>
     </div>
     <div class="dim" style="margin-top:8px">SSH-ключ зарегистрирован. Секреты наружу не отдаются.</div>`;
-    } else if (link.last_error) {
-      el.innerHTML = `<div class="kv" style="gap:8px">
+      } else if (link.last_error) {
+        el.innerHTML = `<div class="kv" style="gap:8px">
       <span class="kv-v">Статус</span>
       <span><span class="badge bad"><i></i>ошибка</span></span>
       <span style="margin-top:8px;color:var(--bad)">${esc(link.last_error)}</span>
     </div>
     <div class="banner info" style="margin:12px 0 0">Подключите личный аккаунт Beget, чтобы создавать серверы.</div>`;
-    } else {
-      el.innerHTML = `<div class="banner info" style="margin:0">Подключите личный аккаунт Beget — регистратор добавит SSH-ключ для установки.</div>`;
-    }
-  }
-  function loadBeget() {
-    api.begetLink().then(renderBeget).catch((e) => {
-      $("beget-status").innerHTML = `<div class="banner bad">Не удалось загрузить статус: ${esc(e.message)}</div>`;
+      } else {
+        el.innerHTML = `<div class="banner info" style="margin:0">Подключите личный аккаунт Beget — регистратор добавит SSH-ключ для установки.</div>`;
+      }
     });
+  }
+  var BEGET_RETRY_DONE = false;
+  function loadBeget(poll = false) {
+    api.begetLink().then((l) => {
+      BEGET_RETRY_DONE = false;
+      renderBeget(l, poll);
+    }).catch((e) => {
+      var _a;
+      $("beget-status").innerHTML = `<div class="banner bad"><span>Не удалось загрузить статус: ${esc(e.message)}</span>
+      <button class="btn sm" id="beget-retry" style="margin-left:auto">Повторить</button></div>`;
+      (_a = $("beget-retry")) == null ? void 0 : _a.addEventListener("click", () => {
+        BEGET_RETRY_DONE = false;
+        loadBeget();
+      });
+      if (!BEGET_RETRY_DONE && isRetryableLoad(e)) {
+        BEGET_RETRY_DONE = true;
+        setTimeout(loadBeget, 2e3);
+      }
+    });
+  }
+  var MYPROF = null;
+  var PROF_ERR = null;
+  var PROF_RETRY_DONE = false;
+  function profBadge(p) {
+    return p.published ? `<span class="badge ok"><i></i>опубликован</span>` : `<span class="badge">черновик</span>`;
+  }
+  function renderProfiles(poll = false) {
+    const body = $("profiles-body");
+    const dis = $("profiles-disabled");
+    const createBtn = $("profiles-create");
+    renderSection(document.getElementById("view-profiles"), poll, () => {
+      var _a;
+      if (PROF_ERR !== null) {
+        body.innerHTML = `<div class="empty-state"><span class="t">Не удалось загрузить профили</span>
+      <span class="s">${esc(PROF_ERR)}</span>
+      <button class="btn sm" id="profiles-retry">Повторить</button></div>`;
+        (_a = $("profiles-retry")) == null ? void 0 : _a.addEventListener("click", () => {
+          PROF_RETRY_DONE = false;
+          loadProfiles();
+        });
+        return;
+      }
+      if (MYPROF === null) {
+        body.innerHTML = `<div class="skeleton skel-block"></div>`;
+        return;
+      }
+      const off = !MYPROF.enabled;
+      dis.hidden = !off;
+      dis.innerHTML = off ? `<div class="banner warn" style="margin:0 0 12px">Пользовательские профили отключены администратором: создание и правка локальных профилей недоступны.</div>` : "";
+      createBtn.disabled = off;
+      $("profiles-hint").textContent = `${MYPROF.profiles.length}/${MYPROF.max} локальных профилей · видны только вам`;
+      renderPublishedProfiles();
+      if (!MYPROF.profiles.length) {
+        body.innerHTML = `<div class="empty-state">
+      <span class="t">Профилей нет</span>
+      <span class="s">Создайте локальный профиль установки. Для установки на сервер его должен опубликовать администратор.</span></div>`;
+        return;
+      }
+      body.innerHTML = MYPROF.profiles.map((p) => `<div class="node-card" data-pid="${p.id}">
+    <div class="node-main">
+      <div class="node-top">
+        <span class="node-id mono">${esc(p.name)}</span>
+        ${profBadge(p)}
+      </div>
+      <div class="node-sub"><span>${esc(p.description || "—")}</span>
+        ${p.versions != null ? `<span class="dim"> · версий: ${p.versions}</span>` : ""}</div>
+    </div>
+    <div class="node-side srv-actions">
+      <button class="btn sm" data-pedit="${p.id}">Изменить</button>
+      <button class="btn sm danger" data-pdel="${p.id}">Удалить</button>
+    </div>
+  </div>`).join("");
+    });
+  }
+  function renderPublishedProfiles() {
+    const box = $("profiles-published");
+    const pub = (MYPROF == null ? void 0 : MYPROF.published) || [];
+    box.hidden = !pub.length;
+    if (!pub.length) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = `<div class="note" style="margin:0 0 6px">Опубликованные администратором</div>` + pub.map((p) => `<div class="node-card">
+    <div class="node-main">
+      <div class="node-top"><span class="node-id mono">${esc(p.name)}</span><span class="badge ok"><i></i>опубликован</span></div>
+      <div class="node-sub"><span>${esc(p.description || "—")}</span></div>
+    </div>
+    <div class="node-side srv-actions">
+      <!-- копия всегда активна: лимит/флаг отключения по-прежнему проверяет сервер -->
+      <button class="btn sm" data-pcopy="${p.id}">Сделать копию</button>
+    </div>
+  </div>`).join("");
+  }
+  function copyPublishedProfile(btn, id) {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Копирование…";
+    api.copyProfile(id).then((p) => {
+      showToast(`Создана копия «${p.name}».`);
+      profileEditor(p);
+      loadProfiles();
+    }).catch((e) => {
+      var _a;
+      const msg = e.code === "profile_limit_reached" ? `Достигнут лимит профилей (${(_a = MYPROF == null ? void 0 : MYPROF.max) != null ? _a : "—"}). Удалите ненужный профиль перед копированием` : e.code === "user_profiles_disabled" ? "Пользовательские профили отключены администратором" : e.message;
+      showToast(msg, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function loadProfiles(poll = false) {
+    PROF_ERR = null;
+    api.myProfiles().then((r) => {
+      MYPROF = r;
+      PROF_RETRY_DONE = false;
+      renderProfiles(poll);
+    }).catch((e) => {
+      PROF_ERR = e.code === "users_disabled" ? "Функция недоступна" : e.message;
+      renderProfiles(poll);
+      if (e.code !== "users_disabled" && !PROF_RETRY_DONE && isRetryableLoad(e)) {
+        PROF_RETRY_DONE = true;
+        setTimeout(loadProfiles, 2e3);
+      }
+    });
+  }
+  function profileEditor(p) {
+    const isEdit = p !== null;
+    openModal(
+      isEdit ? `Профиль · ${p.name}` : "Создать локальный профиль",
+      `<div class="field profile-editor" style="gap:12px">
+      <div><label for="mp-name">Имя</label>
+        <input type="text" id="mp-name" class="mono" value="${isEdit ? esc(p.name) : ""}" maxlength="128"></div>
+      <div><label for="mp-desc">Описание</label><input type="text" id="mp-desc" value="${isEdit ? esc(p.description) : ""}"${isEdit ? " readonly" : ""}></div>
+      <div><label for="mp-steps">Шаги (shell-команды)</label>
+        <textarea id="mp-steps" class="mono" rows="12" spellcheck="false" wrap="off" aria-describedby="mp-steps-help">${isEdit ? esc(p.steps || "") : ""}</textarea>
+        <span id="mp-steps-help" class="help" style="color:var(--fg-3);font-size:11.5px">Упорядоченный список: строка «# Название» открывает шаг, следующие строки — его shell-команда. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Потолок 64 КиБ.</span></div>
+      <div class="field" style="gap:6px"><label>Переменные профиля</label>
+        <div class="vars-editor" id="mp-vars"></div>
+        <span class="help">${esc(PROFILE_VARS_HELP)}</span></div>
+      <div class="note">Переименование не создаёт версию. Изменение шагов или переменных создаёт НОВУЮ версию: история не перезаписывается. Профиль остаётся черновиком, пока администратор его не опубликует.</div>
+      <div class="banner bad" id="mp-err" role="alert" hidden style="margin:0"></div>
+    </div>`,
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: isEdit ? "Сохранить" : "Создать", cls: "primary", onClick: (ev) => saveProfile(ev.currentTarget, p) }
+      ],
+      true
+    );
+    renderVarsEditor($("mp-vars"), parseVarsSchema(p == null ? void 0 : p.vars_schema));
+    $("mp-name").focus();
+  }
+  function saveProfile(btn, p) {
+    const errBox = $("mp-err");
+    errBox.hidden = true;
+    const isEdit = p !== null;
+    const name = $("mp-name").value.trim();
+    const description = $("mp-desc").value.trim();
+    const steps = $("mp-steps").value;
+    const rows = collectVarsEditor($("mp-vars"));
+    const vars_schema = serializeVarsSchema(rows);
+    if (!name) {
+      errBox.textContent = "Укажите имя профиля.";
+      errBox.hidden = false;
+      $("mp-name").focus();
+      return;
+    }
+    const nameChanged = isEdit && name !== p.name;
+    const versionChanged = !isEdit || steps !== (p.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p.vars_schema));
+    if (versionChanged && !steps.trim()) {
+      errBox.textContent = "Шаги обязательны.";
+      errBox.hidden = false;
+      $("mp-steps").focus();
+      return;
+    }
+    const varErr = versionChanged ? validateVarsEditor($("mp-vars")) : null;
+    if (varErr) {
+      errBox.textContent = varErr;
+      errBox.hidden = false;
+      return;
+    }
+    if (isEdit && !versionChanged && !nameChanged) {
+      closeModal();
+      showToast("Изменений нет.");
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = isEdit ? "Сохранение…" : "Создание…";
+    let call;
+    if (isEdit) {
+      const payload = {};
+      if (nameChanged) payload.name = name;
+      if (versionChanged) {
+        payload.steps = steps;
+        payload.vars_schema = vars_schema;
+      }
+      call = api.updateProfile(p.id, payload);
+    } else {
+      call = api.createProfile({ name, description, steps, vars_schema });
+    }
+    call.then(() => {
+      closeModal();
+      showToast(!isEdit ? "Профиль создан." : versionChanged ? "Профиль сохранён (новая версия)." : "Профиль переименован.");
+      loadProfiles();
+    }).catch((e) => {
+      var _a;
+      const msg = e.code === "profile_limit_reached" ? `Достигнут лимит профилей (${(_a = MYPROF == null ? void 0 : MYPROF.max) != null ? _a : "—"}). Удалите ненужный профиль перед созданием нового` : e.code === "user_profiles_disabled" ? "Пользовательские профили отключены администратором" : e.code === "duplicate_name" ? "Профиль с таким именем уже существует — выберите другое имя." : e.message;
+      if ($("modal").classList.contains("show")) {
+        errBox.textContent = msg;
+        errBox.hidden = false;
+      } else showToast(msg, true);
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+  }
+  function removeProfile(p) {
+    openModal(
+      `Удалить профиль «${p.name}»?`,
+      "Профиль и все его версии будут удалены. Уже созданные серверы не затрагиваются.",
+      [
+        { label: "Отмена", cls: "ghost", onClick: closeModal },
+        { label: "Удалить", cls: "danger", onClick: (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          btn.textContent = "Удаление…";
+          api.deleteProfile(p.id).then(() => {
+            closeModal();
+            showToast("Профиль удалён.");
+            loadProfiles();
+          }).catch((e) => {
+            showToast(e.message, true);
+            btn.disabled = false;
+            btn.textContent = "Удалить";
+          });
+        } }
+      ]
+    );
   }
   var STEPS = ["Регион", "Тариф", "Профиль", "Переменные", "Подтверждение"];
   var wizard = {
-    st: { step: 0, regions: null, region: "", configId: "", profiles: null, profile: null, vars: {}, idemKey: "", confirm: false, loading: false },
+    st: { step: 0, regions: null, configs: null, region: "", config: null, myprof: null, profile: null, vars: {}, varRows: null, profileError: null, submitError: null, idemKey: "", confirm: false, loading: false, result: null },
     entered: false,
     enter() {
       if (this.entered) {
@@ -2365,22 +4535,26 @@
     },
     loadRegions() {
       this.st.regions = null;
+      this.st.configs = null;
       api.regions().then((r) => {
         this.st.regions = r.regions || [];
+        this.st.configs = r.configurations || [];
         this.render();
       }).catch((e) => {
         this.st.regions = [];
+        this.st.configs = [];
         this.render();
-        showToast("Каталог регионов: " + e.message, true);
+        showToast("Каталог тарифов: " + e.message, true);
       });
     },
     loadProfiles() {
-      this.st.profiles = null;
-      api.profiles().then((r) => {
-        this.st.profiles = r.profiles || [];
+      this.st.myprof = null;
+      this.st.profileError = null;
+      api.myProfiles().then((r) => {
+        this.st.myprof = r;
         this.render();
-      }).catch(() => {
-        this.st.profiles = [];
+      }).catch((e) => {
+        this.st.profileError = e.message;
         this.render();
       });
     },
@@ -2390,12 +4564,15 @@
       this.render();
     },
     submitted() {
-      this.st = { step: 0, regions: this.st.regions, region: "", configId: "", profiles: this.st.profiles, profile: null, vars: {}, idemKey: "", confirm: false, loading: false };
-      this.entered = false;
-      location.hash = "#/operations";
+      this.st = { step: 0, regions: this.st.regions, configs: this.st.configs, region: "", config: null, myprof: this.st.myprof, profile: null, vars: {}, varRows: null, profileError: this.st.profileError, submitError: null, idemKey: "", confirm: false, loading: false, result: null };
+      this.render();
     },
     render() {
       const st = this.st;
+      if (st.result) {
+        this.renderResult(st.result);
+        return;
+      }
       const stepsHtml = STEPS.map((s, i) => `<span class="wizard-step${i === st.step ? " active" : i < st.step ? " done" : ""}" role="listitem">
         <span class="n">${i < st.step ? "✓" : i + 1}</span>${esc(s)}</span>`).join("");
       $("wiz-steps").innerHTML = stepsHtml;
@@ -2405,14 +4582,75 @@
       if (!linked) {
         bodyEl.innerHTML = `<div class="banner warn" style="margin:0">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>Сначала подключите аккаунт Beget в разделе <a href="#/beget">Beget</a>. Без этого создать сервер нельзя.</span></div>`;
+        <span>Сначала подключите аккаунт Beget в разделе <a href="#/beget">Хостинги</a>. Без этого создать сервер нельзя.</span></div>`;
         footEl.innerHTML = "";
         return;
       }
-      bodyEl.innerHTML = this.stepHTML();
+      bodyEl.innerHTML = `${st.submitError ? `<div class="banner bad" role="alert">${esc(st.submitError)}</div>` : ""}${this.stepHTML()}`;
       footEl.innerHTML = this.footHTML();
       this.bindStepBody();
       this.bindFoot();
+    },
+    /* Результат операции: состояние + обрезанный вывод. После провала внятно
+       сказано, что повтор установки НЕ создаёт новый VPS; кнопки, отправляющей
+       второй платный заказ, здесь нет (только «К операциям»). */
+    renderResult(op) {
+      var _a, _b, _c;
+      $("wiz-steps").innerHTML = "";
+      const meta = OP_META[op.state] || { label: op.state, cls: "" };
+      const out = op.last_error ? esc(op.last_error) : "—";
+      const hasVps = op.has_vps !== false;
+      const failed = op.state === "failed" || op.state === "unknown";
+      const retryable = (op.state === "failed" || op.state === "waiting_vps") && hasVps;
+      $("wiz-body").innerHTML = `<div class="kv" style="gap:10px">
+        <span class="kv-k">Операция</span><span class="kv-v mono">#${op.id}</span>
+        <span class="kv-k">Нода</span><span class="kv-v mono">${esc(op.node_id || "—")}</span>
+        <span class="kv-k">Состояние</span><span class="kv-v"><span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span></span>
+      </div>
+      <div class="field" style="margin-top:12px"><label>Вывод установки</label>
+        <pre class="op-err" style="white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;margin:0">${out}</pre></div>
+      ${op.state === "installing" ? `<div class="banner info" style="margin:12px 0 0">Установка выполняется. Статус также виден в разделе «Операции».</div>` : ""}
+      ${op.state === "waiting_vps" ? `<div class="banner warn" style="margin:12px 0 0">
+        <span>Сервер создан, но пока не готов (нет RUNNING). Установка начнётся после готовности; место в квоте занято, новый платный заказ невозможен. «Повторить установку» использует тот же сервер и не покупает новый.</span></div>` : ""}
+      ${failed && hasVps ? `<div class="banner warn" style="margin:12px 0 0">
+        <span>Повторный запуск установки НЕ создаёт новый VPS: сервер уже создан, повтор использует тот же ресурс. Новый платный заказ не отправляйте.</span></div>` : ""}
+      ${op.state === "done" ? `<div class="banner info" style="margin:12px 0 0">Сервер создан и профиль применён. Нода появится в «Мои ноды» после регистрации в пуле.</div>` : ""}`;
+      const more = op.state === "done" ? `<button type="button" class="btn" id="wiz-more">Создать ещё сервер</button>` : "";
+      const retry = retryable ? `<button type="button" class="btn" id="wiz-retry">Повторить установку</button>` : "";
+      $("wiz-foot").innerHTML = `<span class="spacer"></span>${more}${retry}<button type="button" class="btn primary" id="wiz-ops">К операциям</button>`;
+      (_a = $("wiz-ops")) == null ? void 0 : _a.addEventListener("click", () => {
+        location.hash = "#/operations";
+      });
+      (_b = $("wiz-more")) == null ? void 0 : _b.addEventListener("click", () => {
+        this.entered = false;
+        this.submitted();
+        this.render();
+      });
+      (_c = $("wiz-retry")) == null ? void 0 : _c.addEventListener("click", (ev) => {
+        var _a2;
+        const btn = ev.currentTarget;
+        btn.disabled = true;
+        btn.textContent = "Повтор…";
+        api.retryInstall(op.id, { profile_id: ((_a2 = this.st.profile) == null ? void 0 : _a2.id) || 0, vars: this.st.vars }).then((res) => {
+          HIGHLIGHT_OP = res.id;
+          this.st.result = res;
+          this.render();
+          showToast("Повтор установки запущен. Новый сервер не создаётся.");
+          refresh().catch(() => {
+          });
+        }).catch((e) => {
+          btn.disabled = false;
+          btn.textContent = "Повторить установку";
+          showToast(retryErrText(e), true);
+        });
+      });
+    },
+    /* Уход из раздела «Создать сервер»: результат не должен липнуть к визарду
+       при возврате; данные каталога сохраняем, чтобы не перезапрашивать зря. */
+    leave() {
+      if (!this.entered) return;
+      this.entered = false;
+      this.st.result = null;
     },
     stepHTML() {
       const st = this.st;
@@ -2441,61 +4679,99 @@
       return `<div class="pick-list">${items}</div>`;
     },
     tariffHTML() {
-      return `<div class="field">
-      <label for="wiz-config">Конфигурация (необязательно)</label>
-      <input type="text" id="wiz-config" class="mono" placeholder="configuration_id" value="${esc(this.st.configId)}">
-      <span class="help">Каталог тарифов провайдер не отдаёт через API. Оставьте пустым — провайдер подберёт конфигурацию по региону. Сумма списывается с личного аккаунта Beget.</span>
-    </div>`;
+      const st = this.st;
+      if (st.configs === null) return `<div class="skeleton skel-block"></div>`;
+      if (!st.configs.length) {
+        return `<div class="banner info" style="margin:0">Каталог тарифов провайдер не вернул. Можно продолжить без выбора конфигурации — провайдер подберёт её по региону.</div>`;
+      }
+      const items = st.configs.map((c) => {
+        var _a;
+        return `<button type="button" class="pick" data-config="${esc(c.id)}" aria-pressed="${((_a = st.config) == null ? void 0 : _a.id) === c.id}" ${c.available ? "" : "disabled"}>
+        <span class="dot"></span>
+        <span class="pick-b"><span class="pick-t">${esc(c.name || c.id)}</span>
+        <span class="pick-s">${esc(cfgSpecs(c))} · <strong>${esc(cfgPrice(c))}</strong>${c.available ? "" : " · недоступен"}</span></span>
+      </button>`;
+      }).join("");
+      return `<div class="pick-list">${items}</div>
+      <div class="note" style="margin-top:10px">Цена за период указана числом; «цена не указана» — провайдер её не отдал. Сумма списывается с личного аккаунта Beget.</div>`;
+    },
+    allProfiles() {
+      const m = this.st.myprof;
+      if (!m) return [];
+      const seen = /* @__PURE__ */ new Set();
+      const out = [];
+      for (const p of m.published || []) {
+        if (!seen.has(p.id)) {
+          seen.add(p.id);
+          out.push(p);
+        }
+      }
+      for (const p of m.profiles || []) {
+        if (!seen.has(p.id)) {
+          seen.add(p.id);
+          out.push(p);
+        }
+      }
+      return out;
     },
     profileHTML() {
       const st = this.st;
-      if (st.profiles === null) return `<div class="skeleton skel-block"></div>`;
-      if (!st.profiles.length) return `<div class="empty-state"><span class="t">Нет опубликованных профилей</span><span class="s">Профиль установки пока не опубликован — создание сервера недоступно.</span></div>`;
-      const items = st.profiles.map((p) => {
+      if (st.profileError) return `<div class="banner bad" role="alert">Не удалось загрузить профили: ${esc(st.profileError)} <button type="button" class="btn sm" id="wiz-profiles-retry">Повторить</button></div>`;
+      if (st.myprof === null) return `<div class="skeleton skel-block"></div>`;
+      const m = st.myprof;
+      const pub = m.published || [];
+      const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
+      if (!pub.length && !own.length) {
+        return `<div class="empty-state"><span class="t">Нет доступных профилей</span>
+        <span class="s">Профиль установки не опубликован и у вас нет локальных. Создание сервера недоступно.</span></div>`;
+      }
+      const pick = (p) => {
         var _a;
-        return `<button type="button" class="pick" data-profile="${p.id}" aria-pressed="${((_a = st.profile) == null ? void 0 : _a.id) === p.id}">
+        const own2 = p.published === false;
+        const title = own2 ? "Ваш локальный профиль: доступен для установки только вам, пока не опубликован" : "";
+        return `<button type="button" class="pick" data-profile="${p.id}" aria-pressed="${((_a = st.profile) == null ? void 0 : _a.id) === p.id}"${title ? ` title="${esc(title)}"` : ""}>
         <span class="dot"></span>
-        <span class="pick-b"><span class="pick-t">${esc(p.name)}</span>
+        <span class="pick-b"><span class="pick-t">${esc(p.name)}${own2 ? ` <span class="badge">мой профиль</span>` : ""}</span>
         <span class="pick-s">${esc(p.description || "")}</span></span>
       </button>`;
-      }).join("");
-      return `<div class="pick-list">${items}</div>`;
+      };
+      let html = "";
+      if (pub.length) html += `<div class="note" style="margin:0 0 6px">Опубликованные</div><div class="pick-list">${pub.map(pick).join("")}</div>`;
+      if (own.length) html += `<div class="note" style="margin:12px 0 6px">Мои профили</div><div class="pick-list">${own.map(pick).join("")}</div>`;
+      if (m.enabled === false) html += `<div class="banner warn" style="margin:12px 0 0">Создание локальных профилей отключено администратором.</div>`;
+      return html;
     },
     varsHTML() {
+      return `<div class="field"><h2>Переменные установки</h2><div class="vars-editor" id="wiz-vars"></div>
+      <span class="help">${esc(PROFILE_VARS_HELP)} Сброс удаляет переопределение; пустой секрет или ad_tag можно задать явно.</span></div>`;
+    },
+    /* Сводка переменных для шага подтверждения: секретные значения — •••. */
+    varsSummaryHTML() {
       var _a;
-      const st = this.st;
-      const schema = parseSchema((_a = st.profile) == null ? void 0 : _a.vars_schema);
-      const props = schema.properties || {};
-      const required = new Set(schema.required || []);
-      const keys = Object.keys(props);
-      if (!keys.length) return `<div class="banner info" style="margin:0">Профиль не требует переменных.</div>`;
-      const fields = keys.map((k) => {
-        const type = props[k].type || "string";
-        const id = "var-" + k;
-        const req2 = required.has(k) ? " · обязательно" : "";
-        if (type === "boolean") {
-          return `<label class="check"><input type="checkbox" id="${esc(id)}" data-var="${esc(k)}" data-type="boolean"${st.vars[k] ? " checked" : ""}><span class="box"></span> ${esc(k)}${req2}</label>`;
-        }
-        const itype = type === "integer" || type === "number" ? "number" : "text";
-        const val = st.vars[k] === void 0 ? "" : esc(String(st.vars[k]));
-        return `<div class="field">
-        <label for="${esc(id)}">${esc(k)}<span class="dim">${req2}</span></label>
-        <input type="${itype}" id="${esc(id)}" data-var="${esc(k)}" data-type="${esc(type)}" value="${val}">
-      </div>`;
-      }).join("");
-      return `<div class="wiz-grid">${fields}</div>`;
+      const decls = parseVarsSchema((_a = this.st.profile) == null ? void 0 : _a.vars_schema);
+      const secret = /* @__PURE__ */ new Set([
+        ...decls.filter(isSecretVar).map((d) => d.name.trim()),
+        "node_secret",
+        "authkey",
+        "password",
+        "proxy_secret"
+      ]);
+      const keys = Object.keys(this.st.vars);
+      if (!keys.length) return `<span class="dim">Без переопределений — применятся значения профиля и регистратора.</span>`;
+      return `<div class="kv" style="gap:6px">${keys.map((k) => `<span class="kv-k mono">${esc(k)}</span><span class="kv-v mono wrap">${esc(secret.has(k.trim()) ? "•••" : this.st.vars[k] === "" ? "Пустое значение (явно)" : String(this.st.vars[k]))}</span>`).join("")}</div>`;
     },
     confirmHTML() {
       var _a, _b, _c;
       const st = this.st;
       const regionLabel = ((_b = (_a = st.regions) == null ? void 0 : _a.find((r) => r.id === st.region)) == null ? void 0 : _b.name) || st.region;
-      const varsText = Object.keys(st.vars).length ? esc(JSON.stringify(st.vars)) : "—";
+      const configLabel = st.config ? `${st.config.name || st.config.id}` : "не выбрана";
+      const configPrice = st.config ? cfgPrice(st.config) : "—";
       return `<div class="kv" style="gap:10px">
       <span class="kv-k">Регион</span><span class="kv-v">${esc(regionLabel)} <span class="mono dim">${esc(st.region)}</span></span>
-      <span class="kv-k">Конфигурация</span><span class="kv-v mono">${esc(st.configId || "—")}</span>
+      <span class="kv-k">Тариф</span><span class="kv-v">${esc(configLabel)} <span class="dim">· ${esc(configPrice)}</span></span>
       <span class="kv-k">Профиль</span><span class="kv-v">${esc(((_c = st.profile) == null ? void 0 : _c.name) || "—")}</span>
-      <span class="kv-k">Переменные</span><span class="kv-v mono wrap">${varsText}</span>
     </div>
+    <div class="field" style="margin-top:12px"><label>Переменные установки</label>${this.varsSummaryHTML()}</div>
     <div class="banner warn" style="margin:14px 0 0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <span>Списание с личного аккаунта Beget. Заказ отправляется один раз — повтор того же запроса не создаёт второй сервер.</span>
@@ -2517,7 +4793,7 @@
         case 1:
           return true;
         case 2:
-          return !!st.profile;
+          return !!st.profile && !!st.myprof && !st.profileError;
         case 3:
           return this.varsValid();
         default:
@@ -2525,60 +4801,49 @@
       }
     },
     varsValid() {
-      var _a;
-      const schema = parseSchema((_a = this.st.profile) == null ? void 0 : _a.vars_schema);
-      for (const k of schema.required || []) {
-        const v = this.st.vars[k];
-        if (v === void 0 || v === "") return false;
-      }
-      return true;
+      const ed = $("wiz-vars");
+      return !ed || !validateVarsEditor(ed, false);
     },
     collectVars() {
-      document.querySelectorAll("[data-var]").forEach((el) => {
-        var _a;
-        const key = el.dataset.var;
-        const type = el.dataset.type || "string";
-        if (el instanceof HTMLInputElement && el.type === "checkbox") {
-          this.st.vars[key] = el.checked;
-        } else if (el instanceof HTMLInputElement) {
-          const raw = el.value.trim();
-          if (raw === "" && !(parseSchema((_a = this.st.profile) == null ? void 0 : _a.vars_schema).required || []).includes(key)) {
-            delete this.st.vars[key];
-            return;
-          }
-          this.st.vars[key] = (type === "integer" || type === "number") && raw !== "" ? Number(raw) : raw;
-        }
-      });
+      const ed = $("wiz-vars");
+      if (ed) this.st.vars = collectInstallVars(ed);
     },
-    /* Тело шага перерисовывается только в render(): onchange на [data-var] и
-       wiz-confirm — на «живучих» узлах, повторный bind копил бы слушатели
-       (collectVars/refreshFoot срабатывали бы N раз за одно событие). */
+    /* Fresh step nodes get one binding; footer bindings belong to render/refreshFoot. */
     bindStepBody() {
+      var _a, _b;
       const st = this.st;
+      (_a = $("wiz-profiles-retry")) == null ? void 0 : _a.addEventListener("click", () => this.loadProfiles());
       document.querySelectorAll("[data-region]").forEach((b) => b.addEventListener("click", () => {
         st.region = b.dataset.region;
         this.render();
       }));
-      const cfg = $("wiz-config");
-      if (cfg) cfg.addEventListener("input", () => {
-        st.configId = cfg.value.trim();
-      });
+      document.querySelectorAll("[data-config]").forEach((b) => b.addEventListener("click", () => {
+        st.config = (st.configs || []).find((c) => c.id === b.dataset.config) || null;
+        this.render();
+      }));
       document.querySelectorAll("[data-profile]").forEach((b) => b.addEventListener("click", () => {
-        st.profile = st.profiles.find((p) => p.id === Number(b.dataset.profile)) || null;
+        var _a2, _b2;
+        if (((_a2 = st.profile) == null ? void 0 : _a2.id) === Number(b.dataset.profile)) return;
+        if (((_b2 = st.varRows) == null ? void 0 : _b2.some((r) => r.override)) && !window.confirm("Смена профиля сбросит введённые переменные установки. Продолжить?")) return;
+        st.profile = this.allProfiles().find((p) => p.id === Number(b.dataset.profile)) || null;
         st.vars = {};
+        st.varRows = null;
+        st.confirm = false;
+        st.submitError = null;
         this.render();
       }));
       if (st.step === 3) {
-        document.querySelectorAll("[data-var]").forEach((el) => {
-          el.addEventListener("change", () => {
-            this.collectVars();
+        renderVarsEditor($("wiz-vars"), parseVarsSchema((_b = st.profile) == null ? void 0 : _b.vars_schema), {
+          install: true,
+          defaults: loadInstallDefaults(),
+          snapshot: st.varRows,
+          onChange: (rows, vars) => {
+            st.varRows = rows;
+            st.vars = vars;
             this.refreshFoot();
-          });
-          el.addEventListener("input", () => {
-            this.collectVars();
-            this.refreshFoot();
-          });
+          }
         });
+        $("wiz-foot").innerHTML = this.footHTML();
       }
       const chk = $("wiz-confirm");
       if (chk) chk.addEventListener("change", () => {
@@ -2605,77 +4870,79 @@
       this.bindFoot();
     },
     submit() {
-      var _a;
+      var _a, _b;
       const st = this.st;
       if (!st.idemKey) st.idemKey = newIdemKey();
       st.loading = true;
+      st.submitError = null;
       this.refreshFoot();
       api.createVps({
         region: st.region,
-        configuration_id: st.configId,
-        profile_id: ((_a = st.profile) == null ? void 0 : _a.id) || 0,
+        configuration_id: ((_a = st.config) == null ? void 0 : _a.id) || "",
+        profile_id: ((_b = st.profile) == null ? void 0 : _b.id) || 0,
         vars: st.vars,
         confirm: true,
         idem_key: st.idemKey
       }).then((op) => {
         st.loading = false;
         HIGHLIGHT_OP = op.id;
-        showToast("Операция создана. Статус — в разделе «Операции».");
-        this.submitted();
+        st.result = op;
+        this.render();
+        showToast("Операция создана. Статус — ниже и в разделе «Операции».");
         refresh().catch(() => {
         });
       }).catch((e) => {
         st.loading = false;
         this.refreshFoot();
-        const text = e.code === "quota_exceeded" ? "Квота исчерпана: освободите место или запросите лимит у администратора" : e.status === 429 ? "Слишком часто: подождите перед следующим заказом" : e.status === 503 ? "Сервис временно недоступен" : e.status === 400 ? "Проверьте регион и переменные профиля" : "Не удалось создать сервер: " + e.message;
-        const el = $("wiz-body");
-        el.insertAdjacentHTML("afterbegin", `<div class="banner bad" style="margin:0 0 14px"><span>${esc(text)}</span></div>`);
+        const text = e.code === "create_in_progress" ? "Предыдущий заказ ещё не завершён. Новый сервер не создаётся — повторите тот же запрос позже" : e.code === "profile_unavailable" ? "Профиль недоступен для установки: он не опубликован" : e.code === "quota_exceeded" ? "Квота исчерпана: освободите место или запросите лимит у администратора" : e.status === 429 ? "Слишком часто: подождите перед следующим заказом" : "Не удалось создать сервер: " + e.message;
+        st.submitError = text;
+        this.render();
         showToast(text, true);
       });
     }
   };
-  function parseSchema(raw) {
-    if (!raw) return {};
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return {};
-    }
+  function cfgSpecs(c) {
+    const parts = [];
+    if (c.cpu) parts.push(c.cpu + " vCPU");
+    if (c.ram) parts.push(c.ram >= 1024 ? c.ram / 1024 + " ГБ RAM" : c.ram + " МБ RAM");
+    if (c.disk) parts.push(c.disk >= 1024 ? c.disk / 1024 + " ГБ диск" : c.disk + " МБ диск");
+    return parts.join(" · ") || "характеристики не указаны";
+  }
+  function cfgPrice(c) {
+    if (c.price === null || c.price === void 0) return "цена не указана";
+    return c.price.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + (c.period ? " / " + c.period : "");
   }
   var begetOk = false;
-  function renderAll() {
+  function renderAll(poll = false) {
     if (ME) {
       $("hdr-user").textContent = ME.username;
-      renderMetrics();
+      renderMetrics(poll);
     }
-    renderNodes();
-    renderOperations();
+    renderNodes(poll);
+    renderOperations(poll);
   }
   var refreshing = false;
   async function refresh() {
     if (refreshing) return;
     refreshing = true;
     try {
-      const [me, nodes, ops, link, key] = await Promise.all([
+      const [me, nodes, ops, link] = await Promise.all([
         api.me(),
         api.nodes(),
         api.operations(),
-        api.begetLink(),
-        api.authkey()
+        api.begetLink()
       ]);
       ME = me;
       NODES = nodes.nodes || [];
       OPS = ops.operations || [];
       begetOk = !!link.verified;
-      renderBeget(link);
-      renderAuthkey(key);
+      renderBeget(link, true);
+      loadAuthkey(true);
       $("last-upd").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
       $("live-text").textContent = "live";
       $("live-pill").className = "status-pill live";
-      renderAll();
-      const ae = document.activeElement;
-      const editingWizard = ae instanceof HTMLElement && !!ae.closest("#wiz-body, #wiz-foot");
-      if (currentView() === "create" && !editingWizard) wizard.render();
+      renderAll(true);
+      renderSection(document.getElementById("view-create"), true, () => wizard.render());
     } catch (e) {
       const err = e;
       if (err.message === "unauthorized") return;
@@ -2710,9 +4977,52 @@
       if (inp) inp.type = inp.type === "password" ? "text" : "password";
       return;
     }
+    const pedit = t.closest("[data-pedit]");
+    if (pedit) {
+      const p = MYPROF == null ? void 0 : MYPROF.profiles.find((x) => x.id === Number(pedit.dataset.pedit));
+      if (p) profileEditor(p);
+      return;
+    }
+    const pdel = t.closest("[data-pdel]");
+    if (pdel) {
+      const p = MYPROF == null ? void 0 : MYPROF.profiles.find((x) => x.id === Number(pdel.dataset.pdel));
+      if (p) removeProfile(p);
+      return;
+    }
+    const pcopy = t.closest("button[data-pcopy]");
+    if (pcopy) {
+      const id = Number(pcopy.dataset.pcopy) || 0;
+      if (id) copyPublishedProfile(pcopy, id);
+      return;
+    }
+    const scheck = t.closest("[data-scheck]");
+    if (scheck) {
+      const s = SERVERS.find((x) => x.id === Number(scheck.dataset.scheck));
+      if (s) checkServer(s);
+      return;
+    }
+    const sinst = t.closest("[data-sinstall]");
+    if (sinst) {
+      const s = SERVERS.find((x) => x.id === Number(sinst.dataset.sinstall));
+      if (s) openInstall(s, sinst.dataset.sretry === "1");
+      return;
+    }
+    const sdel = t.closest("[data-sdel]");
+    if (sdel) {
+      const s = SERVERS.find((x) => x.id === Number(sdel.dataset.sdel));
+      if (s) confirmDeleteServer(s);
+      return;
+    }
     const del = t.closest("[data-del]");
     if (del) {
       confirmDeleteNode(del.dataset.del);
+      return;
+    }
+    const optog = t.closest("[data-optoggle]");
+    if (optog) {
+      const id = Number(optog.dataset.optoggle);
+      OPEN_OPS.has(id) ? OPEN_OPS.delete(id) : OPEN_OPS.add(id);
+      renderOperations();
       return;
     }
     const cancel = t.closest("[data-cancel]");
@@ -2727,41 +5037,106 @@
       });
       return;
     }
+    const retry = t.closest("[data-retry]");
+    if (retry) {
+      const id = Number(retry.dataset.retry);
+      openModal(
+        `Повторить установку (операция #${id})?`,
+        "Повтор применяет профиль к уже созданному серверу и НИКОГДА не покупает новый VPS — новый платный заказ не отправляется. Если сервер ещё не готов (нет RUNNING), повторите позже.",
+        [
+          { label: "Отмена", cls: "ghost", onClick: closeModal },
+          { label: "Повторить установку", cls: "primary", onClick: (ev) => {
+            const btn = ev.currentTarget;
+            btn.disabled = true;
+            btn.textContent = "Повтор…";
+            api.retryInstall(id).then((op) => {
+              closeModal();
+              HIGHLIGHT_OP = op.id;
+              showToast("Повтор установки запущен. Новый сервер не создаётся.");
+              refresh().catch(() => {
+              });
+            }).catch((e2) => {
+              showToast(retryErrText(e2), true);
+              btn.disabled = false;
+              btn.textContent = "Повторить установку";
+            });
+          } }
+        ]
+      );
+      return;
+    }
     const card = t.closest(".node-card[data-id]");
     if (card) {
-      const id = card.dataset.id;
-      card.classList.toggle("open");
-      OPEN_NODES.has(id) ? OPEN_NODES.delete(id) : OPEN_NODES.add(id);
+      location.hash = "#/nodes/" + encodeURIComponent(card.dataset.id);
+      return;
     }
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest(".node-card[data-id]");
+    if (!card) return;
+    e.preventDefault();
+    location.hash = "#/nodes/" + encodeURIComponent(card.dataset.id);
+  });
+  $("ops-body").addEventListener("toggle", (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLDetailsElement) || !el.dataset.oplog) return;
+    el.open ? OPEN_LOGS.add(el.dataset.oplog) : OPEN_LOGS.delete(el.dataset.oplog);
+  }, true);
   $("nodes-reload").addEventListener("click", () => refresh());
   $("beget-reload").addEventListener("click", () => loadBeget());
+  $("servers-reload").addEventListener("click", () => loadServers());
+  $("profiles-create").addEventListener("click", () => profileEditor(null));
+  initServerForm();
   $("logout-btn").addEventListener("click", () => {
     api.logout().catch(() => {
     }).finally(() => location.replace("/signin"));
   });
+  var begetRateLimited = false;
+  function showBegetRateLimit(msg) {
+    begetRateLimited = true;
+    const box = $("beget-ratelimit");
+    box.innerHTML = `<div class="banner warn" style="margin:0">${esc(msg)}</div>`;
+    box.hidden = false;
+    $("beget-submit").disabled = true;
+  }
   var begetForm = $("beget-form");
   begetForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (begetRateLimited) return;
     const login = $("bg-login").value.trim();
     const pass = $("bg-pass").value;
+    const codeEl = $("bg-code");
+    const code = codeEl.value.trim();
     if (!login || !pass) return;
+    codeEl.style.borderColor = "";
     const btn = $("beget-submit");
     btn.disabled = true;
     const label = btn.textContent;
     btn.textContent = "Проверка…";
-    api.connectBeget(login, pass).then(() => {
+    api.connectBeget(login, pass, code).then(() => {
       $("bg-pass").value = "";
+      codeEl.value = "";
+      begetRateLimited = false;
+      $("beget-ratelimit").hidden = true;
       showToast("Beget подключён.");
       loadBeget();
       refresh().catch(() => {
       });
     }).catch((err) => {
-      const text = err.status === 400 ? "Неверный логин или пароль" : err.status === 503 ? "Сервис временно недоступен" : "Не удалось подключить: " + err.message;
-      showToast(text, true);
+      const text = err.code === "beget_auth_failed" ? err.message : err.status === 503 ? "Сервис временно недоступен" : "Не удалось подключить: " + err.message;
+      if (err.reason === "rate_limited") {
+        showBegetRateLimit(text);
+      } else {
+        showToast(text, true);
+      }
+      if (err.reason === "code_required") {
+        codeEl.style.borderColor = "var(--bad)";
+        codeEl.focus();
+      }
     }).finally(() => {
-      btn.disabled = false;
       btn.textContent = label;
+      btn.disabled = begetRateLimited;
     });
   });
   window.addEventListener("hashchange", route);
@@ -2770,12 +5145,16 @@
     });
   });
   initTheme();
+  initBuildWatch();
   route();
   refresh().catch(() => {
   });
   setInterval(() => {
-    if (!document.hidden) refresh().catch(() => {
+    if (document.hidden) return;
+    refresh().catch(() => {
     });
+    if (currentView() === "servers") loadServers(true);
+    pollNodeDetail();
   }, 5e3);
 })();
 </script>

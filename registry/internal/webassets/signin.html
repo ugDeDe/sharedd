@@ -1104,6 +1104,7 @@
     gap: 8px;
     cursor: pointer;
     font-size: 12.5px;
+    min-height: 24px;
   }
   .check input {
     position: absolute;
@@ -1288,6 +1289,30 @@
       transform: translateY(6px);
     }
   }
+  #update-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    z-index: 80;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 9px 12px 9px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--acc);
+    background: var(--surf);
+    color: var(--fg);
+    box-shadow: var(--sh-pop);
+    font-size: 12.5px;
+  }
+  #update-bar[hidden] {
+    display: none;
+  }
+  #update-bar .btn {
+    flex: none;
+  }
   .kv {
     display: flex;
     flex-direction: column;
@@ -1356,6 +1381,37 @@
   .auth-card .banner[hidden] {
     display: none;
   }
+  #panel-register .banner {
+    margin: 0;
+  }
+  #reg-invite-alert {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    color: var(--fg);
+  }
+  #reg-invite-alert[hidden] {
+    display: none;
+  }
+  .reg-gate {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .reg-gate[hidden] {
+    display: none;
+  }
+  .reg-gate p {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  .reg-invite-note {
+    margin: 0;
+    color: var(--fg-2);
+    font-size: 12.5px;
+  }
   @media (max-width: 640px) {
     .auth-wrap {
       min-height: auto;
@@ -1364,7 +1420,11 @@
       margin: 10px 0 0;
     }
   }
+  [hidden] {
+    display: none;
+  }
 </style>
+  <meta name="sharedd-build" content="8bc1f3e4b4015a29">
 </head>
 <body>
 
@@ -1419,30 +1479,43 @@
       </div>
     </form>
 
-    <form class="card-body auth-form" id="panel-register" role="tabpanel" aria-labelledby="tab-register" hidden novalidate>
-      <div class="field">
-        <label for="rg-user">Логин</label>
-        <input type="text" id="rg-user" name="username" class="mono" autocomplete="username" autocapitalize="off" spellcheck="false" pattern="[a-z0-9_.-]{3,32}" minlength="3" maxlength="32" required>
-        <span class="help">3–32 символа: a–z, 0–9, <span class="mono">_ . -</span></span>
+    <!-- Регистрация: вкладка остаётся доступной как объяснение. Без токена —
+         заглушка, с ?invite=<token> — форма (invitations-legacy-ui.md §4). -->
+    <div class="card-body auth-form" id="panel-register" role="tabpanel" aria-labelledby="tab-register" hidden>
+      <div class="banner bad" id="reg-invite-alert" role="alert" hidden>
+        <span id="reg-invite-alert-text"></span>
+        <button type="button" class="btn ghost sm" id="reg-dead-login">Войти</button>
       </div>
-      <div class="field">
-        <label for="rg-pass">Пароль</label>
-        <div class="input-group">
-          <input type="password" id="rg-pass" name="password" autocomplete="new-password" minlength="10" required>
-          <button type="button" class="in-btn" data-reveal="rg-pass" aria-label="Показать пароль" title="Показать пароль">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
+      <div class="reg-gate" id="reg-gate" hidden>
+        <p>Регистрация только по приглашению. Попросите администратора прислать ссылку</p>
+        <button type="button" class="btn ghost full" id="reg-gate-login">Войти</button>
+      </div>
+      <p class="reg-invite-note" id="reg-invite-note" hidden>Регистрация по приглашению</p>
+      <form id="reg-form" class="auth-form" hidden novalidate>
+        <div class="field">
+          <label for="rg-user">Логин</label>
+          <input type="text" id="rg-user" name="username" class="mono" autocomplete="username" autocapitalize="off" spellcheck="false" pattern="[a-z0-9_.-]{3,32}" minlength="3" maxlength="32" required>
+          <span class="help">3–32 символа: a–z, 0–9, <span class="mono">_ . -</span></span>
         </div>
-        <span class="help">Пароль не короче 10 символов</span>
-      </div>
-      <div class="field">
-        <label for="rg-pass2">Повтор пароля</label>
-        <input type="password" id="rg-pass2" autocomplete="new-password" minlength="10" required>
-      </div>
-      <div class="card-foot auth-foot">
-        <button type="submit" class="btn primary full" id="rg-submit">Создать аккаунт</button>
-      </div>
-    </form>
+        <div class="field">
+          <label for="rg-pass">Пароль</label>
+          <div class="input-group">
+            <input type="password" id="rg-pass" name="password" autocomplete="new-password" minlength="10" required>
+            <button type="button" class="in-btn" data-reveal="rg-pass" aria-label="Показать пароль" title="Показать пароль">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <span class="help">Пароль не короче 10 символов</span>
+        </div>
+        <div class="field">
+          <label for="rg-pass2">Повтор пароля</label>
+          <input type="password" id="rg-pass2" autocomplete="new-password" minlength="10" required>
+        </div>
+        <div class="card-foot auth-foot">
+          <button type="submit" class="btn primary full" id="rg-submit">Создать аккаунт</button>
+        </div>
+      </form>
+    </div>
   </section>
 
   <footer class="page-foot"><a href="/statistics">← статистика пула</a></footer>
@@ -1487,6 +1560,7 @@
     el.textContent = text;
     el.classList.toggle("info", info);
     el.classList.toggle("bad", !info);
+    el.setAttribute("role", info ? "status" : "alert");
     el.hidden = false;
   }
   function clearAlert() {
@@ -1502,7 +1576,39 @@
     $("tab-register").setAttribute("aria-selected", String(!isLogin));
     $("tab-login").tabIndex = isLogin ? 0 : -1;
     $("tab-register").tabIndex = isLogin ? -1 : 0;
+    if (!isLogin) renderRegister();
   }
+  var INVITE = null;
+  var INVITE_DEAD = null;
+  var INVITE_BANNERS = {
+    invite_expired: "Срок приглашения истёк. Попросите администратора прислать новое",
+    invite_used: "Приглашение уже использовано. Если вы создали аккаунт, войдите. Иначе попросите новое приглашение",
+    invite_revoked: "Приглашение отозвано администратором. Попросите новое приглашение",
+    invite_invalid: "Приглашение недействительно. Проверьте ссылку или попросите новое",
+    invite_required: "Приглашение недействительно. Проверьте ссылку или попросите новое"
+  };
+  function renderRegister() {
+    var _a2;
+    const dead = $("reg-invite-alert");
+    const gate = $("reg-gate");
+    const note = $("reg-invite-note");
+    const form = $("reg-form");
+    if (INVITE_DEAD) {
+      $("reg-invite-alert-text").textContent = (_a2 = INVITE_BANNERS[INVITE_DEAD]) != null ? _a2 : INVITE_BANNERS.invite_invalid;
+      dead.hidden = false;
+      gate.hidden = true;
+      note.hidden = true;
+      form.hidden = true;
+      return;
+    }
+    dead.hidden = true;
+    const hasInvite = INVITE !== null;
+    gate.hidden = hasInvite;
+    note.hidden = !hasInvite;
+    form.hidden = !hasInvite;
+  }
+  $("reg-gate-login").addEventListener("click", () => showTab("login"));
+  $("reg-dead-login").addEventListener("click", () => showTab("login"));
   $("tab-login").addEventListener("click", () => {
     clearAlert();
     showTab("login");
@@ -1558,9 +1664,10 @@
       btn.textContent = label;
     });
   });
-  var regForm = $("panel-register");
+  var regForm = $("reg-form");
   regForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (regForm.hidden) return;
     clearAlert();
     const username = $("rg-user").value.trim();
     const password = $("rg-pass").value;
@@ -1578,24 +1685,46 @@
     btn.disabled = true;
     const label = btn.textContent;
     btn.textContent = "Создание…";
-    post("/api/auth/register", { username, password }).then(async (resp) => {
+    const body = { username, password };
+    if (INVITE !== null) body.invite = INVITE;
+    post("/api/auth/register", body).then(async (resp) => {
       if (resp.ok) {
         alertBox("Аккаунт создан. Администратор выдаст квоту — до этого создать ноды нельзя.", true);
         $("li-user").value = username;
         $("rg-pass").value = "";
         $("rg-pass2").value = "";
+        INVITE = null;
+        INVITE_DEAD = null;
+        if (location.pathname !== "/signin") history.replaceState(null, "", "/signin");
+        renderRegister();
         showTab("login");
         return;
       }
       const err = await toErr(resp);
-      const text = err.status === 409 ? "Логин уже занят" : err.status === 429 ? "Слишком много попыток, повторите позже" : err.status === 400 ? "Логин: 3–32, a–z 0–9 _ . - · пароль не короче 10" : err.code === "users_disabled" || err.status === 503 ? "Сервис временно недоступен" : "Не удалось создать аккаунт. Повторите позже.";
+      if (err.code && INVITE_BANNERS[err.code]) {
+        INVITE_DEAD = err.code;
+        renderRegister();
+        return;
+      }
+      const text = err.status === 409 ? "Логин уже занят" : err.status === 429 ? "Слишком много попыток. Повторите позже" : err.status === 400 ? "Логин: 3–32, a–z 0–9 _ . - · пароль не короче 10" : err.code === "users_disabled" || err.status === 503 ? "Сервис временно недоступен" : "Не удалось создать аккаунт. Повторите позже.";
       alertBox(text);
-    }).catch(() => alertBox("Нет связи с регистратором. Повторите позже.")).finally(() => {
+    }).catch(() => alertBox("Нет связи с регистратором. Повторите позже. Если аккаунт уже создан — войдите.")).finally(() => {
       btn.disabled = false;
       btn.textContent = label;
     });
   });
   initTheme();
+  {
+    const u = new URL(location.href);
+    const inv = u.searchParams.get("invite");
+    if (inv) {
+      INVITE = inv;
+      u.search = "";
+      history.replaceState(null, "", u.pathname + u.hash);
+    }
+  }
+  renderRegister();
+  if (INVITE !== null) showTab("register");
   fetch("/api/auth/me", { cache: "no-store" }).then((r) => {
     if (r.ok) location.replace("/cabinet");
   }).catch(() => {
