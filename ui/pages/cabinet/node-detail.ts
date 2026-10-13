@@ -2,8 +2,11 @@
    Данные — `GET /api/me/nodes/{id}/detail` (node_detail_api.go): владелец
    видит свои ноды, чужая/legacy → 404. Разделы без источника приходят null и
    перечислены в absent[] — рисуем «нет данных», не выдумываем значения.
-   Разметка — существующие .card/.table-cards/.badge/.metrics/.kv/.feed.
-   Опрос каждые 5 с идёт через renderSection: не сбивает фокус и прокрутку. */
+   Статистика разбита по КАТЕГОРИЯМ-ТАБАМ (порт nav.c-tabs из mtplane):
+   Обзор · Метрики · Проверки · Журнал · Действия. Активный таб — в хэше
+   `#/nodes/<id>?tab=<key>`. Разметка — .card/.table-cards/.badge/.metrics/.kv/.feed.
+   Опрос каждые 5 с идёт через renderSection: не сбивает фокус, прокрутку
+   и активный таб. */
 
 import { $, esc, renderSection } from "../../lib/dom";
 import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
@@ -55,10 +58,23 @@ const EV_LABEL: Record<string, { label: string; dot: string }> = {
   ip_blocked:           { label: "IP заблокирован",       dot: "bad" },
 };
 
+// Разделы-табы: статистика разбита по категориям, как в mtplane (nav.c-tabs),
+// а не свалена в один вертикальный скролл. Порядок табов = порядок категорий.
+const TABS: { key: string; label: string }[] = [
+  { key: "overview", label: "Обзор" },
+  { key: "metrics",  label: "Метрики" },
+  { key: "checks",   label: "Проверки" },
+  { key: "journal",  label: "Журнал" },
+  { key: "actions",  label: "Действия" },
+];
+const TAB_KEYS = TABS.map((t) => t.key);
+
 let DETAIL_ID = "";
 let DETAIL: NodeDetail | null = null;
 let DETAIL_ERR: { msg: string; status?: number } | null = null;
 let DETAIL_RETRY = false;
+// Активный таб. Живёт между опросами (5 с); сбрасывается в openNodeDetail.
+let DETAIL_TAB = "overview";
 // Скрытые серии графика F (легенда-кнопки). Живёт между опросами (5 с).
 let F_HIDDEN = new Set<string>();
 
@@ -70,6 +86,7 @@ export function openNodeDetail(id: string): void {
   DETAIL = null;
   DETAIL_ERR = null;
   DETAIL_RETRY = false;
+  DETAIL_TAB = parseTabHash(); // дефолт «Обзор»; валидный #?tab= восстанавливаем
   F_HIDDEN = new Set();
   const el = $("node-detail");
   if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
@@ -81,6 +98,63 @@ export function closeNodeDetail(): void {
   DETAIL = null;
   DETAIL_ERR = null;
 }
+
+/* ── табы: hash-навигация и переключение панелей ──────────────────────
+   Активный таб отражается в хэше как `?tab=<key>` внутри того же маршрута
+   `#/nodes/<id>` (SPA владеет хэшем). writeTabHash идёт через replaceState —
+   hashchange не срабатывает и маршрут не перезапускается. */
+function parseTabHash(): string {
+  const m = /[?&]tab=([a-z]+)/.exec(location.hash || "");
+  return m && TAB_KEYS.includes(m[1]) ? m[1] : "overview";
+}
+
+function writeTabHash(name: string): void {
+  if (!DETAIL_ID) return;
+  const clean = (location.hash || "").replace(/[?&]tab=[a-z]+/, "");
+  const base = clean || "#/nodes/" + encodeURIComponent(DETAIL_ID);
+  const next = base + (base.includes("?") ? "&" : "?") + "tab=" + name;
+  history.replaceState(null, "", location.pathname + location.search + next);
+}
+
+/** Переключить таб без полной перерисовки: скрыть/показать панели, обновить
+ *  aria-selected + roving tabindex. focusPanel — клик фокусирует панель,
+ *  стрелки оставляют фокус на табе (APG). */
+function activateTab(name: string, focusPanel: boolean): void {
+  if (!TAB_KEYS.includes(name)) name = "overview";
+  DETAIL_TAB = name;
+  document.querySelectorAll<HTMLButtonElement>("#node-detail .nd-tabs [role='tab']").forEach((b) => {
+    const on = b.dataset.tab === name;
+    b.setAttribute("aria-selected", String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  document.querySelectorAll<HTMLElement>("#node-detail [data-tab-panel]").forEach((p) => {
+    p.hidden = p.dataset.tabPanel !== name;
+  });
+  writeTabHash(name);
+  if (focusPanel) document.getElementById("nd-panel-" + name)?.focus({ preventScroll: true });
+}
+
+// Клик и стрелки — делегированы на document: innerHTML-перерисовка опроса
+// (5 с) сносит слушатели, привязанные к nav.
+document.addEventListener("click", (e) => {
+  const tab = (e.target as HTMLElement)?.closest?.("#node-detail .nd-tabs [role='tab']") as HTMLElement | null;
+  if (!tab || !DETAIL_ID) return;
+  activateTab(tab.dataset.tab || "overview", true);
+});
+document.addEventListener("keydown", (e) => {
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>("#node-detail .nd-tabs [role='tab']"));
+  const idx = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (idx < 0) return;
+  let next = -1;
+  if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+  else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = tabs.length - 1;
+  if (next < 0) return;
+  e.preventDefault();
+  tabs[next].focus();
+  activateTab(tabs[next].dataset.tab || "overview", false);
+});
 
 function load(poll: boolean): void {
   if (!DETAIL_ID) return;
@@ -166,7 +240,8 @@ function detailHTML(d: NodeDetail): string {
   const nt = n.node_type ? NODE_TYPE_META[n.node_type] : undefined;
   const q = n.quarantine;
 
-  return `
+  // Шапка со статусом — всегда над табами.
+  const head = `
   <div class="card nd-head">
     <div>
       <div class="nd-ip-lead"><span class="mono">${esc(n.ip || "—")}${n.port ? ":" + n.port : ""}</span>
@@ -181,9 +256,36 @@ function detailHTML(d: NodeDetail): string {
     </div>
     ${n.unhealthy_reason ? `<div class="nd-reason">${esc(n.unhealthy_reason)}</div>` : ""}
     <button class="btn danger sm" data-del="${esc(n.node_id)}" style="margin-left:auto">Удалить ноду</button>
-  </div>
+  </div>`;
 
-  <section class="card">
+  const tabs = `<nav class="nd-tabs" role="tablist" aria-label="Разделы ноды">${TABS.map((t) => {
+    const on = t.key === DETAIL_TAB;
+    return `<button type="button" role="tab" id="nd-tab-${t.key}" data-tab="${t.key}" aria-controls="nd-panel-${t.key}" aria-selected="${on}" tabindex="${on ? 0 : -1}">${esc(t.label)}</button>`;
+  }).join("")}</nav>`;
+
+  const panels = TABS.map((t) => {
+    const on = t.key === DETAIL_TAB;
+    return `<div class="nd-panel" id="nd-panel-${t.key}" role="tabpanel" aria-labelledby="nd-tab-${t.key}" tabindex="-1" data-tab-panel="${t.key}"${on ? "" : " hidden"}>${panelHTML(t.key, d)}</div>`;
+  }).join("");
+
+  return head + tabs + panels;
+}
+
+/** Содержимое панели по ключу таба. Категории сохраняют исходный порядок. */
+function panelHTML(key: string, d: NodeDetail): string {
+  switch (key) {
+    case "metrics": return chartCHTML(d) + hostingHTML(d) + telemtHTML(d) + controlApiHTML(d);
+    case "checks":  return checksHTML(d);
+    case "journal": return eventsHTML(d);
+    case "actions": return actionsHTML(d);
+    default:        return paramsHTML(d) + chartAHTML(d) + ipHistoryHTML(d);
+  }
+}
+
+function paramsHTML(_d: NodeDetail): string {
+  const n = _d.node!;
+  const q = n.quarantine;
+  return `<section class="card">
     <div class="card-head"><h2>Параметры</h2><span class="hint">${esc(n.node_id)}</span></div>
     <div class="nd-grid">
       <div class="kv"><span class="kv-k">IP</span><span class="kv-v mono">${esc(n.ip || "—")}</span></div>
@@ -199,11 +301,11 @@ function detailHTML(d: NodeDetail): string {
       <div class="kv"><span class="kv-k">Мастерство</span><span class="kv-v">${n.master.master_stints > 0 ? esc(fmtDur(n.master.master_time_sec)) + ` · ${n.master.master_stints} stint` : "—"}</span></div>
       <div class="kv"><span class="kv-k">Quarantine</span><span class="kv-v">${q ? `${q.attempts} попыток · с ${esc(fmtClock(new Date(q.entered_at * 1000).toISOString()))}` : "—"}</span></div>
     </div>
-  </section>
+  </section>`;
+}
 
-  ${chartAHTML(d)}
-
-  <section class="card">
+function ipHistoryHTML(d: NodeDetail): string {
+  return `<section class="card">
     <div class="card-head"><h2>История IP</h2><span class="hint">по журналу событий</span></div>
     ${(d.ip_history && d.ip_history.length)
       ? `<div class="table-wrap"><table class="table-cards">
@@ -215,9 +317,11 @@ function detailHTML(d: NodeDetail): string {
             <td class="num" data-label="Событий">${fmtNum(r.events)}</td>
           </tr>`).join("")}</tbody></table></div>`
       : `<div class="table-empty">${d.ip_history === null ? "нет данных" : "записей нет"}</div>`}
-  </section>
+  </section>`;
+}
 
-  <section class="card">
+function checksHTML(d: NodeDetail): string {
+  return `<section class="card">
     <div class="card-head"><h2>Последние проверки</h2><span class="hint">tcp · globalping · отчёт</span></div>
     ${d.last_checks.length
       ? `<div class="table-wrap"><table class="table-cards">
@@ -229,24 +333,20 @@ function detailHTML(d: NodeDetail): string {
             <td class="wrap" data-label="Детали">${esc(c.detail || "—")}</td>
           </tr>`).join("")}</tbody></table></div>`
       : `<div class="table-empty">проверок пока нет</div>`}
-  </section>
+  </section>`;
+}
 
-  ${chartCHTML(d)}
-
-  ${hostingHTML(d)}
-
-  ${telemtHTML(d)}
-
-  ${controlApiHTML(d)}
-
-  <section class="card">
+function eventsHTML(d: NodeDetail): string {
+  return `<section class="card">
     <div class="card-head"><h2>События ноды</h2><span class="hint">последние ${d.events.length}</span></div>
     <ul class="feed" id="nd-events" style="max-height:none">
       ${d.events.length ? d.events.map(eventRow).join("") : `<li class="empty-state"><span class="t">Событий пока нет</span></li>`}
     </ul>
-  </section>
+  </section>`;
+}
 
-  <section class="card">
+function actionsHTML(_d: NodeDetail): string {
+  return `<section class="card">
     <div class="card-head"><h2>Действия</h2><span class="hint">проверка · конфиг · переустановка</span></div>
     <div class="nd-grid card-body">${nd("Действия ноды")}</div>
   </section>`;

@@ -112,6 +112,32 @@
   display: grid; gap: 10px 18px; padding: var(--pad);
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
+
+/* ═══ Табы разделов ноды (порт .c-tabs из mtplane) ═══════════════════
+   Разбивает статистику по категориям вместо одного скролла. */
+.nd-tabs {
+  display: flex; align-items: flex-end; gap: 2px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto; overscroll-behavior-x: contain;
+  margin: 0 0 var(--gap);
+  scrollbar-width: thin;
+}
+.nd-tabs button {
+  appearance: none; flex: 0 0 auto; background: transparent;
+  border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 0 12px; height: 38px; white-space: nowrap; cursor: pointer;
+  color: var(--fg-3); font: inherit; font-size: 12.5px; font-weight: 540;
+  transition: color .12s, background .12s, border-color .12s;
+}
+.nd-tabs button:hover { color: var(--fg); background: var(--surf-2); }
+.nd-tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--acc); }
+.nd-tabs button:focus-visible {
+  outline: 2px solid var(--acc); outline-offset: -2px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+.nd-panel:focus { outline: none; }
+.nd-panel:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; border-radius: var(--r-sm); }
+
 .chart-cap { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 7px; font-size: 11.5px; color: var(--fg-3); }
 .chart-cap:first-child { margin-top: 0; }
 .chart-cap .hint { margin-left: auto; }

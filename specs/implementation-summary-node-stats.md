@@ -4,18 +4,25 @@
 
 ## Что сделано
 
-### Категории (единый scroll, порядок §1)
-1. Шапка ноды (без изменений)
-2. Параметры (без изменений)
-3. **Доступность, 7 дней** — плитки «Общая доступность» / «GP верификации» + **график A**
-4. История IP (без изменений)
-5. Последние проверки (без изменений)
-6. **Соединения, 24 ч** — плитки «Соединения пользователей» / «Уникальные IP (сейчас)» + **график C**
-7. **Хостинг: CPU / RAM / сеть** — плитки текущих значений + note (график D заблокирован)
-8. **Статистика telemt** — плитки-сводка (метрики, собрано, ДЦ, endpoints) + **график E** + **график F** + таблица «Пользователи» + снимок метрик (`<details>`)
-9. telemt Control API (без изменений)
-10. События ноды (без изменений)
-11. Действия (без изменений)
+### Категории — ТАБАМИ (порт `nav.c-tabs` из mtplane; не единый scroll)
+
+Шапка ноды (статус-чипы + «Удалить ноду») — над таб-баром, всегда видна. Табы
+(`role="tablist"` → `<button role="tab">` → `[role="tabpanel"][data-tab-panel]`):
+
+1. **Обзор** (`overview`, дефолт) — Параметры + **Доступность, 7 дней** (график A) + История IP
+2. **Метрики** (`metrics`) — **Соединения, 24 ч** (график C, только `clients`) + Хостинг + **Статистика telemt** (график E + график F + таблица «Пользователи» + снимок `<details>`) + telemt Control API
+3. **Проверки** (`checks`) — Последние проверки (таблица)
+4. **Журнал** (`journal`) — События ноды (`feed`)
+5. **Действия** (`actions`) — placeholder `nd("Действия ноды")`
+
+Поведение/a11y табов:
+- `hidden` на неактивных панелях — видна ровно одна, страница больше не один скролл.
+- `aria-selected` на активном; roving tabindex; стрелки ←/→/Home/End; клик фокусирует панель.
+- активный таб в хэше `#/nodes/<id>?tab=<key>` (`replaceState` — hashchange не будит
+  маршрут); restore из хэша при `openNodeDetail`, неизвестное → **Обзор**.
+- переключение НЕ перерисовывает innerHTML: графики A/C/E/F продолжают рендериться
+  (SVG с `preserveAspectRatio="none"` масштабируется при показе панели).
+- `routeNodeId()` в `main.ts` срезает хэш-параметр `?tab=` из id ноды.
 
 ### Графики (ванильный inline-SVG, без зависимостей)
 | График | Тип | Источник | Данные |
@@ -52,10 +59,13 @@
 ## Файлы
 - `ui/lib/chart.ts` — **новый**: `lineChart()` / `barChart()` (inline-SVG, `preserveAspectRatio="none"`,
   цвета — только токены), поглощает идею прежнего `spark()`.
-- `ui/pages/cabinet/node-detail.ts` — категории, графики A/C/E/F, таблица «Пользователи»,
-  обработчик легенды; удалён `spark()`, `writers`/`current_writers` из видимой части.
-- `ui/pages/cabinet/page.css` — раскладка `.chart-wrap/.chart-plot/.chart-y/.chart-svg/.chart-x/.chart-legend/.h-bar*`
-  (старый `.day-bar*` удалён), адаптив ≤640px.
+- `ui/pages/cabinet/node-detail.ts` — табы разделов + графики A/C/E/F, таблица «Пользователи»,
+  обработчик легенды; панели `panelHTML()`/`paramsHTML()`/`ipHistoryHTML()`/`checksHTML()`/
+  `eventsHTML()`/`actionsHTML()`; hash-хелперы `parseTabHash`/`writeTabHash`/`activateTab`.
+- `ui/pages/cabinet/page.css` — раскладка `.nd-tabs`/`.nd-panel` (порт `.c-tabs`) +
+  `.chart-wrap/.chart-plot/.chart-y/.chart-svg/.chart-x/.chart-legend/.h-bar*`, адаптив ≤640px.
+- `ui/pages/cabinet/main.ts` — `routeNodeId()` срезает `?tab=` из id ноды (иначе хэш-параметр
+  ломал бы маршрут).
 - `ui/components/misc.css` — утилита `.sr-only`.
 - `ui/pages/cabinet/api.ts` — **не менялся**: формы ответа уже совпадали с реальным API
   (`clients`/`writers`, `unique_ips_by_user`, `traffic_by_user`).
@@ -73,3 +83,5 @@
   в таблице Control API (метрики ДЦ, не me-writers-график) + комментарий; в графиках/плитках `writers` нет.
 - Нет `tsconfig.json`/`package.json` → `nuxi typecheck` невозможен; типы проверены только
   парсером esbuild. Статус: **partially_verified**.
+- Хэш-логика табов (`parseTabHash`/`writeTabHash` + срезание `?tab=` в `routeNodeId`)
+  проверена standalone-ассертами (дефолт/restore/unknown/replace) — OK.

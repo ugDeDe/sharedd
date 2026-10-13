@@ -2197,6 +2197,57 @@
     padding: var(--pad);
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
+  .nd-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    margin: 0 0 var(--gap);
+    scrollbar-width: thin;
+  }
+  .nd-tabs button {
+    appearance: none;
+    flex: 0 0 auto;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0 12px;
+    height: 38px;
+    white-space: nowrap;
+    cursor: pointer;
+    color: var(--fg-3);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 540;
+    transition:
+      color .12s,
+      background .12s,
+      border-color .12s;
+  }
+  .nd-tabs button:hover {
+    color: var(--fg);
+    background: var(--surf-2);
+  }
+  .nd-tabs button[aria-selected=true] {
+    color: var(--fg);
+    border-bottom-color: var(--acc);
+  }
+  .nd-tabs button:focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: -2px;
+    border-radius: var(--r-sm) var(--r-sm) 0 0;
+  }
+  .nd-panel:focus {
+    outline: none;
+  }
+  .nd-panel:focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: -2px;
+    border-radius: var(--r-sm);
+  }
   .chart-cap {
     display: flex;
     align-items: baseline;
@@ -2420,7 +2471,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="09067d42520a9cc3">
+  <meta name="sharedd-build" content="616762ae9262f1e4">
 </head>
 <body>
 
@@ -3252,16 +3303,26 @@
     ban_lifted: { label: "Бан снят (смена IP)", dot: "info" },
     ip_blocked: { label: "IP заблокирован", dot: "bad" }
   };
+  var TABS = [
+    { key: "overview", label: "Обзор" },
+    { key: "metrics", label: "Метрики" },
+    { key: "checks", label: "Проверки" },
+    { key: "journal", label: "Журнал" },
+    { key: "actions", label: "Действия" }
+  ];
+  var TAB_KEYS = TABS.map((t) => t.key);
   var DETAIL_ID = "";
   var DETAIL = null;
   var DETAIL_ERR = null;
   var DETAIL_RETRY = false;
+  var DETAIL_TAB = "overview";
   var F_HIDDEN = /* @__PURE__ */ new Set();
   function openNodeDetail(id) {
     DETAIL_ID = id;
     DETAIL = null;
     DETAIL_ERR = null;
     DETAIL_RETRY = false;
+    DETAIL_TAB = parseTabHash();
     F_HIDDEN = /* @__PURE__ */ new Set();
     const el = $("node-detail");
     if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
@@ -3272,6 +3333,52 @@
     DETAIL = null;
     DETAIL_ERR = null;
   }
+  function parseTabHash() {
+    const m = /[?&]tab=([a-z]+)/.exec(location.hash || "");
+    return m && TAB_KEYS.includes(m[1]) ? m[1] : "overview";
+  }
+  function writeTabHash(name) {
+    if (!DETAIL_ID) return;
+    const clean = (location.hash || "").replace(/[?&]tab=[a-z]+/, "");
+    const base = clean || "#/nodes/" + encodeURIComponent(DETAIL_ID);
+    const next = base + (base.includes("?") ? "&" : "?") + "tab=" + name;
+    history.replaceState(null, "", location.pathname + location.search + next);
+  }
+  function activateTab(name, focusPanel) {
+    var _a;
+    if (!TAB_KEYS.includes(name)) name = "overview";
+    DETAIL_TAB = name;
+    document.querySelectorAll("#node-detail .nd-tabs [role='tab']").forEach((b) => {
+      const on = b.dataset.tab === name;
+      b.setAttribute("aria-selected", String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    document.querySelectorAll("#node-detail [data-tab-panel]").forEach((p) => {
+      p.hidden = p.dataset.tabPanel !== name;
+    });
+    writeTabHash(name);
+    if (focusPanel) (_a = document.getElementById("nd-panel-" + name)) == null ? void 0 : _a.focus({ preventScroll: true });
+  }
+  document.addEventListener("click", (e) => {
+    var _a, _b;
+    const tab = (_b = (_a = e.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "#node-detail .nd-tabs [role='tab']");
+    if (!tab || !DETAIL_ID) return;
+    activateTab(tab.dataset.tab || "overview", true);
+  });
+  document.addEventListener("keydown", (e) => {
+    const tabs = Array.from(document.querySelectorAll("#node-detail .nd-tabs [role='tab']"));
+    const idx = tabs.indexOf(document.activeElement);
+    if (idx < 0) return;
+    let next = -1;
+    if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    tabs[next].focus();
+    activateTab(tabs[next].dataset.tab || "overview", false);
+  });
   function load(poll) {
     if (!DETAIL_ID) return;
     const id = DETAIL_ID;
@@ -3348,7 +3455,7 @@
     const meta = STATUS_META[n.status] || STATUS_META.offline;
     const nt = n.node_type ? NODE_TYPE_META[n.node_type] : void 0;
     const q = n.quarantine;
-    return `
+    const head = `
   <div class="card nd-head">
     <div>
       <div class="nd-ip-lead"><span class="mono">${esc(n.ip || "—")}${n.port ? ":" + n.port : ""}</span>
@@ -3363,9 +3470,35 @@
     </div>
     ${n.unhealthy_reason ? `<div class="nd-reason">${esc(n.unhealthy_reason)}</div>` : ""}
     <button class="btn danger sm" data-del="${esc(n.node_id)}" style="margin-left:auto">Удалить ноду</button>
-  </div>
-
-  <section class="card">
+  </div>`;
+    const tabs = `<nav class="nd-tabs" role="tablist" aria-label="Разделы ноды">${TABS.map((t) => {
+      const on = t.key === DETAIL_TAB;
+      return `<button type="button" role="tab" id="nd-tab-${t.key}" data-tab="${t.key}" aria-controls="nd-panel-${t.key}" aria-selected="${on}" tabindex="${on ? 0 : -1}">${esc(t.label)}</button>`;
+    }).join("")}</nav>`;
+    const panels = TABS.map((t) => {
+      const on = t.key === DETAIL_TAB;
+      return `<div class="nd-panel" id="nd-panel-${t.key}" role="tabpanel" aria-labelledby="nd-tab-${t.key}" tabindex="-1" data-tab-panel="${t.key}"${on ? "" : " hidden"}>${panelHTML(t.key, d)}</div>`;
+    }).join("");
+    return head + tabs + panels;
+  }
+  function panelHTML(key, d) {
+    switch (key) {
+      case "metrics":
+        return chartCHTML(d) + hostingHTML(d) + telemtHTML(d) + controlApiHTML(d);
+      case "checks":
+        return checksHTML(d);
+      case "journal":
+        return eventsHTML(d);
+      case "actions":
+        return actionsHTML(d);
+      default:
+        return paramsHTML(d) + chartAHTML(d) + ipHistoryHTML(d);
+    }
+  }
+  function paramsHTML(_d) {
+    const n = _d.node;
+    const q = n.quarantine;
+    return `<section class="card">
     <div class="card-head"><h2>Параметры</h2><span class="hint">${esc(n.node_id)}</span></div>
     <div class="nd-grid">
       <div class="kv"><span class="kv-k">IP</span><span class="kv-v mono">${esc(n.ip || "—")}</span></div>
@@ -3381,11 +3514,10 @@
       <div class="kv"><span class="kv-k">Мастерство</span><span class="kv-v">${n.master.master_stints > 0 ? esc(fmtDur(n.master.master_time_sec)) + ` · ${n.master.master_stints} stint` : "—"}</span></div>
       <div class="kv"><span class="kv-k">Quarantine</span><span class="kv-v">${q ? `${q.attempts} попыток · с ${esc(fmtClock(new Date(q.entered_at * 1e3).toISOString()))}` : "—"}</span></div>
     </div>
-  </section>
-
-  ${chartAHTML(d)}
-
-  <section class="card">
+  </section>`;
+  }
+  function ipHistoryHTML(d) {
+    return `<section class="card">
     <div class="card-head"><h2>История IP</h2><span class="hint">по журналу событий</span></div>
     ${d.ip_history && d.ip_history.length ? `<div class="table-wrap"><table class="table-cards">
           <thead><tr><th>IP</th><th>Впервые</th><th>Последний раз</th><th class="num">Событий</th></tr></thead>
@@ -3395,9 +3527,10 @@
             <td class="mono" data-label="Последний раз">${esc(fmtClock(r.last_seen))}</td>
             <td class="num" data-label="Событий">${fmtNum(r.events)}</td>
           </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.ip_history === null ? "нет данных" : "записей нет"}</div>`}
-  </section>
-
-  <section class="card">
+  </section>`;
+  }
+  function checksHTML(d) {
+    return `<section class="card">
     <div class="card-head"><h2>Последние проверки</h2><span class="hint">tcp · globalping · отчёт</span></div>
     ${d.last_checks.length ? `<div class="table-wrap"><table class="table-cards">
           <thead><tr><th>Время</th><th>Источник</th><th>Итог</th><th>Детали</th></tr></thead>
@@ -3407,24 +3540,18 @@
             <td data-label="Итог">${chip(c.ok, "ок", "провал")}</td>
             <td class="wrap" data-label="Детали">${esc(c.detail || "—")}</td>
           </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">проверок пока нет</div>`}
-  </section>
-
-  ${chartCHTML(d)}
-
-  ${hostingHTML(d)}
-
-  ${telemtHTML(d)}
-
-  ${controlApiHTML(d)}
-
-  <section class="card">
+  </section>`;
+  }
+  function eventsHTML(d) {
+    return `<section class="card">
     <div class="card-head"><h2>События ноды</h2><span class="hint">последние ${d.events.length}</span></div>
     <ul class="feed" id="nd-events" style="max-height:none">
       ${d.events.length ? d.events.map(eventRow).join("") : `<li class="empty-state"><span class="t">Событий пока нет</span></li>`}
     </ul>
-  </section>
-
-  <section class="card">
+  </section>`;
+  }
+  function actionsHTML(_d) {
+    return `<section class="card">
     <div class="card-head"><h2>Действия</h2><span class="hint">проверка · конфиг · переустановка</span></div>
     <div class="nd-grid card-body">${nd("Действия ноды")}</div>
   </section>`;
@@ -3837,7 +3964,8 @@
   }
   function routeNodeId() {
     const p = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-    return p[0] === "nodes" && p[1] ? decodeURIComponent(p[1]) : "";
+    const raw = p[0] === "nodes" && p[1] ? p[1].split("?")[0] : "";
+    return raw ? decodeURIComponent(raw) : "";
   }
   function route() {
     const v = currentView();

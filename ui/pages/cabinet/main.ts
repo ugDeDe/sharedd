@@ -134,7 +134,9 @@ function currentView(): string {
    отдельном виде. Пусто — обычные «Мои ноды». */
 function routeNodeId(): string {
   const p = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  return p[0] === "nodes" && p[1] ? decodeURIComponent(p[1]) : "";
+  // Таб ноды живёт хэш-параметром `?tab=` в том же маршруте — id берём до него.
+  const raw = p[0] === "nodes" && p[1] ? p[1].split("?")[0] : "";
+  return raw ? decodeURIComponent(raw) : "";
 }
 function route(): void {
   const v = currentView();
