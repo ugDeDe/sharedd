@@ -25,10 +25,25 @@ type NodeConfig struct {
 	Registry struct {
 		URL   string `toml:"url"`
 		Token string `toml:"token"`
+		// NodeSecret — персональный секрет ноды (invitations-migration-
+		// contract.md §1): отправляется как Bearer на всех machine-маршрутах
+		// ПРЕДПОЧТИТЕЛЬНЕЕ общего токена. Обычно выдаётся реестром в ответе
+		// /register и хранится в /var/lib/sharedd/node_secret; здесь —
+		// опциональное ручное предвыданное значение (установщик --node-secret).
+		NodeSecret string `toml:"node_secret"`
+		// AuthKey — персональный ключ регистрации (sda_…), отправляется
+		// в теле POST /register (установщик --authkey). На остальных
+		// маршрутах не используется.
+		AuthKey string `toml:"authkey"`
 	} `toml:"registry"`
 
 	Telemt struct {
 		ConfigPath string `toml:"config_path"`
+		// APIAddr — адрес telemt Control API (напр. http://127.0.0.1:8080)
+		// для DC2-проверки здоровья (GET /v1/stats/dcs). Пусто — режим
+		// совместимости: прежний критерий по метрике me_writers
+		// (dc2_fallback_metrics).
+		APIAddr string `toml:"api_addr"`
 		// Режим mode/auto/file/api УДАЛЁН — интеграция только через файл
 		// telemt.toml (telemt REST API не используется). Ключ mode в старых
 		// конфигах просто игнорируется (toml пропускает неизвестные поля).
@@ -102,6 +117,12 @@ func LoadNodeConfig(path string) (*NodeConfig, error) {
 	}
 	if cfg.Telemt.ConfigPath == "" {
 		cfg.Telemt.ConfigPath = defaultTelemtConfigPath
+	}
+	if cfg.Telemt.APIAddr = strings.TrimSpace(cfg.Telemt.APIAddr); cfg.Telemt.APIAddr != "" {
+		cfg.Telemt.APIAddr = strings.TrimRight(cfg.Telemt.APIAddr, "/")
+		if err := validateHTTPURL(cfg.Telemt.APIAddr); err != nil {
+			return nil, fmt.Errorf("telemt.api_addr in %s: %w", path, err)
+		}
 	}
 	if cfg.Globalping.APIBase == "" {
 		cfg.Globalping.APIBase = GlobalpingAPIBase

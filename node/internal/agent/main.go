@@ -23,9 +23,53 @@ type registerPayload struct {
 	// NodeType: classic / mtproxyl / meko — информационный бейдж в
 	// панели (см. nodetype.go).
 	NodeType string `json:"node_type,omitempty"`
+	// AuthKey — персональный ключ регистрации из [registry] authkey
+	// (invitations-migration-contract.md §1): при выключенном общем
+	// секрете реестр принимает /register по нему.
+	AuthKey string `json:"authkey,omitempty"`
 }
 
 var nodeID string
+
+// Персональный секрет ноды (invitations-migration-contract.md §1):
+// реестр выдаёт его в ответе каждого успешного /register; агент хранит
+// его рядом с node_id (0600) и отправляет как Bearer на всех маршрутах.
+// Пусто = старый реестр без секретов / ещё не зарегистрировались — общий
+// токен из конфига остаётся транспортом (совместимость).
+const defaultNodeSecretFile = "/var/lib/sharedd/node_secret"
+
+var nodeSecretFile = defaultNodeSecretFile // var ради тестов
+var nodeSecret string
+
+// loadNodeSecret — секрет из файла рядом с node_id, иначе из [registry]
+// node_secret (ручное предвыданное значение). Вызывается один раз при старте.
+func loadNodeSecret(cfg *config.NodeConfig) {
+	if b, err := os.ReadFile(nodeSecretFile); err == nil {
+		if s := strings.TrimSpace(string(b)); s != "" {
+			nodeSecret = s
+			return
+		}
+	}
+	nodeSecret = strings.TrimSpace(cfg.Registry.NodeSecret)
+}
+
+// persistNodeSecret — сохранить выданный секрет (0600) и сразу использовать.
+// Неудача записи не роняет агента: секрет живёт в памяти до рестарта.
+func persistNodeSecret(secret string) {
+	if err := os.WriteFile(nodeSecretFile, []byte(secret+"\n"), 0600); err != nil {
+		log.Printf("failed to persist node secret to %s: %v (kept in memory)", nodeSecretFile, err)
+	}
+	nodeSecret = secret
+}
+
+// clearNodeSecret — реестр отклонил наш секрет (401): забываем его, чтобы
+// последующие попытки шли с общим токеном/authkey (перевыпуск на /register).
+func clearNodeSecret() {
+	nodeSecret = ""
+	if err := os.Remove(nodeSecretFile); err != nil && !os.IsNotExist(err) {
+		log.Printf("failed to remove stale node secret: %v", err)
+	}
+}
 
 // gpKick — толчок ВНЕОЧЕРЕДНОЙ globalping-проверки: каждая успешная
 // регистрация (200) будит globalpingLoop немедленно, не дожидаясь таймера
@@ -81,6 +125,10 @@ func Run() {
 		log.Fatalf("failed to resolve node id: %v", err)
 	}
 	log.Printf("node id: %s (persistent random)", nodeID)
+	loadNodeSecret(cfg)
+	if nodeSecret != "" {
+		log.Printf("node secret loaded (personal bearer authentication active)")
+	}
 
 	ipr := newIPResolver()
 	if cfg.Node.PublicIP != "" { // ручной адрес (DNAT/hairpin)
@@ -128,7 +176,7 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 		return false, 0
 	}
 	nt := detectNodeType()
-	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt}
+	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt, AuthKey: cfg.Registry.AuthKey}
 	data, _ := json.Marshal(payload)
 	resp, err := registryRequest(client, cfg, http.MethodPost, "/register", bytes.NewReader(data))
 	if err != nil {
@@ -139,6 +187,13 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 	netw.noteOK()
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	// 401 — реестр отклонил наши учётные данные. Если это был персональный
+	// секрет (перевыпущен/отозван), забываем его: следующая попытка пойдёт
+	// с общим токеном (ON) или authkey в теле (OFF), /register выдаст новый.
+	if resp.StatusCode == http.StatusUnauthorized && nodeSecret != "" {
+		log.Printf("registry rejected the stored node secret — clearing it for re-issue")
+		clearNodeSecret()
+	}
 	// Kill от регистратора (ip_ban/dead): службу не останавливаем —
 	// агент сам ждёт восстановления (смены IP / оздоровления метрик),
 	// затем перезапускается и регистрируется заново. Сообщение
@@ -162,6 +217,15 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 	log.Printf("registered as %s (%s) type=%s, status=%d", nodeID, ip, nodeTypeLabel(nt), resp.StatusCode)
 	if resp.StatusCode == http.StatusOK {
 		lastNodeType = nt
+		// Выданный персональный секрет (contract §1): тело может его не
+		// содержать (старый реестр) — молча продолжаем с общим токеном.
+		var regResp struct {
+			NodeSecret string `json:"node_secret"`
+		}
+		if json.Unmarshal(body, &regResp) == nil && regResp.NodeSecret != "" && regResp.NodeSecret != nodeSecret {
+			persistNodeSecret(regResp.NodeSecret)
+			log.Printf("node secret issued by registry — stored, personal bearer authentication active")
+		}
 		// Внеочередной globalping сразу после успешной регистрации —
 		// регистратор получает свежий отчёт немедленно, нода возвращается
 		// в пул без ожидания таймера (после восстановления сети/смены IP).
@@ -365,7 +429,11 @@ const (
 	userOctetsToMetricName    = "telemt_user_octets_to_client"
 	trafficIngressMetricName  = "sharedd_traffic_ingress_bytes_total"
 	trafficEgressMetricName   = "sharedd_traffic_egress_bytes_total"
+	userIngressMetricName     = "sharedd_user_ingress_bytes_total"
+	userEgressMetricName      = "sharedd_user_egress_bytes_total"
 	trafficUsersMetricName    = "sharedd_traffic_users_fingerprint"
+	hostCPUMetricName         = "sharedd_host_cpu_percent"
+	hostRAMMetricName         = "sharedd_host_ram_percent"
 	metricsListenKey          = "metrics_listen"
 	metricsListenValue        = "127.0.0.1:9090"
 	metricsPortKey            = "metrics_port"
