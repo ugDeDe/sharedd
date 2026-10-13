@@ -80,6 +80,62 @@ func TestEvaluateDC2(t *testing.T) {
 	}
 }
 
+// TestFetchDCStatsSnapshot — снапшот Control API отдаётся целиком (все DC по
+// порядку), вердикт не меняется; API-ошибка → nil-снапшот.
+func TestFetchDCStatsSnapshot(t *testing.T) {
+	now := time.Now()
+	body := `{"ok":true,"data":{"middle_proxy_enabled":true,"generated_at_epoch_secs":` +
+		strconv.FormatInt(now.Unix(), 10) + `,"dcs":[
+			{"dc":1,"available_endpoints":3,"alive_writers":5,"fresh_alive_writers":5,"rtt_ms":11.5},
+			{"dc":2,"available_endpoints":5,"alive_writers":12,"fresh_alive_writers":10,"rtt_ms":42.5}]}}`
+	ts, _ := startTelemt(t, "x 1\n", body, http.StatusOK)
+	client := &http.Client{Timeout: dc2APITimeout}
+
+	verdict, stats := fetchDCStats(ts.URL, client, now)
+	if !verdict.OK || verdict.Reason != "" {
+		t.Fatalf("healthy snapshot verdict = %+v", verdict)
+	}
+	if stats == nil || !stats.MiddleProxyEnabled || stats.GeneratedAtEpochSecs != now.Unix() {
+		t.Fatalf("stats header wrong: %+v", stats)
+	}
+	if len(stats.DCs) != 2 || stats.DCs[0].DC != 1 || stats.DCs[1].DC != 2 || stats.DCs[1].RTTMs != 42.5 {
+		t.Fatalf("all DCs in order expected, got %+v", stats.DCs)
+	}
+
+	// Вердикт dc2_no_fresh сохраняется, но снапшот всё равно отдаётся.
+	badBody := `{"ok":true,"data":{"middle_proxy_enabled":true,"generated_at_epoch_secs":` +
+		strconv.FormatInt(now.Unix(), 10) +
+		`,"dcs":[{"dc":2,"available_endpoints":1,"alive_writers":7,"fresh_alive_writers":0,"rtt_ms":66.0}]}}`
+	tsBad, _ := startTelemt(t, "x 1\n", badBody, http.StatusOK)
+	verdict, stats = fetchDCStats(tsBad.URL, client, now)
+	if verdict.OK || verdict.Reason != dc2ReasonNoFresh || stats == nil {
+		t.Fatalf("no-fresh verdict must be kept with snapshot, got %+v stats=%+v", verdict, stats)
+	}
+
+	// HTTP 500 → api_error и nil (Control API не ответил).
+	tsErr, _ := startTelemt(t, "x 1\n", `{"ok":true}`, http.StatusInternalServerError)
+	verdict, stats = fetchDCStats(tsErr.URL, client, now)
+	if verdict.Reason != dc2ReasonAPIError || stats != nil {
+		t.Fatalf("api error must yield nil snapshot, got %+v stats=%+v", verdict, stats)
+	}
+}
+
+// TestRunMetricsCheckCarriesDCStats — dc_stats заполняется в dc2-режиме и
+// остаётся nil в fallback (api_addr пуст).
+func TestRunMetricsCheckCarriesDCStats(t *testing.T) {
+	_, cfg := startTelemt(t, "some_other_metric 1\n", healthyDCSBody(), http.StatusOK)
+	report := RunMetricsCheck(cfg, "node-a1b2c", "203.0.113.7")
+	if report.DCStats == nil || len(report.DCStats.DCs) != 1 || report.DCStats.DCs[0].DC != 2 {
+		t.Fatalf("dc2 mode must carry dc_stats, got %+v", report.DCStats)
+	}
+
+	_, cfg = startTelemt(t, healthMetricName+" 5\n", "", http.StatusOK)
+	cfg.Telemt.APIAddr = ""
+	if report := RunMetricsCheck(cfg, "node-a1b2c", "203.0.113.7"); report.DCStats != nil {
+		t.Fatalf("fallback mode must not carry dc_stats, got %+v", report.DCStats)
+	}
+}
+
 // ── интеграция RunMetricsCheck ──
 
 // startTelemt — httptest с /metrics и /v1/stats/dcs + node-config на него.

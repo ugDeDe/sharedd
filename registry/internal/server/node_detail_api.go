@@ -191,7 +191,9 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 
 	r.mu.RLock()
 	c := r.state.Candidates[nodeID]
+	dcsSnap, hasDCS := r.dcStats[nodeID]
 	freshness := r.cfg.ReportFreshnessTTL
+	controlAPIPresent := false
 	if c != nil {
 		domains := r.masterDomainsLocked(nodeID)
 		pn := r.buildPanelNodeLocked(c, r.queuePositionLocked(c), domains, now)
@@ -213,7 +215,17 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 		}
 		resp.Availability = buildNodeAvailability(c, now)
 		resp.LastChecks = buildNodeChecks(c)
-		resp.Telemt = map[string]any{"metrics_snapshot": c.MetricsSnapshot, "collected_at": c.LastReportAt}
+		telemtObj := map[string]any{"metrics_snapshot": c.MetricsSnapshot, "collected_at": c.LastReportAt}
+		if hasDCS {
+			controlAPIPresent = true
+			telemtObj["control_api"] = map[string]any{
+				"ok":                      true,
+				"generated_at_epoch_secs": dcsSnap.GeneratedAtEpochSecs,
+				"middle_proxy_enabled":    dcsSnap.MiddleProxyEnabled,
+				"dcs":                     dcsSnap.DCs,
+			}
+		}
+		resp.Telemt = telemtObj
 		resp.Connections = buildNodeConnections(c)
 		resp.Users = buildNodeUsers(c, userTraffic)
 		resp.Hosting = &nodeHosting{
@@ -259,9 +271,10 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 	}
 
 	// Разделы без источника данных (честный null вместо нулей).
-	resp.Absent = append(resp.Absent,
-		"telemt_control_api", "dc_endpoints", "quality_health", "actions",
-	)
+	if !controlAPIPresent {
+		resp.Absent = append(resp.Absent, "telemt_control_api", "dc_endpoints", "quality_health")
+	}
+	resp.Absent = append(resp.Absent, "actions")
 	if resp.Users != nil && resp.Users.TrafficByUser == nil {
 		resp.Absent = append(resp.Absent, "users.traffic_by_user")
 	}

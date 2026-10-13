@@ -265,15 +265,7 @@ function detailHTML(d: NodeDetail): string {
 
   ${telemtHTML(d)}
 
-  <section class="card">
-    <div class="card-head"><h2>DC и endpoints</h2></div>
-    <div class="nd-grid card-body">${nd("DC и endpoints")}</div>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Качество и здоровье</h2></div>
-    <div class="nd-grid card-body">${nd("Качество и здоровье")}</div>
-  </section>
+  ${controlApiHTML(d)}
 
   <section class="card">
     <div class="card-head"><h2>События ноды</h2><span class="hint">последние ${d.events.length}</span></div>
@@ -385,6 +377,34 @@ function telemtHTML(d: NodeDetail): string {
           <td class="num mono" data-label="Значение">${fmtNum(snap![k])}</td>
         </tr>`).join("")}</tbody></table></div>
     </details>
+  </section>`;
+}
+
+function controlApiHTML(d: NodeDetail): string {
+  const ca = d.telemt?.control_api;
+  const gone = d.absent.includes("telemt_control_api") || d.absent.includes("dc_endpoints") || d.absent.includes("quality_health");
+  if (!ca || !ca.ok || gone) {
+    return `<section class="card"><div class="card-head"><h2>telemt Control API</h2></div>
+      <div class="table-empty">нет данных</div></section>`;
+  }
+  const at = new Date(ca.generated_at_epoch_secs * 1000).toISOString();
+  return `<section class="card">
+    <div class="card-head"><h2>telemt Control API</h2><span class="hint">снимок DC</span></div>
+    <div class="nd-grid card-body" style="padding-bottom:0">
+      <div class="kv"><span class="kv-k">Middle-proxy</span><span class="kv-v">${chip(ca.middle_proxy_enabled, "включён", "выключен")}</span></div>
+      <div class="kv"><span class="kv-k">Снимок</span><span class="kv-v">${esc(fmtAgo(at))}</span></div>
+    </div>
+    ${ca.dcs.length
+      ? `<div class="table-wrap"><table class="table-cards">
+          <thead><tr><th>ДЦ</th><th class="num">Endpoints</th><th class="num">Alive</th><th class="num">Fresh</th><th class="num">RTT</th></tr></thead>
+          <tbody>${ca.dcs.map((x) => `<tr>
+            <td data-label="ДЦ">${fmtNum(x.dc)}</td>
+            <td class="num" data-label="Endpoints">${fmtNum(x.available_endpoints)}</td>
+            <td class="num" data-label="Alive">${fmtNum(x.alive_writers)}</td>
+            <td class="num" data-label="Fresh">${fmtNum(x.fresh_alive_writers)}</td>
+            <td class="num" data-label="RTT">${x.rtt_ms.toFixed(1)} ms</td>
+          </tr>`).join("")}</tbody></table></div>`
+      : `<div class="table-empty">ДЦ нет</div>`}
   </section>`;
 }
 

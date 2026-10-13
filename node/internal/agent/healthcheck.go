@@ -466,9 +466,12 @@ type HealthReport struct {
 	DC2OK     bool           `json:"dc2_ok"`
 	DC2Reason string         `json:"dc2_reason,omitempty"`
 	DC2Diag   map[string]any `json:"dc2_diag,omitempty"`
-	Healthy   bool           `json:"healthy"`
-	CheckedAt time.Time      `json:"checked_at"`
-	Error     string         `json:"error,omitempty"`
+	// DCStats — полный снапшот Control API (dc2-режим, только metrics-отчёт).
+	// nil, если API не ответил; в fallback-режиме не заполняется.
+	DCStats   *DCStats  `json:"dc_stats,omitempty"`
+	Healthy   bool      `json:"healthy"`
+	CheckedAt time.Time `json:"checked_at"`
+	Error     string    `json:"error,omitempty"`
 }
 
 // lastMetrics — кэш последнего результата metrics-цикла; globalping-цикл
@@ -602,6 +605,23 @@ type dc2StatsResponse struct {
 	} `json:"data"`
 }
 
+// DCStat/DCStats — экспортируемое зеркало снапшота Control API /v1/stats/dcs
+// для регистратора (dc_stats в HealthReport). Вердикт dc2 считается отдельно
+// и этими типами не управляется.
+type DCStat struct {
+	DC                 int     `json:"dc"`
+	AvailableEndpoints int     `json:"available_endpoints"`
+	AliveWriters       int     `json:"alive_writers"`
+	FreshAliveWriters  int     `json:"fresh_alive_writers"`
+	RTTMs              float64 `json:"rtt_ms"`
+}
+
+type DCStats struct {
+	MiddleProxyEnabled   bool     `json:"middle_proxy_enabled"`
+	GeneratedAtEpochSecs int64    `json:"generated_at_epoch_secs"`
+	DCs                  []DCStat `json:"dcs"`
+}
+
 // dc2Verdict — результат оценки снапшота: OK/Reason по критерию из спека,
 // Diag — alive/fresh dc2, rtt dc2, generated_at.
 type dc2Verdict struct {
@@ -662,22 +682,35 @@ func evaluateDC2(resp *dc2StatsResponse, now time.Time) dc2Verdict {
 	return dc2Verdict{OK: true, Diag: diag}
 }
 
-// fetchDC2Stats — GET <api_addr>/v1/stats/dcs и оценка снапшота.
-func fetchDC2Stats(apiAddr string, client *http.Client, now time.Time) dc2Verdict {
+// fetchDCStats — GET <api_addr>/v1/stats/dcs: вердикт dc2 и полный снапшот
+// всех DC по порядку. API-ошибка (транспорт/статус/парсинг) → пустой снапшот
+// (nil): регистратор не должен видеть control_api, если Control API молчит.
+func fetchDCStats(apiAddr string, client *http.Client, now time.Time) (dc2Verdict, *DCStats) {
 	resp, err := client.Get(strings.TrimRight(apiAddr, "/") + dc2StatsPath)
 	if err != nil {
-		return dc2Verdict{Reason: dc2ReasonAPIError}
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return dc2Verdict{Reason: dc2ReasonAPIError}
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
 	}
 	var parsed dc2StatsResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return dc2Verdict{Reason: dc2ReasonAPIError}
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
 	}
-	return evaluateDC2(&parsed, now)
+	stats := &DCStats{
+		MiddleProxyEnabled:   parsed.Data.MiddleProxyEnabled,
+		GeneratedAtEpochSecs: parsed.Data.GeneratedAtEpochSecs,
+		DCs:                  make([]DCStat, 0, len(parsed.Data.DCs)),
+	}
+	for _, d := range parsed.Data.DCs {
+		stats.DCs = append(stats.DCs, DCStat{
+			DC: d.DC, AvailableEndpoints: d.AvailableEndpoints,
+			AliveWriters: d.AliveWriters, FreshAliveWriters: d.FreshAliveWriters, RTTMs: d.RTTMs,
+		})
+	}
+	return evaluateDC2(&parsed, now), stats
 }
 
 // RunMetricsCheck — быстрая локальная проверка health ноды.
@@ -750,7 +783,8 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 		// specs/dc2-health.md: dc2_ok == MetricsOK. Сбой /metrics вердикту
 		// не мешает (Control API и /metrics — один процесс telemt), а
 		// непустой Error триггерил бы dead-килл ворчдога на живом прокси.
-		verdict := fetchDC2Stats(cfg.Telemt.APIAddr, client, time.Now())
+		verdict, stats := fetchDCStats(cfg.Telemt.APIAddr, client, time.Now())
+		report.DCStats = stats
 		report.DC2OK = verdict.OK
 		report.DC2Diag = verdict.Diag
 		report.MetricsOK = verdict.OK

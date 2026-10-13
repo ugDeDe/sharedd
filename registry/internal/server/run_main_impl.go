@@ -28,6 +28,7 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 
 	"sharedd/registry/internal/control"
+	"sharedd/registry/internal/machineapi"
 	"sharedd/registry/internal/provision"
 )
 
@@ -117,6 +118,10 @@ type Registry struct {
 	srmdFoldTicks   int
 	srmdPending     []srmdDNSAction
 	dnsInFlight     map[string]bool
+
+	// dcStats — последний снапшот Control API по ноде (in-memory, под r.mu).
+	// Не персистится: internal/state формат не меняем.
+	dcStats map[string]machineapi.DCStats
 }
 
 // provisionWorkers — лениво созданный воркер установки (H1).

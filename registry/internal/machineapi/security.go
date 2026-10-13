@@ -163,7 +163,25 @@ type HealthReportPayload struct {
 	DC2OK     bool           `json:"dc2_ok"`
 	DC2Reason string         `json:"dc2_reason,omitempty"`
 	DC2Diag   map[string]any `json:"dc2_diag,omitempty"`
-	Healthy   bool           `json:"healthy"`
-	CheckedAt time.Time      `json:"checked_at"`
-	Error     string         `json:"error,omitempty"`
+	// DCStats — полный снапшот Control API /v1/stats/dcs (dc2-режим, только
+	// metrics-отчёт). nil — Control API не ответил; вердикт dc2 не затронут.
+	DCStats   *DCStats  `json:"dc_stats,omitempty"`
+	Healthy   bool      `json:"healthy"`
+	CheckedAt time.Time `json:"checked_at"`
+	Error     string    `json:"error,omitempty"`
+}
+
+// DCStat/DCStats — зеркало типа агента для приёма dc_stats (json-теги 1:1).
+type DCStat struct {
+	DC                 int     `json:"dc"`
+	AvailableEndpoints int     `json:"available_endpoints"`
+	AliveWriters       int     `json:"alive_writers"`
+	FreshAliveWriters  int     `json:"fresh_alive_writers"`
+	RTTMs              float64 `json:"rtt_ms"`
+}
+
+type DCStats struct {
+	MiddleProxyEnabled   bool     `json:"middle_proxy_enabled"`
+	GeneratedAtEpochSecs int64    `json:"generated_at_epoch_secs"`
+	DCs                  []DCStat `json:"dcs"`
 }

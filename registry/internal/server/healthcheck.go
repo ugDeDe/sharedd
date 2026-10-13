@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sharedd/registry/internal/machineapi"
 	"sharedd/registry/internal/state"
 	"strings"
 	"time"
@@ -381,6 +382,12 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	}
 	candidate.LastReportAt = time.Now()
 	candidate.ReportError = payload.Error
+	if payload.DCStats != nil {
+		if r.dcStats == nil {
+			r.dcStats = make(map[string]machineapi.DCStats)
+		}
+		r.dcStats[payload.NodeID] = *payload.DCStats
+	}
 	r.persistStateLocked()
 	r.mu.Unlock()
 

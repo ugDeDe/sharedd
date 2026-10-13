@@ -185,6 +185,27 @@ export interface NodeUsers {
 export interface NodeEvent { at: string; type: string; domain?: string; detail?: string; }
 export interface IPHistoryRow { ip: string; first_seen: string; last_seen: string; events: number; }
 
+// Снимок telemt Control API (DC/quality). null/отсутствует, когда данных нет;
+// имена telemt_control_api/dc_endpoints/quality_health приходят в absent[].
+export interface TelemtDc {
+  dc: number;
+  available_endpoints: number;
+  alive_writers: number;
+  fresh_alive_writers: number;
+  rtt_ms: number;
+}
+export interface TelemtControlApi {
+  ok: boolean;
+  generated_at_epoch_secs: number;
+  middle_proxy_enabled: boolean;
+  dcs: TelemtDc[];
+}
+export interface TelemtSnapshot {
+  metrics_snapshot?: Record<string, number>;
+  collected_at?: string;
+  control_api?: TelemtControlApi | null;
+}
+
 export interface NodeDetail {
   node: NodeParam | null;
   availability: NodeAvailability | null;
@@ -193,7 +214,7 @@ export interface NodeDetail {
   hosting: NodeHosting | null;
   connections_24h: NodeConnections | null;
   users: NodeUsers | null;
-  telemt: { metrics_snapshot?: Record<string, number>; collected_at?: string } | null;
+  telemt: TelemtSnapshot | null;
   events: NodeEvent[];
   absent: string[];
 }
