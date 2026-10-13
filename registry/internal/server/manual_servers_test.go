@@ -223,7 +223,8 @@ func TestManualServerDuplicateHostRejected(t *testing.T) {
 		t.Fatalf("install: %d %s", rec.Code, rec.Body.String())
 	}
 	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
-	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+	final := waitOpTerminal(t, r, op.ID)
+	if final.State != control.OpDone {
 		t.Fatalf("install must finish done, got %s", final.State)
 	}
 
@@ -259,13 +260,16 @@ func TestManualServerDuplicateHostRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 1 || nodes[0].NodeID != op.NodeID {
+	// node_id manual-ноды известен только после claim'а (/register), поэтому
+	// сверяем с финальным состоянием операции, а не с ответом install.
+	if len(nodes) != 1 || nodes[0].NodeID != final.NodeID {
 		t.Fatalf("duplicate must not create a second node identity: %+v", nodes)
 	}
 
 	// Другой порт того же хоста — допустим (UNIQUE включает port).
 	rec = cabinetCall(t, r, http.MethodPost, "/api/me/servers", ck, csrf,
-		`{"label":"box-ssh-alt","host":"8.8.8.8","port":2222,"password":"p"}`)
+		// label обязан уложиться в 1..10 символов (name-часть NAME-HASH).
+		`{"label":"box-ssh","host":"8.8.8.8","port":2222,"password":"p"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("same host on another port must be allowed: %d %s", rec.Code, rec.Body.String())
 	}
@@ -450,14 +454,16 @@ func TestManualInstallInjectsSecretAndConfirmsRegistration(t *testing.T) {
 		t.Fatalf("install: %d %s", rec.Code, rec.Body.String())
 	}
 	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
-	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+	final := waitOpTerminal(t, r, op.ID)
+	if final.State != control.OpDone {
 		t.Fatalf("want done, got %s (err=%q)", final.State, final.LastError)
 	}
 	secret := exec.nodeSecretFromCommands()
 	if secret == "" {
 		t.Fatal("install steps must carry the injected node_secret")
 	}
-	if owner, ok, err := r.control.NodeSecretOwner(secret); err != nil || !ok || owner != op.NodeID {
+	// node_id известен только после claim'а — берём из финальной операции.
+	if owner, ok, err := r.control.NodeSecretOwner(secret); err != nil || !ok || owner != final.NodeID {
 		t.Fatalf("node_secret not bound to node: owner=%q ok=%t err=%v", owner, ok, err)
 	}
 }
@@ -477,14 +483,16 @@ func TestManualServerDeleteReleasesSlotKeepsPoolNode(t *testing.T) {
 	host := decodeManualHost(t, rec)
 	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
 	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
-	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+	final := waitOpTerminal(t, r, op.ID)
+	if final.State != control.OpDone {
 		t.Fatalf("install: got %s", final.State)
 	}
 	if used, _ := r.control.UsedNodes(id); used != 1 {
 		t.Fatalf("want 1 used slot, got %d", used)
 	}
+	// node_id известен только после claim'а — берём из финальной операции.
 	r.mu.RLock()
-	_, inPool := r.state.Candidates[op.NodeID]
+	_, inPool := r.state.Candidates[final.NodeID]
 	r.mu.RUnlock()
 	if !inPool {
 		t.Fatal("registered node must be in the pool")
@@ -498,7 +506,7 @@ func TestManualServerDeleteReleasesSlotKeepsPoolNode(t *testing.T) {
 		t.Fatalf("delete must release the slot, used=%d", used)
 	}
 	r.mu.RLock()
-	_, stillPool := r.state.Candidates[op.NodeID]
+	_, stillPool := r.state.Candidates[final.NodeID]
 	r.mu.RUnlock()
 	if !stillPool {
 		t.Fatal("pool node must remain after server delete")

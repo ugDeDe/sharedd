@@ -30,7 +30,9 @@ func TestControlUnavailableMessage(t *testing.T) {
 	if m["message"] != controlUnavailableMsg {
 		t.Fatalf("message = %q, want %q", m["message"], controlUnavailableMsg)
 	}
-	if !strings.Contains(m["message"], "регистратор перезапускается") || strings.Contains(m["message"], "control db is unavailable") {
+	// contract §1 фиксирует единый текст «Хранилище пользователей недоступно…»;
+	// рестарт не утверждается без фактов, поэтому старой формулировки быть не должно.
+	if !strings.Contains(m["message"], "Хранилище пользователей недоступно") || strings.Contains(m["message"], "control db is unavailable") {
 		t.Fatalf("message must be the Russian explanation, got %q", m["message"])
 	}
 

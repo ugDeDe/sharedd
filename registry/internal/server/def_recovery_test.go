@@ -73,13 +73,12 @@ func TestRetryInstallRendersRealSecret(t *testing.T) {
 	waitOpTerminal(t, r, op.ID)
 
 	cmds := exec.allCommands()
+	// Штатный профиль передаёт секрет только через --registry-token:
+	// install_node.sh не поддерживает --node-secret (contract §1, M5).
 	if !strings.Contains(cmds, "--registry-token='"+first+"'") {
 		t.Fatalf("retry must render the real token; commands:\n%s", cmds)
 	}
-	if !strings.Contains(cmds, "--node-secret='"+first+"'") {
-		t.Fatalf("retry must render the real node_secret; commands:\n%s", cmds)
-	}
-	if strings.Contains(cmds, "--registry-token=''") || strings.Contains(cmds, "--node-secret=''") {
+	if strings.Contains(cmds, "--registry-token=''") {
 		t.Fatalf("retry rendered an empty token (install_node.sh would die):\n%s", cmds)
 	}
 }
@@ -206,7 +205,7 @@ func TestNodeStatusOwnershipAndRegistration(t *testing.T) {
 var (
 	reToken        = regexp.MustCompile(`TOKEN='([^']*)'`)
 	reNodeIDInURL  = regexp.MustCompile(`node_id='?([A-Za-z0-9._-]+)`)
-	reSecretArg    = regexp.MustCompile(`--node-secret='([^']*)'`)
+	reSecretArg    = regexp.MustCompile(`--registry-token='([^']*)'`)
 	reNameArg      = regexp.MustCompile(`--name='([^']*)'`)
 	reStatusMarker = "/api/node/status"
 )
@@ -226,9 +225,16 @@ func verifyExecFn(r *Registry, registered bool) func(command, stdin string) (ssh
 			return sshx.Result{Code: 22, Stderr: "curl: (22) not registered"},
 				errors.New("node did not register")
 		}
-		if registered && strings.Contains(cmd, "--node-secret='") {
+		if registered && strings.Contains(cmd, "--registry-token='") {
 			sec := firstGroup(reSecretArg, cmd)
+			// --name штатного профиля: для VPS это уже готовый NAME-HASH
+			// (label=node_id), для manual — пользовательский label, к которому
+			// установщик агента добавляет -<5hex>. Эмулируем тот же дериват:
+			// невалидный (без хеша) label дополняем фиксированным хвостом.
 			id := firstGroup(reNameArg, cmd)
+			if validateNodeID(id) != nil {
+				id += "-abcde"
+			}
 			_ = registerNodeCode(r, id, sec)
 		}
 		return sshx.Result{Stdout: "ok"}, nil

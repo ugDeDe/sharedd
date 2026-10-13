@@ -123,6 +123,11 @@ func newCabinetRegistry(t *testing.T) (*Registry, *fakeBeget) {
 	r.cfg.Provisioning.CooldownMinutes = 30
 	r.cfg.Provisioning.MaxUserProfiles = 5
 	r.cfg.Provisioning.InstallTimeoutMin = 20
+	// SharedProxy.Port — прод-дефолт 443 (config.ApplyRegistryDefaults), из
+	// которого provisionBaseVars берёт {{ proxy_port }}. Без него кабинет
+	// отклонял установку как validation_failed. newTestRegistry собирает cfg
+	// напрямую, минуя applyRegistryDefaults, поэтому ставим явно.
+	r.cfg.SharedProxy.Port = 443
 	fake := &fakeBeget{regions: []beget.RegionInfo{{ID: "ru1", Name: "Russia", Available: true}}}
 	r.begetFactory = func(_, _ string) begetClient { return fake }
 	r.openControl()
@@ -183,9 +188,10 @@ func (f *fakeExec) allCommands() string {
 }
 
 // nodeSecretFromCommands вытаскивает инъектированный node_secret из прогнанных
-// команд (шаг профиля содержит --node-secret='SECRET').
+// команд. Штатный профиль передаёт персональный секрет как
+// --registry-token='SECRET' (install_node.sh не знает --node-secret; contract §1).
 func (f *fakeExec) nodeSecretFromCommands() string {
-	re := regexp.MustCompile(`--node-secret='([^']*)'`)
+	re := regexp.MustCompile(`--registry-token='([^']*)'`)
 	m := re.FindStringSubmatch(f.allCommands())
 	if len(m) < 2 {
 		return ""

@@ -26,11 +26,17 @@ func (s *Store) NodeOwner(nodeID string) (userID int64, legacy bool, ok bool, er
 	return u, l != 0, true, nil
 }
 
-// UsedNodes — занятые места: COUNT(node_owners WHERE user_id=? AND legacy=0).
+// UsedNodes — занятые места пользователя: привязанные ноды (node_owners,
+// legacy=0) ПЛЮС незаявленные pending-брони manual-установок. Pending-секрет
+// держит место в квоте до claim'а (/register) — та же семантика, что в
+// AuthorizeManualOperation/ClaimPendingNodeSecret, поэтому кабинет не должен
+// показывать 0 «занято», пока пользователь уже не может занять второе место.
 // Legacy-строки в квоту не входят.
 func (s *Store) UsedNodes(userID int64) (int, error) {
 	var n int
-	err := s.sql.QueryRow(`SELECT COUNT(*) FROM node_owners WHERE user_id = ? AND legacy = 0`, userID).Scan(&n)
+	err := s.sql.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM node_owners WHERE user_id = ? AND legacy = 0) +
+		(SELECT COUNT(*) FROM pending_node_secrets WHERE user_id = ?)`, userID, userID).Scan(&n)
 	return n, err
 }
 

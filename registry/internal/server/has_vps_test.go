@@ -62,6 +62,8 @@ func TestHasVPSAfterConfirmedCreate(t *testing.T) {
 	}
 
 	// POST .../retry-install после провала установки (VPS уже создан).
+	// Фоновый воркер иначе перезапишет состояние на done → ложный 409.
+	waitWorkerIdle(r, op.ID)
 	if err := r.control.UpdateOperationState(op.ID, control.OpFailed, "", "install boom"); err != nil {
 		t.Fatal(err)
 	}

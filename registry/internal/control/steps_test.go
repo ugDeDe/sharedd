@@ -162,8 +162,11 @@ func TestRenderStepBuiltinsAndDefaults(t *testing.T) {
 // реальный старт агента и НЕ несёт общий node_token.
 func TestDefaultProfileStepsContract(t *testing.T) {
 	steps := DefaultProfileSteps
-	if !strings.Contains(steps, "--name={{ node_id }}") {
-		t.Fatalf("default profile must pass --name with the node id:\n%s", steps)
+	// --name берётся из {{ label }}: для VPS label=полный NAME-HASH (installer
+	// принимает как есть), для manual label=имя пользователя (installer добавит
+	// -<5hex>). {{ node_id }} пуст при manual-claim и не подходит.
+	if !strings.Contains(steps, "--name={{ label }}") {
+		t.Fatalf("default profile must pass --name with the node label:\n%s", steps)
 	}
 	if !strings.Contains(steps, "systemctl is-active --quiet sharedd-node-agent") {
 		t.Fatalf("default profile must verify the agent came up:\n%s", steps)
@@ -181,7 +184,7 @@ func TestDefaultProfileStepsContract(t *testing.T) {
 	for _, n := range names {
 		seen[n] = true
 	}
-	for _, want := range []string{"port", "node_id", "registry_url", "node_secret"} {
+	for _, want := range []string{"port", "label", "registry_url", "node_secret"} {
 		if !seen[want] {
 			t.Fatalf("default profile must reference %q, got %v", want, names)
 		}
