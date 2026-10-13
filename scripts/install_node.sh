@@ -98,14 +98,17 @@ while [ $# -gt 0 ]; do
         --telemt-config=*) TELEMT_CONFIG="${1#*=}"; shift ;;
         --no-apply)       APPLY=0; shift ;;
         --reconfigure)    RECONFIGURE=1; shift ;;
-        -h|--help)        grep '^#' "$0" | head -28 | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)        grep '^#' "$0" | head -32 | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "неизвестный аргумент: $1 (см. --help)" ;;
     esac
 done
 
 if [ -n "$NODE_NAME" ]; then
-    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
-        || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
+    if ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+        && ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    fi
 fi
 
 # --preset не перекрывает явный --telemt-config / env TELEMT_CONFIG
@@ -377,18 +380,26 @@ if [ -n "$NODE_NAME" ]; then
     ID_STATE_FILE="$STATE_DIR/node_id"
     OLD_ID=""
     [ ! -s "$ID_STATE_FILE" ] || OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
-    old_suffix="${OLD_ID##*-}"
-    if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
-        NODE_ID="$OLD_ID"
-    else
-        NODE_SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 5 || true)"
-        [ "${#NODE_SUFFIX}" -eq 5 ] || die "не удалось сгенерировать суффикс имени ноды"
-        NODE_ID="${NODE_NAME}-${NODE_SUFFIX}"
-        if [ -n "$OLD_ID" ]; then
-            warn "node id меняется: $OLD_ID -> $NODE_ID; позиция в очереди будет новой"
-        fi
+    # Предсозданный регистратором полный node_id (NAME-HASH) фиксируем как есть:
+    # --name приходит от штатного профиля с уже выделенным id (addendum §7.1).
+    if printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        NODE_ID="$NODE_NAME"
         printf '%s' "$NODE_ID" >"$ID_STATE_FILE"
         chmod 0600 "$ID_STATE_FILE"
+    else
+        old_suffix="${OLD_ID##*-}"
+        if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
+            NODE_ID="$OLD_ID"
+        else
+            NODE_SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 5 || true)"
+            [ "${#NODE_SUFFIX}" -eq 5 ] || die "не удалось сгенерировать суффикс имени ноды"
+            NODE_ID="${NODE_NAME}-${NODE_SUFFIX}"
+            if [ -n "$OLD_ID" ]; then
+                warn "node id меняется: $OLD_ID -> $NODE_ID; позиция в очереди будет новой"
+            fi
+            printf '%s' "$NODE_ID" >"$ID_STATE_FILE"
+            chmod 0600 "$ID_STATE_FILE"
+        fi
     fi
     ok "имя ноды: ${BOLD}${NODE_ID}${NC}"
 fi

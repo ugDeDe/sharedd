@@ -86,8 +86,11 @@ while [ $# -gt 0 ]; do
     shift
 done
 if [ -n "$NODE_NAME" ]; then
-    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
-        || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
+    if ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+        && ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    fi
 fi
 
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash $0"
@@ -211,14 +214,19 @@ if [ -n "$NODE_NAME" ]; then
     ID_STATE_FILE="$STATE_DIR/node_id"
     OLD_ID=""
     [ ! -s "$ID_STATE_FILE" ] || OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
-    old_suffix="${OLD_ID##*-}"
-    if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
-        NODE_ID="$OLD_ID"
+    # Предсозданный регистратором полный node_id (NAME-HASH) — как есть.
+    if printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        NODE_ID="$NODE_NAME"
     else
-        sfx="$(gen_suffix)"
-        [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
-        [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
-        NODE_ID="${NODE_NAME}-${sfx}"
+        old_suffix="${OLD_ID##*-}"
+        if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
+            NODE_ID="$OLD_ID"
+        else
+            sfx="$(gen_suffix)"
+            [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
+            [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
+            NODE_ID="${NODE_NAME}-${sfx}"
+        fi
     fi
 fi
 

@@ -19,6 +19,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -122,6 +124,12 @@ func buildPage(base, name string) (string, error) {
 
 	out := strings.Replace(string(shell), cssMarker, indent(css, "  "), 1)
 	out = strings.Replace(out, jsMarker, js, 1)
+	// Маркер сборки: хэш исходников страницы (каркас + CSS + JS). Стабилен,
+	// пока исходники не менялись, поэтому -check не «протухает»; по нему
+	// открытая вкладка понимает, что отданный бандл новее (ui/lib/update.ts).
+	sum := sha256.Sum256([]byte(string(shell) + "\x00" + css + "\x00" + js))
+	marker := fmt.Sprintf(`<meta name="sharedd-build" content="%s">`, hex.EncodeToString(sum[:])[:16])
+	out = strings.Replace(out, "</head>", "  "+marker+"\n</head>", 1)
 	return banner(name) + out, nil
 }
 
