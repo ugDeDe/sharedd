@@ -68,8 +68,14 @@ VERSION=Vx.y.z-desc GOOS=linux GOARCH=amd64 bash scripts/build_registry.sh
    control-store) — к трафику отношения нет. Выкат: ребилд агента + реестра.
 5. **telemt Control API: DC/endpoints, качество/здоровье** (отдельный срез).
 6. **Действия ноды** для пользователя (проверка/конфиг/переустановка).
-7. **Коммит `dev`** — логическими коммитами (нужно согласие владельца). Прод уже
-   отставал на 23 сборки из незакоммиченного дерева.
+7. **Коммит `dev` — СДЕЛАНО (2026-10-14).** Всё дерево (было ~180 позиций, 23
+   сборки) зафиксировано 5 логическими коммитами по слоям:
+   `build:` инфра → `feat(registry):` cabinet/admin/provision/node-detail →
+   `feat(node):` DC2+hoststats → `feat(ui):`+webassets → `docs:`.
+   Локально, БЕЗ push. origin=`git@github.com:ugDeDe/sharedd.git`, у `dev` нет
+   upstream — пушить `git push -u origin dev` (по согласию).
+   ⚠️ Полный `go test ./internal/server/...` красный на WIP-тестах control-store
+   (503) — закоммичены как есть, нужен отдельный разбор.
 8. **Beget** — API отвечает `INCORRECT_CREDENTIALS` на его логин/пароль; ждём от
    владельца скриншот `cp.beget.com/settings/security/api` (включён ли API, 2FA).
 
