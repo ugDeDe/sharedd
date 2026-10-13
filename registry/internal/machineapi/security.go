@@ -122,6 +122,10 @@ type RegisterRequest struct {
 	IP     string `json:"ip"`
 	// NodeType: classic/mtproxyl/meko — информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
+	// AuthKey — персональный ключ регистрации (sda_…, user-режим
+	// [users] enabled=true). В legacy-режиме поле игнорируется; agents
+	// без authkey продолжают регистрировать legacy-ноды общим токеном.
+	AuthKey string `json:"authkey,omitempty"`
 }
 
 // Intervals — тайминги циклов, раздаваемые нодам в GET /config.
@@ -152,7 +156,14 @@ type HealthReportPayload struct {
 	GlobalpingSuccessRatio  float64            `json:"globalping_success_ratio"`
 	MetricsOK               bool               `json:"metrics_ok"`
 	MetricsSnapshot         map[string]float64 `json:"metrics_snapshot,omitempty"`
-	Healthy                 bool               `json:"healthy"`
-	CheckedAt               time.Time          `json:"checked_at"`
-	Error                   string             `json:"error,omitempty"`
+	// DC2-поля (specs/dc2-health.md): вердикт по ME-пулу DC2. Непустой
+	// DC2Reason маркирует dc2-осведомлённого агента (в режиме совместимости
+	// агент шлёт dc2_fallback_metrics); у старых агентов поле пустое —
+	// реестр тогда доверяет прежнему MetricsOK.
+	DC2OK     bool           `json:"dc2_ok"`
+	DC2Reason string         `json:"dc2_reason,omitempty"`
+	DC2Diag   map[string]any `json:"dc2_diag,omitempty"`
+	Healthy   bool           `json:"healthy"`
+	CheckedAt time.Time      `json:"checked_at"`
+	Error     string         `json:"error,omitempty"`
 }

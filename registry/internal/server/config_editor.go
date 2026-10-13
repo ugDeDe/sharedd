@@ -107,6 +107,24 @@ type editableSRMD struct {
 	MaxNodesPerDomain int    `json:"max_nodes_per_domain"`
 }
 
+// editableSelection — мульти-мастер на домен (addendum-profiles-vps.md §1):
+// masters_per_domain 1..8 слотов на managed-домен. НЕ [srmd]
+// max_nodes_per_domain — независимые лимиты.
+type editableSelection struct {
+	MastersPerDomain int `json:"masters_per_domain"`
+}
+
+// editableUsers — [users] мультиарендного режима. Панель правит ТОЛЬКО
+// default_max_nodes (квота нового пользователя, 0 = прежнее поведение);
+// enabled/legacy_max_nodes/allow_shared_secret остаются вне редактора.
+type editableUsers struct {
+	DefaultMaxNodes int `json:"default_max_nodes"`
+}
+
+// maxDefaultMaxNodes — верхняя граница [users] default_max_nodes
+// (config.Load валидирует то же значение).
+const maxDefaultMaxNodes = 1000000
+
 // editableConfig — тело PUT /panel/api/config; nil-секция = не трогать (merge-семантика).
 // Map-пользователи заменяются ЦЕЛИКОМ (клиент шлёт желаемое конечное состояние).
 type editableConfig struct {
@@ -118,6 +136,10 @@ type editableConfig struct {
 	Rotation     *editableRotation     `json:"rotation,omitempty"`
 	Healthcheck  *editableHealthcheck  `json:"healthcheck,omitempty"`
 	SRMD         *editableSRMD         `json:"srmd,omitempty"`
+	// addendum-profiles-vps.md §1: мульти-мастер, masters_per_domain 1..8.
+	Selection *editableSelection `json:"selection,omitempty"`
+	// plan-ui-batch.md §1.3: дефолтная квота нового пользователя.
+	Users *editableUsers `json:"users,omitempty"`
 }
 
 var (
@@ -227,6 +249,18 @@ func validateEditable(in *editableConfig) error {
 			return fmt.Errorf("srmd.max_nodes_per_domain: допустимо 1..1000, получено %d", s.MaxNodesPerDomain)
 		}
 	}
+	if sel := in.Selection; sel != nil {
+		if sel.MastersPerDomain < 1 || sel.MastersPerDomain > maxMastersPerDomain {
+			return fmt.Errorf("selection.masters_per_domain: допустимо 1..%d, получено %d",
+				maxMastersPerDomain, sel.MastersPerDomain)
+		}
+	}
+	if u := in.Users; u != nil {
+		if u.DefaultMaxNodes < 0 || u.DefaultMaxNodes > maxDefaultMaxNodes {
+			return fmt.Errorf("users.default_max_nodes: допустимо 0..%d, получено %d",
+				maxDefaultMaxNodes, u.DefaultMaxNodes)
+		}
+	}
 	return nil
 }
 
@@ -320,6 +354,14 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 			Enabled:           r.cfg.SRMD.Enabled != nil && *r.cfg.SRMD.Enabled,
 			BaseDomain:        r.cfg.SRMD.BaseDomain,
 			MaxNodesPerDomain: resolveSRMDMaxNodes(r.cfg.SRMD.MaxNodesPerDomain),
+		},
+		// Мульти-мастер: эффективное число слотов на домен.
+		Selection: &editableSelection{
+			MastersPerDomain: resolveMastersPerDomain(r.cfg.Selection.MastersPerDomain),
+		},
+		// Дефолтная квота нового пользователя (0 = прежнее поведение).
+		Users: &editableUsers{
+			DefaultMaxNodes: r.cfg.Users.DefaultMaxNodes,
 		},
 	}
 	static := staticConfigInfo{
@@ -493,6 +535,18 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		changed = append(changed, fmt.Sprintf("srmd(enabled=%t,base=%s,max_nodes_per_domain=%d)",
 			s.Enabled, orDash(r.cfg.SRMD.BaseDomain), s.MaxNodesPerDomain))
 	}
+	if sel := in.Selection; sel != nil {
+		// Hot-apply (addendum §1): читается селекцией на каждом тике
+		// (ResolveMastersPerDomain(r.cfg.Selection.MastersPerDomain)) —
+		// новое число слотов влияет на следующем тике без рестарта.
+		r.cfg.Selection.MastersPerDomain = sel.MastersPerDomain
+		changed = append(changed, fmt.Sprintf("selection(masters_per_domain=%d)", sel.MastersPerDomain))
+	}
+	if u := in.Users; u != nil {
+		// Hot-apply: читается при регистрации и admin-создании пользователя.
+		r.cfg.Users.DefaultMaxNodes = u.DefaultMaxNodes
+		changed = append(changed, fmt.Sprintf("users(default_max_nodes=%d)", u.DefaultMaxNodes))
+	}
 	if len(changed) > 0 {
 		persistErr = r.persistConfigLocked()
 	}
@@ -535,14 +589,28 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		r.sweepOrphans()
 	}
 
+	if persistErr != nil {
+		// Персист не удался (например, /etc/sharedd не в ReadWritePaths под
+		// ProtectSystem=strict): рантайм применён, но НЕ сохранён. Нельзя
+		// отвечать ok:true — оператор примет это за «сохранено». Отдаём
+		// ошибку, чтобы панель показала «не сохранено».
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":        false,
+			"changed":   changed,
+			"persisted": false,
+			"error":     "не сохранено: " + persistErr.Error(),
+			"message":   "Изменения применены, но не записаны в " + r.cfg.ConfigPath + ": " + persistErr.Error(),
+		})
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]any{
 		"ok":        true,
 		"changed":   changed,
-		"persisted": persistErr == nil,
-	}
-	if persistErr != nil {
-		resp["persist_warning"] = persistErr.Error()
+		"persisted": true,
 	}
 	for k, v := range push {
 		resp[k] = v
@@ -550,15 +618,19 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// pushAssignments — немедленная запись A-записей всех managed-доменов, КАЖДОГО
-// на IP своего назначенного мастера (панель: после правок cloudflare-секции
-// или кнопка «Перезаписать DNS»).
+// pushAssignments — немедленная запись DNS всех managed-доменов: A-набор
+// из ВСЕХ мастеров домена (мульти-мастер round-robin), свёрнутые СРМД
+// домены — CNAME'ом (панель: после правок cloudflare-секции или кнопка
+// «Перезаписать DNS»).
 func (r *Registry) pushAssignments() (updated []string, errs []string) {
 	r.cfgMu.RLock()
 	rawDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
 	r.cfgMu.RUnlock()
 
-	type target struct{ nodeID, ip, cname string }
+	type target struct {
+		masters []dnsMaster
+		cname   string
+	}
 	names := make([]string, 0, len(rawDomains))
 	targets := make([]target, 0, len(rawDomains))
 	r.mu.RLock()
@@ -571,8 +643,12 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 		// Свёрнутые СРМД домены пушим CNAME'ом, а не A-записью
 		if cn := r.state.SRMD.CNames[d]; cn != "" {
 			t.cname = cn
-		} else if c := r.state.Candidates[r.state.Assignments[d]]; c != nil {
-			t = target{nodeID: c.NodeID, ip: c.IP}
+		} else {
+			for _, id := range r.state.Assignments[d] {
+				if c := r.state.Candidates[id]; c != nil && c.IP != "" {
+					t.masters = append(t.masters, dnsMaster{NodeID: id, IP: c.IP})
+				}
+			}
 		}
 		names = append(names, d)
 		targets = append(targets, t)
@@ -583,7 +659,7 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 		t := targets[i]
 		if t.cname != "" {
 			r.mu.Lock()
-			r.enqueueDNSDesiredLocked(d, "CNAME", t.cname, "")
+			r.enqueueDNSDesiredLocked(d, "CNAME", []string{t.cname}, nil)
 			r.persistStateLocked()
 			r.mu.Unlock()
 			if err := r.reconcileDNSDomain(d, true); err != nil {
@@ -593,18 +669,24 @@ func (r *Registry) pushAssignments() (updated []string, errs []string) {
 			}
 			continue
 		}
-		if t.ip == "" {
+		if len(t.masters) == 0 {
 			errs = append(errs, d+": no assigned master")
 			continue
 		}
+		ips := make([]string, 0, len(t.masters))
+		nodes := make([]string, 0, len(t.masters))
+		for _, m := range t.masters {
+			ips = append(ips, m.IP)
+			nodes = append(nodes, m.NodeID)
+		}
 		r.mu.Lock()
-		r.enqueueDNSDesiredLocked(d, "A", t.ip, t.nodeID)
+		r.enqueueDNSDesiredLocked(d, "A", ips, nodes)
 		r.persistStateLocked()
 		r.mu.Unlock()
 		if err := r.reconcileDNSDomain(d, true); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", d, err))
 		} else {
-			updated = append(updated, fmt.Sprintf("%s → %s", d, t.ip))
+			updated = append(updated, fmt.Sprintf("%s → %s", d, strings.Join(ips, ", ")))
 		}
 	}
 

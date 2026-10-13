@@ -17,6 +17,11 @@ type (
 	DNSOperation     = state.DNSOperation
 	SRMDState        = state.SRMDState
 
+	// Мульти-мастер: слоты назначений домена (nodeID по индексу слота) и
+	// моменты назначений (TTL по слоту).
+	AssignmentSlots = state.AssignmentSlots
+	SinceSlots      = state.SinceSlots
+
 	TCPPoint    = state.TCPPoint
 	GPPoint     = state.GPPoint
 	ReportPoint = state.ReportPoint

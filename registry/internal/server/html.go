@@ -10,4 +10,6 @@ var (
 	statsHTML     = webassets.StatsHTML
 	dashboardHTML = webassets.DashboardHTML
 	linksHTML     = webassets.LinksHTML
+	signinHTML    = webassets.SigninHTML
+	cabinetHTML   = webassets.CabinetHTML
 )

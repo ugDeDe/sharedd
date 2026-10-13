@@ -43,17 +43,34 @@ func (r *Registry) cfSnapshot() (cf cfDNSAPI, zoneID string, ttl int, proxied bo
 	return r.cf, r.cfg.Cloudflare.ZoneID, r.cfg.Cloudflare.DNSTTL, r.cfg.Cloudflare.Proxied
 }
 
-// applyDNSTarget — upsert A-записи домена + учёт (счётчики, событие, персист).
-// Cloudflare-вызов вне локов, учёт — под mu.
-func (r *Registry) applyDNSTarget(domain, nodeID, ip string) {
-	r.mu.Lock()
-	r.enqueueDNSDesiredLocked(domain, "A", ip, nodeID)
-	r.persistStateLocked()
-	r.mu.Unlock()
-	_ = r.reconcileDNSDomain(domain, true)
+// dnsMaster — один слот мастера домена: узел-источник и его IP для A-записи.
+type dnsMaster struct {
+	NodeID string
+	IP     string
 }
 
-func (r *Registry) enqueueDNSDesiredLocked(domain, typ, target, nodeID string) bool {
+// equalStringSet — множества равны (порядок не важен, дубликатов нет).
+func equalStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+		if seen[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// enqueueDNSDesiredLocked — желаемый набор целей домена: для A — IP всех
+// мастеров (порядок не важен), для CNAME — ровно один элемент. Набор не
+// изменился (тот же тип + то же множество) — false, Generation не растёт.
+func (r *Registry) enqueueDNSDesiredLocked(domain, typ string, targets, nodes []string) bool {
 	if r.state.DNSOperations == nil {
 		r.state.DNSOperations = make(map[string]*DNSOperation)
 	}
@@ -63,13 +80,46 @@ func (r *Registry) enqueueDNSDesiredLocked(domain, typ, target, nodeID string) b
 		op = &DNSOperation{}
 		r.state.DNSOperations[domain] = op
 	}
-	if op.DesiredType == typ && op.DesiredTarget == target && op.DesiredNode == nodeID {
+	if op.DesiredType == typ && equalStringSet(op.DesiredTargets, targets) {
 		return false
 	}
-	op.DesiredType, op.DesiredTarget, op.DesiredNode = typ, target, nodeID
+	op.DesiredType = typ
+	op.DesiredTargets = append([]string(nil), targets...)
+	op.DesiredNodes = append([]string(nil), nodes...)
 	op.Attempts, op.NextAttempt, op.LastError = 0, time.Time{}, ""
 	op.Generation++
 	return true
+}
+
+// enqueueDNSDesiredFromAssignmentsLocked — желаемый DNS-набор домена из его
+// слотов назначения (A) либо из CNames (свёрнутый СРМД домен). Домен с
+// ПУСТЫМ списком слотов DNS не трогает: последняя желаемая запись остаётся —
+// инвариант «пустая очередь не снимает назначения». Возвращает true, если
+// желаемое изменилось. Под r.mu (write).
+func (r *Registry) enqueueDNSDesiredFromAssignmentsLocked(d string) bool {
+	if cn := r.state.SRMD.CNames[d]; cn != "" {
+		return r.enqueueDNSDesiredLocked(d, "CNAME", []string{cn}, nil)
+	}
+	nodes := r.state.Assignments[d]
+	if len(nodes) == 0 {
+		return false
+	}
+	masters := make([]dnsMaster, 0, len(nodes))
+	for _, id := range nodes {
+		if c := r.state.Candidates[id]; c != nil && c.IP != "" {
+			masters = append(masters, dnsMaster{NodeID: id, IP: c.IP})
+		}
+	}
+	if len(masters) == 0 {
+		return false
+	}
+	targets := make([]string, 0, len(masters))
+	ids := make([]string, 0, len(masters))
+	for _, m := range masters {
+		targets = append(targets, m.IP)
+		ids = append(ids, m.NodeID)
+	}
+	return r.enqueueDNSDesiredLocked(d, "A", targets, ids)
 }
 
 func dnsRetryDelay(attempts int) time.Duration {
@@ -95,7 +145,10 @@ func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
 		return nil
 	}
 	r.dnsInFlight[domain] = true
-	typ, target, nodeID, generation := op.DesiredType, op.DesiredTarget, op.DesiredNode, op.Generation
+	typ := op.DesiredType
+	targets := append([]string(nil), op.DesiredTargets...)
+	nodes := append([]string(nil), op.DesiredNodes...)
+	generation := op.Generation
 	op.Attempts++
 	r.persistStateLocked()
 	r.mu.Unlock()
@@ -103,9 +156,13 @@ func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
 	var err error
 	switch typ {
 	case "A":
-		err = r.upsertARecord(domain, target)
+		err = r.reconcileARecord(domain, targets)
 	case "CNAME":
-		err = r.upsertCNAMERecord(domain, target)
+		if len(targets) != 1 {
+			err = fmt.Errorf("CNAME needs exactly one target, got %d", len(targets))
+		} else {
+			err = r.upsertCNAMERecord(domain, targets[0])
+		}
 	default:
 		err = fmt.Errorf("unsupported desired DNS type %q", typ)
 	}
@@ -120,20 +177,27 @@ func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
 	}
 	if err != nil {
 		r.state.Counters.DNSErrors++
-		r.addEventLocked(Event{Type: EventDNSError, NodeID: nodeID, IP: target, Domain: domain, Detail: err.Error()})
+		nodeID, ip := firstNonEmpty(nodes), ""
+		if typ == "A" && len(targets) > 0 {
+			ip = targets[0]
+		}
+		r.addEventLocked(Event{Type: EventDNSError, NodeID: nodeID, IP: ip, Domain: domain, Detail: err.Error()})
 		if op.Generation == generation {
 			op.LastError = err.Error()
 			op.NextAttempt = now.Add(dnsRetryDelay(op.Attempts))
 		}
 	} else {
-		op.AppliedType, op.AppliedTarget, op.LastSuccess = typ, target, now
+		op.AppliedType, op.LastSuccess = typ, now
+		op.AppliedTargets = append([]string(nil), targets...)
 		r.state.Counters.DNSUpdates++
-		detail, ip := typ+" -> "+target, ""
-		if typ == "A" {
-			ip = target
-		} else {
+		// один цикл событий на домен; detail перечисляет весь набор A
+		detail, ip := typ+" -> "+strings.Join(targets, ", "), ""
+		if typ == "A" && len(targets) > 0 {
+			ip = targets[0]
+		} else if typ != "A" {
 			detail += " (СРМД)"
 		}
+		nodeID := firstNonEmpty(nodes)
 		r.addEventLocked(Event{Type: EventDNSUpdated, NodeID: nodeID, IP: ip, Domain: domain, Detail: detail})
 		if op.Generation == generation {
 			op.LastError, op.NextAttempt = "", time.Time{}
@@ -142,6 +206,16 @@ func (r *Registry) reconcileDNSDomain(domain string, force bool) error {
 	r.persistStateLocked()
 	r.mu.Unlock()
 	return err
+}
+
+// firstNonEmpty — первый непустой элемент ("" если нет).
+func firstNonEmpty(list []string) string {
+	for _, s := range list {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func (r *Registry) reconcileDNSDue() {
@@ -173,15 +247,13 @@ func (r *Registry) dnsReconcileLoop() {
 
 func (r *Registry) recoverDNSDesiredLocked() {
 	for domain, target := range r.state.SRMD.CNames {
-		r.enqueueDNSDesiredLocked(domain, "CNAME", target, "")
+		r.enqueueDNSDesiredLocked(domain, "CNAME", []string{target}, nil)
 	}
-	for domain, nodeID := range r.state.Assignments {
+	for domain := range r.state.Assignments {
 		if r.state.SRMD.CNames[domain] != "" {
 			continue
 		}
-		if c := r.state.Candidates[nodeID]; c != nil && c.IP != "" {
-			r.enqueueDNSDesiredLocked(domain, "A", c.IP, nodeID)
-		}
+		r.enqueueDNSDesiredFromAssignmentsLocked(domain)
 	}
 }
 
@@ -196,11 +268,17 @@ func (r *Registry) domainInConfigLocked(domain string) bool {
 	return false
 }
 
-// upsertARecord: домен = единственная A-запись на ip. Конфликтующие CNAME
-// того же имени удаляются (наследие selfmask-эксперимента — CNAME и A
-// на одном имени несовместимы), дубли A сводятся к одной записи.
-func (r *Registry) upsertARecord(domain, ip string) error {
-	cf, zoneID, ttl, proxied := r.cfSnapshot()
+// reconcileARecord — сверка ПОЛНОГО набора A-записей домена с желаемым
+// (мульти-мастер DNS round-robin; порядок не важен): создать недостающие A,
+// удалить лишние A, совпадающие не трогать. Конфликтующие CNAME того же
+// имени удаляются (наследие selfmask-эксперимента — CNAME и A на одном
+// имени несовместимы). Набор из одного IP — частный случай (прежнее
+// поведение: домен = единственная A-запись).
+func (r *Registry) reconcileARecord(domain string, ips []string) error {
+	if len(ips) == 0 {
+		return fmt.Errorf("empty desired A set for %s", domain)
+	}
+	cf, zoneID, _, _ := r.cfSnapshot()
 	ctx := context.Background()
 	rc := cloudflare.ZoneIdentifier(zoneID)
 
@@ -209,42 +287,52 @@ func (r *Registry) upsertARecord(domain, ip string) error {
 		log.Printf("cloudflare list error for %s: %v", domain, err)
 		return fmt.Errorf("list: %w", err)
 	}
-	var firstA *cloudflare.DNSRecord
+	want := make(map[string]bool, len(ips))
+	for _, ip := range ips {
+		if ip != "" {
+			want[ip] = true
+		}
+	}
+	if len(want) == 0 {
+		return fmt.Errorf("empty desired A set for %s", domain)
+	}
+	created := 0
 	for i := range recs {
 		rec := recs[i]
 		switch strings.ToUpper(rec.Type) {
 		case "CNAME":
-			log.Printf("dns %s: removing stale CNAME -> %s (writing A %s)", domain, rec.Content, ip)
+			log.Printf("dns %s: removing stale CNAME -> %s (writing A %s)", domain, rec.Content, strings.Join(ips, ", "))
 			if derr := cf.DeleteDNSRecord(ctx, rc, rec.ID); derr != nil {
 				return fmt.Errorf("delete stale CNAME: %w", derr)
 			}
 		case "A":
-			if firstA == nil {
-				firstA = &recs[i]
+			if want[rec.Content] {
+				delete(want, rec.Content) // совпадающая A — не трогаем
 			} else {
-				// дубликат A того же имени (был ручной вмеш?) — схлопываем
+				// лишняя A (мастер сдал слот) или дубль ручного вмешательства
+				log.Printf("dns %s: removing extra A -> %s", domain, rec.Content)
 				if derr := cf.DeleteDNSRecord(ctx, rc, rec.ID); derr != nil {
-					log.Printf("dns %s: failed to delete duplicate A -> %s: %v", domain, rec.Content, derr)
+					return fmt.Errorf("delete extra A: %w", derr)
 				}
 			}
 		}
 	}
-	if firstA != nil {
-		_, err = cf.UpdateDNSRecord(ctx, rc, cloudflare.UpdateDNSRecordParams{
-			ID: firstA.ID, Type: "A", Name: domain, Content: ip,
-			TTL: ttl, Proxied: &proxied,
-		})
-	} else {
-		_, err = cf.CreateDNSRecord(ctx, rc, cloudflare.CreateDNSRecordParams{
+	r.cfgMu.RLock()
+	ttl, proxied := r.cfg.Cloudflare.DNSTTL, r.cfg.Cloudflare.Proxied
+	r.cfgMu.RUnlock()
+	for ip := range want {
+		if _, cerr := cf.CreateDNSRecord(ctx, rc, cloudflare.CreateDNSRecordParams{
 			Type: "A", Name: domain, Content: ip,
 			TTL: ttl, Proxied: &proxied,
-		})
+		}); cerr != nil {
+			log.Printf("cloudflare create error for %s: %v", domain, cerr)
+			return cerr
+		}
+		created++
 	}
-	if err != nil {
-		log.Printf("cloudflare update error for %s: %v", domain, err)
-		return err
+	if created > 0 {
+		log.Printf("dns updated: %s A -> %s", domain, strings.Join(ips, ", "))
 	}
-	log.Printf("dns updated: %s A -> %s", domain, ip)
 	return nil
 }
 
@@ -252,7 +340,7 @@ func (r *Registry) upsertARecord(domain, ip string) error {
 // СРМД сворачивает лишние домены на выживших). Конфликтующие A/AAAA того же
 // имени удаляются (до сворачивания домен жил A-записью на IP мастера),
 // дубли CNAME схлопываются в одну. Разворачивание обратно в A делает
-// upsertARecord — он, в свою очередь, вычищает CNAME.
+// reconcileARecord — он, в свою очередь, вычищает CNAME.
 func (r *Registry) upsertCNAMERecord(domain, target string) error {
 	cf, zoneID, ttl, proxied := r.cfSnapshot()
 	ctx := context.Background()
@@ -404,7 +492,7 @@ func (r *Registry) sweepOrphans() {
 		if r.domainInConfigLocked(d) {
 			r.recoverDNSDesiredLocked()
 			if op := r.state.DNSOperations[d]; op != nil && removed > 0 {
-				op.AppliedType, op.AppliedTarget = "", ""
+				op.AppliedType, op.AppliedTargets = "", nil
 				op.NextAttempt = time.Time{}
 			}
 			r.persistStateLocked()

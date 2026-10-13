@@ -43,7 +43,7 @@ func TestMetricsLatchMasterSurvivesSingleBadReports(t *testing.T) {
 	liftToHealthy(r, "A")
 	liftToHealthy(r, "B")
 	r.evaluateAssignments(time.Now())
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatalf("A must be the initial master, got %+v", r.state.Assignments)
 	}
 

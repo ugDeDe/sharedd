@@ -101,7 +101,16 @@ CREATE TABLE IF NOT EXISTS traffic (
  ingress_bytes INTEGER NOT NULL,
  egress_bytes INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic(ts);`
+CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic(ts);
+CREATE TABLE IF NOT EXISTS traffic_user (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ ts INTEGER NOT NULL,
+ node_id TEXT NOT NULL,
+ user TEXT NOT NULL,
+ ingress_bytes INTEGER NOT NULL,
+ egress_bytes INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_traffic_user_node_ts ON traffic_user(node_id, ts);`
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("history db %s: schema failed: %v — continuing WITHOUT persistent history", path, err)
 		_ = db.Close()
@@ -213,8 +222,12 @@ func (d *DB) PruneEvents(olderThan time.Time) {
 	if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("history db: events retention removed %d rows (older than %s)", n, olderThan.Format("2006-01-02"))
 	}
-	if _, err := d.sql.Exec(`DELETE FROM traffic WHERE ts < ?`, time.Now().Add(-35*24*time.Hour).Unix()); err != nil {
+	cutoff := time.Now().Add(-35 * 24 * time.Hour).Unix()
+	if _, err := d.sql.Exec(`DELETE FROM traffic WHERE ts < ?`, cutoff); err != nil {
 		log.Printf("history db: traffic retention: %v", err)
+	}
+	if _, err := d.sql.Exec(`DELETE FROM traffic_user WHERE ts < ?`, cutoff); err != nil {
+		log.Printf("history db: user traffic retention: %v", err)
 	}
 }
 
@@ -248,3 +261,75 @@ func (d *DB) BansSince(since time.Time, reasonFilter string) ([]BanRow, error) {
 
 // SQL — прямой доступ к *sql.DB (для тестов и административных запросов).
 func (d *DB) SQL() *sql.DB { return d.sql }
+
+// UserTrafficRow — дельта per-user octets за один отчёт (уже positive-only).
+type UserTrafficRow struct {
+	User    string
+	Ingress int64
+	Egress  int64
+}
+
+// RecordUserTraffic — per-user дельта cumulative octets (24ч-разбивка по
+// пользователям для карточки ноды). Всегда пишем строку: агрегатный путь
+// (RecordTraffic) не гейтит по нулю и мы зеркалим его поведение.
+func (d *DB) RecordUserTraffic(ts time.Time, nodeID, user string, ingress, egress int64) {
+	if _, err := d.sql.Exec(
+		`INSERT INTO traffic_user (ts, node_id, user, ingress_bytes, egress_bytes) VALUES (?,?,?,?,?)`,
+		ts.Unix(), nodeID, user, max(int64(0), ingress), max(int64(0), egress)); err != nil {
+		log.Printf("history db: record user traffic %s/%s: %v", nodeID, user, err)
+	}
+}
+
+// UserTrafficSince — per-user дельты ноды новее since, по возрастанию времени.
+func (d *DB) UserTrafficSince(nodeID string, since time.Time) ([]UserTrafficRow, error) {
+	rows, err := d.sql.Query(
+		`SELECT user, ingress_bytes, egress_bytes FROM traffic_user WHERE node_id = ? AND ts >= ? ORDER BY ts ASC, id ASC`,
+		nodeID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []UserTrafficRow{}
+	for rows.Next() {
+		var r UserTrafficRow
+		if err := rows.Scan(&r.User, &r.Ingress, &r.Egress); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// IPHistoryRow — один IP, которым нода пользовалась (по журналу событий:
+// node_registered/node_replaced/ip_blocked и т.п. несут ip). Для детальной
+// карточки ноды в кабинете (plan-ui-batch.md Фаза 2 «История IP»).
+type IPHistoryRow struct {
+	IP        string    `json:"ip"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+	Events    int       `json:"events"`
+}
+
+// NodeIPHistory — уникальные IP ноды с первым/последним появлением, по
+// возрастанию первого появления.
+func (d *DB) NodeIPHistory(nodeID string) ([]IPHistoryRow, error) {
+	rows, err := d.sql.Query(
+		`SELECT ip, MIN(ts), MAX(ts), COUNT(*) FROM events WHERE node_id = ? AND ip <> '' GROUP BY ip ORDER BY MIN(ts) ASC`,
+		nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []IPHistoryRow{}
+	for rows.Next() {
+		var r IPHistoryRow
+		var first, last int64
+		if err := rows.Scan(&r.IP, &first, &last, &r.Events); err != nil {
+			return nil, err
+		}
+		r.FirstSeen = time.Unix(first, 0)
+		r.LastSeen = time.Unix(last, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

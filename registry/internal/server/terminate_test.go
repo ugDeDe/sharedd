@@ -804,3 +804,42 @@ func TestBanStatsRequireMasterTime(t *testing.T) {
 		t.Fatalf("retire with unknown master time must NOT add a ban row: %+v", bans)
 	}
 }
+
+// Тест 7 (specs/multi-master-dns.md): terminate при 2 мастерах — нода
+// убирается из ВСЕХ слотов домена, второй мастер остаётся, а желаемый
+// DNS-набор сжимается до его IP.
+func TestTerminateDropsNodeFromSlotsAndShrinksDNS(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.Selection.MastersPerDomain = 2
+	r.cfg.Cloudflare.Domains = []string{"d1.example.com"}
+	r.state.Candidates["A"] = &Candidate{NodeID: "A", IP: "1.1.1.1"}
+	r.state.Candidates["B"] = &Candidate{NodeID: "B", IP: "2.2.2.2"}
+	now := time.Now()
+	r.state.Assignments = map[string]AssignmentSlots{"d1.example.com": {"A", "B"}}
+	r.state.AssignmentsSince = map[string]SinceSlots{"d1.example.com": {now, now}}
+	r.state.DNSOperations = map[string]*DNSOperation{
+		"d1.example.com": {
+			DesiredType: "A", DesiredTargets: []string{"1.1.1.1", "2.2.2.2"}, DesiredNodes: []string{"A", "B"},
+			AppliedType: "A", AppliedTargets: []string{"1.1.1.1", "2.2.2.2"},
+		},
+	}
+
+	r.mu.Lock()
+	r.terminateNodeLocked(r.state.Candidates["A"], now, BanReasonDead, "test")
+	r.mu.Unlock()
+
+	slots := r.state.Assignments["d1.example.com"]
+	if len(slots) != 1 || slots[0] != "B" {
+		t.Fatalf("terminated node must leave all slots, B must remain master: %+v", slots)
+	}
+	if len(r.state.AssignmentsSince["d1.example.com"]) != 1 {
+		t.Fatalf("since list must track the slot list: %+v", r.state.AssignmentsSince["d1.example.com"])
+	}
+	op := r.state.DNSOperations["d1.example.com"]
+	if op == nil || len(op.DesiredTargets) != 1 || op.DesiredTargets[0] != "2.2.2.2" {
+		t.Fatalf("desired DNS set must shrink to the surviving master: %+v", op)
+	}
+	if _, banned := r.state.Terminated["A"]; !banned {
+		t.Fatal("terminated node must be recorded in the block list")
+	}
+}

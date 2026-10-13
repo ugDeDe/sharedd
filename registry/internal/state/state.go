@@ -188,21 +188,133 @@ type PruneTombstone struct {
 }
 
 type DNSOperation struct {
-	DesiredType   string    `json:"desired_type,omitempty"`
-	DesiredTarget string    `json:"desired_target,omitempty"`
-	DesiredNode   string    `json:"desired_node,omitempty"`
-	AppliedType   string    `json:"applied_type,omitempty"`
-	AppliedTarget string    `json:"applied_target,omitempty"`
-	Attempts      int       `json:"attempts,omitempty"`
-	NextAttempt   time.Time `json:"next_attempt,omitempty"`
-	LastError     string    `json:"last_error,omitempty"`
-	LastSuccess   time.Time `json:"last_success,omitempty"`
-	Generation    uint64    `json:"generation,omitempty"`
+	DesiredType string `json:"desired_type,omitempty"`
+	// DesiredTargets — желаемый набор целей (для A — IP всех мастеров домена,
+	// для CNAME — всегда один элемент). Порядок не важен, дубликатов нет.
+	DesiredTargets []string `json:"desired_targets,omitempty"`
+	// DesiredNodes — узлы-источники целей, индексы совпадают с DesiredTargets.
+	DesiredNodes []string `json:"desired_nodes,omitempty"`
+	AppliedType  string   `json:"applied_type,omitempty"`
+	// AppliedTargets — что реально сейчас в зоне (набор, порядок не важен).
+	AppliedTargets []string  `json:"applied_targets,omitempty"`
+	Attempts       int       `json:"attempts,omitempty"`
+	NextAttempt    time.Time `json:"next_attempt,omitempty"`
+	LastError      string    `json:"last_error,omitempty"`
+	LastSuccess    time.Time `json:"last_success,omitempty"`
+	Generation     uint64    `json:"generation,omitempty"`
+}
+
+// UnmarshalJSON — обратная совместимость: старый state-формат держал по одной
+// цели в полях desired_target/desired_node/applied_target. Читаем как список
+// из одного элемента, если новые списки не заданы; сохранение — всегда новый
+// формат.
+func (op *DNSOperation) UnmarshalJSON(b []byte) error {
+	type plain DNSOperation
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*op = DNSOperation(p)
+	if len(op.DesiredTargets) > 0 || len(op.DesiredNodes) > 0 || len(op.AppliedTargets) > 0 {
+		return nil
+	}
+	var legacy struct {
+		DesiredTarget string `json:"desired_target"`
+		DesiredNode   string `json:"desired_node"`
+		AppliedTarget string `json:"applied_target"`
+	}
+	if err := json.Unmarshal(b, &legacy); err != nil {
+		return err
+	}
+	if len(op.DesiredTargets) == 0 && legacy.DesiredTarget != "" {
+		op.DesiredTargets = []string{legacy.DesiredTarget}
+	}
+	if len(op.DesiredNodes) == 0 && legacy.DesiredNode != "" {
+		op.DesiredNodes = []string{legacy.DesiredNode}
+	}
+	if len(op.AppliedTargets) == 0 && legacy.AppliedTarget != "" {
+		op.AppliedTargets = []string{legacy.AppliedTarget}
+	}
+	return nil
 }
 
 // Drifted — желаемая DNS-операция ещё не применена (или применено другое).
+// Цели сравниваются как множества: порядок A-записей в зоне не важен.
 func (op *DNSOperation) Drifted() bool {
-	return op.DesiredType != op.AppliedType || op.DesiredTarget != op.AppliedTarget
+	return op.DesiredType != op.AppliedType || !sameStringSet(op.DesiredTargets, op.AppliedTargets)
+}
+
+// sameStringSet — множества равны (порядок не важен, дубликатов нет).
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+		if seen[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// ── мульти-мастер (DNS round-robin) ─────────────────────────────
+
+// AssignmentSlots — упорядоченный список нод-мастеров домена: индекс в
+// списке = номер слота. Дубликаты нод запрещены, IP слотов различны.
+type AssignmentSlots []string
+
+// UnmarshalJSON — старый формат (одна строка node_id) читается как список
+// из одного элемента; новый — JSON-массив.
+func (s *AssignmentSlots) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		var v string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		if v == "" {
+			*s = nil
+			return nil
+		}
+		*s = AssignmentSlots{v}
+		return nil
+	}
+	var v []string
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*s = v
+	return nil
+}
+
+// SinceSlots — моменты назначений, индексы совпадают с AssignmentSlots.
+type SinceSlots []time.Time
+
+// UnmarshalJSON — старый формат (один штамп времени) читается как список
+// из одного элемента.
+func (s *SinceSlots) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		var v time.Time
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		if v.IsZero() {
+			*s = nil
+			return nil
+		}
+		*s = SinceSlots{v}
+		return nil
+	}
+	var v []time.Time
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*s = v
+	return nil
 }
 
 // SRMDState — персистентная часть СРМД (внутри State).
@@ -402,16 +514,19 @@ func (c *Candidate) MasterTimeSec(now time.Time) int64 {
 type State struct {
 	Candidates    map[string]*Candidate    `json:"candidates"`
 	DNSOperations map[string]*DNSOperation `json:"dns_operations,omitempty"`
-	// Assignments — per-domain мастера, domain → node_id. Каждый managed-
-	// домен держит свою ноду; при дефиците нод мастера забирают «сиротские»
-	// домены (fill-empty), при появлении свободной ноды сирота отдаётся ей.
-	Assignments map[string]string `json:"assignments,omitempty"`
-	// AssignmentsSince — domain → момент текущего назначения. База TTL
-	// мастерства ([rotation] master_ttl_minutes); персистится — отсчёт не
-	// сбрасывается рестартом регистратора.
-	AssignmentsSince map[string]time.Time `json:"assignments_since,omitempty"`
-	Events           []Event              `json:"events,omitempty"`
-	Counters         Counters             `json:"counters"`
+	// Assignments — per-domain мастера, domain → упорядоченный список node_id
+	// (мульти-мастер DNS round-robin; [selection] masters_per_domain задаёт
+	// число слотов). Каждый managed-домен держит свои ноды; при дефиците нод
+	// мастера забирают «сиротские» домены (fill-empty), при появлении свободной
+	// ноды сирота отдаётся ей.
+	Assignments map[string]AssignmentSlots `json:"assignments,omitempty"`
+	// AssignmentsSince — domain → моменты текущих назначений ПО СЛОТУ
+	// (индексы совпадают со списком Assignments). База TTL мастерства
+	// ([rotation] master_ttl_minutes); персистится — отсчёт не сбрасывается
+	// рестартом регистратора.
+	AssignmentsSince map[string]SinceSlots `json:"assignments_since,omitempty"`
+	Events           []Event               `json:"events,omitempty"`
+	Counters         Counters              `json:"counters"`
 	// PruneStrikes — карантин вычищенных рипером нод (node_id → запись).
 	PruneStrikes map[string]*PruneTombstone `json:"prune_strikes,omitempty"`
 	// ManagedDomains — все домены, которыми регистратор когда-либо
@@ -491,10 +606,10 @@ func Load(path string) (*State, error) {
 		st.Candidates = make(map[string]*Candidate)
 	}
 	if st.Assignments == nil {
-		st.Assignments = make(map[string]string)
+		st.Assignments = make(map[string]AssignmentSlots)
 	}
 	if st.AssignmentsSince == nil {
-		st.AssignmentsSince = make(map[string]time.Time)
+		st.AssignmentsSince = make(map[string]SinceSlots)
 	}
 	if st.DNSOperations == nil {
 		st.DNSOperations = make(map[string]*DNSOperation)

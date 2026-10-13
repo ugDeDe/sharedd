@@ -19,7 +19,7 @@ package server
 // хранится, даже если живого мастера на домене сейчас нет — балансируем
 // по последним известным числам;
 // - ноды снова выросли — сначала разворачиваются ранее свёрнутые домены
-// (A-запись вернёт обычная селекция: upsertARecord вытесняет CNAME),
+// (A-запись вернёт обычная селекция: reconcileARecord вытесняет CNAME),
 // и только потом создаются новые.
 //
 // Кто выживает при сворачивании: не-созданные СРМД домены (основной и
@@ -49,6 +49,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"sharedd/registry/internal/config"
 )
 
 const (
@@ -75,13 +77,59 @@ func resolveSRMDMaxNodes(v int) int {
 	return v
 }
 
-// srmdRequiredDomains — сколько доменов нужно под очередь: ceil, минимум 1.
-func srmdRequiredDomains(queueSize, maxPerDomain int) int {
-	maxPerDomain = resolveSRMDMaxNodes(maxPerDomain)
+// srmdDomainCapacity — ёмкость ОДНОГО домена по нодам очереди:
+// max_nodes_per_domain × masters_per_domain (мульти-мастер: каждый из M
+// мастеров домена держит до maxPerDomain нод очереди на своём IP).
+func srmdDomainCapacity(maxPerDomain, masters int) int {
+	return resolveSRMDMaxNodes(maxPerDomain) * config.ResolveMastersPerDomain(masters)
+}
+
+// srmdRequiredDomains — сколько доменов нужно под очередь: деление размера
+// здоровой очереди на ёмкость домена (ceil, минимум 1). Пример:
+// srmdRequiredDomains(queue, maxPerDomain=5, M=2) == ceil(queue/10).
+func srmdRequiredDomains(queueSize, maxPerDomain, masters int) int {
+	capacity := srmdDomainCapacity(maxPerDomain, masters)
 	if queueSize <= 0 {
 		return 1
 	}
-	return (queueSize + maxPerDomain - 1) / maxPerDomain
+	return (queueSize + capacity - 1) / capacity
+}
+
+// srmdResolveSurvivor следует по цепочке CNAME от start до КОНЕЧНОГО
+// несвёрнутого домена. Возвращает ("", false), если цепочка битая (цикл или
+// ссылка на себя): вызывающий обязан не оставлять такой домен свёрнутым.
+// Инвариант дизайна: CNAME всегда указывает на ЖИВОЙ (не свёрнутый) домен,
+// цепочек CNAME не бывает.
+func srmdResolveSurvivor(start string, cnames map[string]string) (string, bool) {
+	cur := start
+	seen := map[string]bool{start: true}
+	for {
+		next, folded := cnames[cur]
+		if !folded || next == "" {
+			return cur, true // cur не свёрнут — конечный выживший
+		}
+		if seen[next] {
+			return "", false // цикл или self-reference
+		}
+		seen[next] = true
+		cur = next
+	}
+}
+
+// srmdPickFoldTarget — наименее загруженный выживший для сворачиваемого
+// домена. Никогда не возвращает сам foldable и никогда не выбирает другой
+// сворачиваемый домен (его нет в survivors). ok=false — выживших нет.
+func srmdPickFoldTarget(foldable string, survivors []string, load map[string]int) (string, bool) {
+	target := ""
+	for _, s := range survivors {
+		if s == "" || s == foldable {
+			continue
+		}
+		if target == "" || load[s] < load[target] {
+			target = s
+		}
+	}
+	return target, target != ""
 }
 
 // srmdSplitBase — «shared.ddproxy.xyz» → («shared», «.ddproxy.xyz»): схема
@@ -247,20 +295,34 @@ func (r *Registry) srmdRebalanceLocked(now time.Time, queue []*Candidate) bool {
 		r.state.SRMD.CNames = make(map[string]string)
 	}
 	changed := r.srmdGCLocked()
+	// Целостность CNAME: чиним унаследованные цепочки (shared3 -> shared2 ->
+	// shared1 из старых версий) — каждый свёрнутый домен должен указывать на
+	// выжившего напрямую. Выполняется каждый тик, поэтому уже испорченный
+	// production-state выправляется без ручного вмешательства.
+	if r.srmdNormalizeCNameChainsLocked() {
+		changed = true
+	}
 
 	// 1. таблица «домен | активные пользователи»: последние значения — с
-	// живых мастеров (нода считает их только по общему секрету). Мастер
-	// пропал/не присылает метрику — держим последнее известное число.
-	for d, id := range r.state.Assignments {
-		c := r.state.Candidates[id]
-		if c == nil {
-			continue
-		}
-		if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
-			if r.state.SRMD.DomainClients[d] != int(v) {
-				r.state.SRMD.DomainClients[d] = int(v)
-				changed = true
+	// живых мастеров (нода считает их только по общему секрету). Мульти-
+	// мастер: клиенты домена = СУММА клиентов всех назначенных мастеров.
+	// Мастер пропал/не присылает метрику — держим последнее известное число.
+	for d, ids := range r.state.Assignments {
+		sum := 0.0
+		any := false
+		for _, id := range ids {
+			c := r.state.Candidates[id]
+			if c == nil {
+				continue
 			}
+			if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
+				sum += v
+				any = true
+			}
+		}
+		if any && r.state.SRMD.DomainClients[d] != int(sum) {
+			r.state.SRMD.DomainClients[d] = int(sum)
+			changed = true
 		}
 	}
 
@@ -268,6 +330,7 @@ func (r *Registry) srmdRebalanceLocked(now time.Time, queue []*Candidate) bool {
 	r.cfgMu.RLock()
 	enabled := r.cfg.SRMD.Enabled != nil && *r.cfg.SRMD.Enabled
 	maxN := resolveSRMDMaxNodes(r.cfg.SRMD.MaxNodesPerDomain)
+	masters := config.ResolveMastersPerDomain(r.cfg.Selection.MastersPerDomain)
 	r.cfgMu.RUnlock()
 
 	order := r.srmdKeepOrderLocked()
@@ -281,7 +344,7 @@ func (r *Registry) srmdRebalanceLocked(now time.Time, queue []*Candidate) bool {
 			active = append(active, d)
 		}
 	}
-	required := srmdRequiredDomains(len(queue), maxN)
+	required := srmdRequiredDomains(len(queue), maxN, masters)
 
 	switch {
 	case enabled && len(active) < required:
@@ -292,7 +355,7 @@ func (r *Registry) srmdRebalanceLocked(now time.Time, queue []*Candidate) bool {
 			return changed
 		}
 		r.srmdExpandTicks = 0
-		if c := r.srmdExpandLocked(now, order, len(active), required, len(queue), maxN); c {
+		if c := r.srmdExpandLocked(now, order, len(active), required, len(queue), maxN, masters); c {
 			changed = true
 		}
 	case enabled && len(active) > required:
@@ -309,13 +372,48 @@ func (r *Registry) srmdRebalanceLocked(now time.Time, queue []*Candidate) bool {
 	default:
 		r.srmdExpandTicks, r.srmdFoldTicks = 0, 0
 	}
+	// Повторная проверка после действия: если только что свёрнутый домен был
+	// целью чужого CNAME — перенаправляем на выжившего в этом же тике.
+	if r.srmdNormalizeCNameChainsLocked() {
+		changed = true
+	}
+	return changed
+}
+
+// srmdNormalizeCNameChainsLocked выправляет цепочки CNAME: каждый свёрнутый
+// домен должен указывать напрямую на конечного ВЫЖИВШЕГО (несвёрнутого).
+// Возвращает true, если что-то поправили (нужен персист и DNS-запись).
+// ВЫЗЫВАТЬ под r.mu.
+func (r *Registry) srmdNormalizeCNameChainsLocked() bool {
+	changed := false
+	for d := range r.state.SRMD.CNames {
+		target := r.state.SRMD.CNames[d]
+		resolved, ok := srmdResolveSurvivor(d, r.state.SRMD.CNames)
+		if !ok {
+			// цикл/self: безопаснее снять свёртку — домен вернётся в ротацию,
+			// а selection перезапишет запись A-набором.
+			delete(r.state.SRMD.CNames, d)
+			log.Printf("srmd: broken CNAME chain for %s — unfold (cycle detected), returning to rotation", d)
+			changed = true
+			continue
+		}
+		if resolved == target {
+			continue
+		}
+		r.state.SRMD.CNames[d] = resolved
+		r.enqueueDNSDesiredLocked(d, "CNAME", []string{resolved}, nil)
+		log.Printf("srmd: repaired CNAME chain %s: %s -> %s (must point at a surviving domain)", d, target, resolved)
+		changed = true
+	}
 	return changed
 }
 
 // srmdExpandLocked — дотянуть число АКТИВНЫХ доменов до required: сначала
 // разворачиваются ранее свёрнутые (в порядке создания), затем создаются
-// новые инкременты основного домена. ВЫЗЫВАТЬ под r.mu.
-func (r *Registry) srmdExpandLocked(now time.Time, order []string, activeCount, required, queueSize, maxN int) bool {
+// новые инкременты основного домена. Развернутый домен возвращается под
+// обычную мульти-селекцию (M слотов заполняет evaluateAssignments).
+// ВЫЗЫВАТЬ под r.mu.
+func (r *Registry) srmdExpandLocked(now time.Time, order []string, activeCount, required, queueSize, maxN, masters int) bool {
 	changed := false
 	need := required - activeCount
 
@@ -332,8 +430,8 @@ func (r *Registry) srmdExpandLocked(now time.Time, order []string, activeCount, 
 		r.state.Counters.SRMDUnfolded++
 		r.addEventLocked(Event{
 			Type: EventSRMDDomainUnfolded, Domain: d,
-			Detail: fmt.Sprintf("СРМД: очередь выросла (%d нод, макс %d/домен) — домен возвращён в ротацию, был CNAME -> %s",
-				queueSize, maxN, target),
+			Detail: fmt.Sprintf("СРМД: очередь выросла (%d нод, ёмкость %d/домен) — домен возвращён в ротацию, был CNAME -> %s",
+				queueSize, srmdDomainCapacity(maxN, masters), target),
 		})
 		log.Printf("srmd: domain %s unfolded (was CNAME -> %s) — queue %d, required %d", d, target, queueSize, required)
 		changed = true
@@ -367,8 +465,8 @@ func (r *Registry) srmdExpandLocked(now time.Time, order []string, activeCount, 
 		r.cfgMu.Unlock()
 		r.state.SRMD.Created = append(r.state.SRMD.Created, name)
 		r.state.Counters.SRMDCreated++
-		detail := fmt.Sprintf("СРМД: очередь %d здоровых нод при максимуме %d нод/домен — создан сиротский домен",
-			queueSize, maxN)
+		detail := fmt.Sprintf("СРМД: очередь %d здоровых нод при ёмкости %d нод/домен (%d×%d) — создан сиротский домен",
+			queueSize, srmdDomainCapacity(maxN, masters), maxN, masters)
 		if perr != nil {
 			detail += "; ВНИМАНИЕ: конфиг не персистился: " + perr.Error()
 		}
@@ -418,19 +516,21 @@ func (r *Registry) srmdFoldLocked(now time.Time, active []string, required int) 
 
 	changed := false
 	for _, d := range foldables {
-		target := survivors[0]
-		for _, s := range survivors[1:] {
-			if load[s] < load[target] {
-				target = s
-			}
+		// Цель CNAME — ВЫЖИВШИЙ домен (не свёрнутый и не сам d): выжившие
+		// берутся только из активных не-сворачиваемых, поэтому цепочка
+		// CNAME -> CNAME невозможна.
+		target, ok := srmdPickFoldTarget(d, survivors, load)
+		if !ok {
+			log.Printf("srmd: no surviving target for %s — skip fold", d)
+			continue
 		}
 		clients := r.state.SRMD.DomainClients[d]
 		load[target] += clients
 		r.state.SRMD.CNames[d] = target
-		r.enqueueDNSDesiredLocked(d, "CNAME", target, "")
+		r.enqueueDNSDesiredLocked(d, "CNAME", []string{target}, nil)
 		r.state.SRMD.DomainClients[target] = load[target]
-		// домен выходит из ротации: мастер сдаёт назначение
-		if holderID := r.state.Assignments[d]; holderID != "" {
+		// домен выходит из ротации: все его слоты мастеров сдаются
+		if len(r.state.Assignments[d]) > 0 {
 			delete(r.state.Assignments, d)
 			delete(r.state.AssignmentsSince, d)
 			delete(r.ttlOverdue, d)
@@ -454,7 +554,7 @@ func (r *Registry) srmdFoldLocked(now time.Time, active []string, required int) 
 func (r *Registry) flushSRMDDNS() {
 	r.mu.Lock()
 	for _, a := range r.srmdPending {
-		r.enqueueDNSDesiredLocked(a.Domain, "CNAME", a.Target, "")
+		r.enqueueDNSDesiredLocked(a.Domain, "CNAME", []string{a.Target}, nil)
 	}
 	r.srmdPending = nil
 	r.persistStateLocked()
@@ -470,7 +570,7 @@ type panelSRMDDomain struct {
 	Clients *int   `json:"clients"`           // nil = никогда не измерялось
 	Fresh   bool   `json:"fresh"`             // значение снято с живого мастера сейчас
 	CName   string `json:"cname,omitempty"`   // свёрнут: цель CNAME
-	NodeID  string `json:"node_id,omitempty"` // текущий мастер (если есть)
+	NodeID  string `json:"node_id,omitempty"` // первый мастер (если есть)
 	IP      string `json:"ip,omitempty"`
 	Base    bool   `json:"base,omitempty"`    // основной домен
 	Created bool   `json:"created,omitempty"` // создан СРМД
@@ -481,17 +581,18 @@ type panelSRMD struct {
 	Enabled           bool              `json:"enabled"`
 	BaseDomain        string            `json:"base_domain"`
 	MaxNodesPerDomain int               `json:"max_nodes_per_domain"`
-	QueueSize         int               `json:"queue_size"`       // здоровая очередь
-	RequiredDomains   int               `json:"required_domains"` // нужно доменов под очередь
-	TotalDomains      int               `json:"total_domains"`    // managed всего
-	FoldedDomains     int               `json:"folded_domains"`   // из них свёрнуто в CNAME
-	Alert             string            `json:"alert,omitempty"`  // создание выключено, а нод слишком много
+	MastersPerDomain  int               `json:"masters_per_domain"` // слотов мастера на домен
+	QueueSize         int               `json:"queue_size"`         // здоровая очередь
+	RequiredDomains   int               `json:"required_domains"`   // нужно доменов под очередь
+	TotalDomains      int               `json:"total_domains"`      // managed всего
+	FoldedDomains     int               `json:"folded_domains"`     // из них свёрнуто в CNAME
+	Alert             string            `json:"alert,omitempty"`    // создание выключено, а нод слишком много
 	Domains           []panelSRMDDomain `json:"domains"`
 }
 
 // buildPanelSRMDLocked — снимок СРМД для панели. ВЫЗЫВАТЬ под r.mu
 // (минимум RLock).
-func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg string, maxN int) *panelSRMD {
+func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg string, maxN, masters int) *panelSRMD {
 	base := baseCfg
 	if base == "" {
 		r.cfgMu.RLock()
@@ -512,8 +613,9 @@ func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg str
 		Enabled:           enabled,
 		BaseDomain:        base,
 		MaxNodesPerDomain: maxN,
+		MastersPerDomain:  masters,
 		QueueSize:         queueSize,
-		RequiredDomains:   srmdRequiredDomains(queueSize, maxN),
+		RequiredDomains:   srmdRequiredDomains(queueSize, maxN, masters),
 		TotalDomains:      len(order),
 		Domains:           make([]panelSRMDDomain, 0, len(order)),
 	}
@@ -526,13 +628,16 @@ func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg str
 		}
 		if row.CName == "" {
 			activeCount++
-			if id := r.state.Assignments[d]; id != "" {
-				row.NodeID = id
+			// первый слот — карточка осталась прежней; полный список
+			// мастеров домена отдаёт секция masters overview
+			for _, id := range r.state.Assignments[d] {
 				if c := r.state.Candidates[id]; c != nil {
+					row.NodeID = id
 					row.IP = c.IP
 					if _, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
 						row.Fresh = true
 					}
+					break
 				}
 			}
 		} else {
@@ -540,9 +645,10 @@ func (r *Registry) buildPanelSRMDLocked(queueSize int, enabled bool, baseCfg str
 		}
 		s.Domains = append(s.Domains, row)
 	}
-	if !enabled && queueSize > activeCount*maxN {
-		s.Alert = fmt.Sprintf("СРМД: нод слишком много в очереди — %d здоровых нод при %d активных доменах × %d нод/домен. Включите «Разрешить СРМД создавать новые домены» (панель → СРМД) или добавьте домены вручную.",
-			queueSize, activeCount, maxN)
+	capacity := srmdDomainCapacity(maxN, masters)
+	if !enabled && queueSize > activeCount*capacity {
+		s.Alert = fmt.Sprintf("СРМД: нод слишком много в очереди — %d здоровых нод при %d активных доменах × %d нод/домен (%d мастеров). Включите «Разрешить СРМД создавать новые домены» (панель → СРМД) или добавьте домены вручную.",
+			queueSize, activeCount, capacity, masters)
 	}
 	return s
 }

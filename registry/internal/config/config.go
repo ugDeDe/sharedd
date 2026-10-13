@@ -28,6 +28,24 @@ func defaultDBFileFor(stateFile string) string {
 	return "registry.db"
 }
 
+// defaultControlDBFileFor — контрольная БД user-режима по умолчанию: sibling
+// state-файла (контракт §1: «по умолчанию рядом со state-файлом (control.db)»).
+func defaultControlDBFileFor(stateFile string) string {
+	if d := dirOf(stateFile); d != "" {
+		return d + "/control.db"
+	}
+	return "control.db"
+}
+
+// defaultMasterKeyFileFor — AES-GCM мастер-ключ секретов Beget по умолчанию:
+// sibling state-файла (master.key), отдельно от control-БД.
+func defaultMasterKeyFileFor(stateFile string) string {
+	if d := dirOf(stateFile); d != "" {
+		return d + "/master.key"
+	}
+	return "master.key"
+}
+
 // dirOf — dirname без filepath (state-файлы у нас без экзотики).
 func dirOf(p string) string {
 	for i := len(p) - 1; i >= 0; i-- {
@@ -82,10 +100,18 @@ type RegistryConfig struct {
 	// (registry.db); явно пустой File нельзя задать — отключение через
 	// enabled=false. События ротируются (events_retention_days, дефолт 30),
 	// баны — никогда (метрики дашборда «на постоянной основе»).
+	// ControlDB — контрольная БД user-режима ([users] enabled=true):
+	// пользователи/сессии/authkeys/владельцы нод/квоты (docs/api-contract.md §1).
+	// Дефолт — control.db рядом со state-файлом.
 	Database struct {
 		Enabled             *bool  `toml:"enabled"`
 		File                string `toml:"file"`
 		EventsRetentionDays int    `toml:"events_retention_days"`
+		ControlDB           string `toml:"control_db"`
+		// MasterKeyPath — 32B AES-GCM мастер-ключ секретов Beget
+		// (beget-provisioning.md §2). Отдельный файл вне БД, права 600.
+		// Дефолт — master.key рядом со state-файлом.
+		MasterKeyPath string `toml:"master_key_path"`
 	} `toml:"database"`
 
 	// NodeDefaults — интервалы, раздаваемые нодам через GET /config.
@@ -114,6 +140,15 @@ type RegistryConfig struct {
 	Rotation struct {
 		MasterTTLMinutes *int `toml:"master_ttl_minutes"`
 	} `toml:"rotation"`
+
+	// Selection — мульти-мастер на домен (DNS round-robin).
+	// MastersPerDomain — сколько живых мастеров держит ОДИН managed-домен:
+	// 1 = прежнее поведение (одна A-запись), >1 — round-robin из N мастеров
+	// с разными IP. НЕ заменяет и не равняется [srmd] max_nodes_per_domain —
+	// это независимые лимиты (слоты мастера vs ноды очереди на домен).
+	Selection struct {
+		MastersPerDomain int `toml:"masters_per_domain"`
+	} `toml:"selection"`
 
 	Globalping struct {
 		APIBase string `toml:"api_base"`
@@ -150,6 +185,49 @@ type RegistryConfig struct {
 		// onboarding-команды. Host запроса для этого намеренно не используется.
 		PublicURL string `toml:"public_url"`
 	} `toml:"panel"`
+
+	// Users — мультиарендный user-режим (docs/api-contract.md). Enabled:
+	// nil/ false = точное прежнее поведение (machine API не требует authkey,
+	// панельные admin/user-API отвечают 503). Включение — явный выбор
+	// оператора, как у SRMD. LegacyMaxNodes — квота системного пользователя
+	// `legacy`, куда мигрируют ноды, зарегистрированные до включения режима.
+	// AllowSharedSecret — только БУТСТРАП durable-переключателя
+	// «Разрешить общий секрет» (invitations-migration-contract.md §3):
+	// фактическое состояние живёт в settings control.db. nil = true.
+	// DefaultMaxNodes — квота, которую получает НОВЫЙ пользователь, созданный
+	// через приглашение или из админки без явного max_nodes (0 = прежнее
+	// поведение: квота 0). Валидируется 0..1000000.
+	Users struct {
+		Enabled           *bool `toml:"enabled"`
+		LegacyMaxNodes    int   `toml:"legacy_max_nodes"`
+		DefaultMaxNodes   int   `toml:"default_max_nodes"`
+		AllowSharedSecret *bool `toml:"allow_shared_secret"`
+	} `toml:"users"`
+
+	// Provisioning — лимиты личного Beget-провижининга
+	// (beget-provisioning.md §4.6, addendum-profiles-vps.md §3-4). Лимиты
+	// персистятся через operations и переживают рестарт. MaxCreatesPerDay —
+	// потолок фактически отправленных платных заказов на пользователя за
+	// 24ч; CooldownMinutes — пауза после серии ошибок.
+	// MaxUserProfiles — лимит локальных профилей пользователя (дефолт 5);
+	// InstallTimeoutMin — таймаут ОДНОГО шага профиля на VPS (дефолт 20);
+	// VpsReadyTimeoutMin — ограниченное ожидание RUNNING после заказа
+	// (дефолт 10, addendum §7.3); VpsPollIntervalSec — интервал опроса
+	// статуса VPS (дефолт 10);
+	// UserProfilesEnabled — пользовательские профили разрешены (дефолт true,
+	// решение владельца). Остаточный риск честно: шаги — обычные shell-команды,
+	// которые исполняются на СВОЁМ VPS пользователя; реестр их локально не
+	// запускает, а владелец VPS и так может делать на своей машине что угодно.
+	// Креды/секреты реестра из SSH-сессии недостижимы (в шаги не инъектятся).
+	Provisioning struct {
+		MaxCreatesPerDay    int   `toml:"max_creates_per_day"`
+		CooldownMinutes     int   `toml:"cooldown_minutes"`
+		MaxUserProfiles     int   `toml:"max_user_profiles"`
+		InstallTimeoutMin   int   `toml:"install_timeout_min"`
+		VpsReadyTimeoutMin  int   `toml:"vps_ready_timeout_min"`
+		VpsPollIntervalSec  int   `toml:"vps_poll_interval_sec"`
+		UserProfilesEnabled *bool `toml:"user_profiles_enabled"`
+	} `toml:"provisioning"`
 }
 
 type Resolved struct {
@@ -226,8 +304,43 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if strings.TrimSpace(cfg.Security.NodeToken) == "" {
 		return fmt.Errorf("security.node_token is required")
 	}
+	if cfg.Users.DefaultMaxNodes < 0 || cfg.Users.DefaultMaxNodes > 1000000 {
+		return fmt.Errorf("users.default_max_nodes must be 0..1000000")
+	}
+	if cfg.Users.Enabled != nil && *cfg.Users.Enabled {
+		if cfg.Users.LegacyMaxNodes < 1 || cfg.Users.LegacyMaxNodes > 1000000 {
+			return fmt.Errorf("users.legacy_max_nodes must be 1..1000000")
+		}
+		if cfg.Panel.Enabled != nil && !*cfg.Panel.Enabled {
+			return fmt.Errorf("users.enabled requires the panel (admin user APIs live under /panel/api/admin)")
+		}
+		if strings.TrimSpace(cfg.Database.ControlDB) == "" {
+			return fmt.Errorf("database.control_db must not be empty when users are enabled")
+		}
+	}
 	if (cfg.Panel.Enabled == nil || *cfg.Panel.Enabled) && strings.TrimSpace(cfg.Panel.Token) == "" {
 		return fmt.Errorf("panel.token is required when panel is enabled")
+	}
+	if cfg.Provisioning.MaxCreatesPerDay < 0 || cfg.Provisioning.MaxCreatesPerDay > 1000 {
+		return fmt.Errorf("provisioning.max_creates_per_day must be 0..1000")
+	}
+	if cfg.Provisioning.CooldownMinutes < 0 || cfg.Provisioning.CooldownMinutes > 1440 {
+		return fmt.Errorf("provisioning.cooldown_minutes must be 0..1440")
+	}
+	if cfg.Provisioning.MaxUserProfiles < 1 || cfg.Provisioning.MaxUserProfiles > 100 {
+		return fmt.Errorf("provisioning.max_user_profiles must be 1..100")
+	}
+	if cfg.Provisioning.InstallTimeoutMin < 1 || cfg.Provisioning.InstallTimeoutMin > 1440 {
+		return fmt.Errorf("provisioning.install_timeout_min must be 1..1440")
+	}
+	if cfg.Provisioning.VpsReadyTimeoutMin < 1 || cfg.Provisioning.VpsReadyTimeoutMin > 1440 {
+		return fmt.Errorf("provisioning.vps_ready_timeout_min must be 1..1440")
+	}
+	if cfg.Provisioning.VpsPollIntervalSec < 1 || cfg.Provisioning.VpsPollIntervalSec > 600 {
+		return fmt.Errorf("provisioning.vps_poll_interval_sec must be 1..600")
+	}
+	if strings.TrimSpace(cfg.Database.MasterKeyPath) == "" {
+		return fmt.Errorf("database.master_key_path must not be empty")
 	}
 	if cfg.Panel.PublicURL != "" {
 		u, err := url.Parse(cfg.Panel.PublicURL)
@@ -279,6 +392,9 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	}
 	if cfg.Rotation.MasterTTLMinutes != nil && (*cfg.Rotation.MasterTTLMinutes < 0 || *cfg.Rotation.MasterTTLMinutes > MaxMasterTTLMinutes) {
 		return fmt.Errorf("rotation.master_ttl_minutes must be 0..%d", MaxMasterTTLMinutes)
+	}
+	if cfg.Selection.MastersPerDomain < 1 || cfg.Selection.MastersPerDomain > MaxMastersPerDomain {
+		return fmt.Errorf("selection.masters_per_domain must be 1..%d", MaxMastersPerDomain)
 	}
 	if cfg.Healthcheck.QuarantineAttempts < 1 || cfg.Healthcheck.QuarantineAttempts > 20 {
 		return fmt.Errorf("healthcheck.quarantine_attempts must be 1..20")
@@ -395,6 +511,10 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.SRMD.MaxNodesPerDomain == 0 {
 		cfg.SRMD.MaxNodesPerDomain = DefaultSRMDMaxNodesPerDomain
 	}
+	// мульти-мастер: 1 = прежнее поведение (одна A-запись на домен).
+	if cfg.Selection.MastersPerDomain == 0 {
+		cfg.Selection.MastersPerDomain = DefaultMastersPerDomain
+	}
 	//
 	if cfg.Healthcheck.QuarantineAttempts == 0 {
 		cfg.Healthcheck.QuarantineAttempts = defaultQuarantineAttempts
@@ -407,6 +527,36 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 			// по умолчанию — рядом со state-файлом
 			cfg.Database.File = defaultDBFileFor(cfg.State.File)
 		}
+	}
+	// user-режим: квота legacy по умолчанию 100000 (контракт §4),
+	// control-БД — рядом со state-файлом.
+	if cfg.Users.LegacyMaxNodes == 0 {
+		cfg.Users.LegacyMaxNodes = defaultLegacyMaxNodes
+	}
+	if cfg.Users.Enabled != nil && *cfg.Users.Enabled && cfg.Database.ControlDB == "" {
+		cfg.Database.ControlDB = defaultControlDBFileFor(cfg.State.File)
+	}
+	// Beget-провижининг: мастер-ключ секретов вне БД + лимиты.
+	if cfg.Database.MasterKeyPath == "" {
+		cfg.Database.MasterKeyPath = defaultMasterKeyFileFor(cfg.State.File)
+	}
+	if cfg.Provisioning.MaxCreatesPerDay == 0 {
+		cfg.Provisioning.MaxCreatesPerDay = defaultMaxCreatesPerDay
+	}
+	if cfg.Provisioning.CooldownMinutes == 0 {
+		cfg.Provisioning.CooldownMinutes = defaultCooldownMinutes
+	}
+	if cfg.Provisioning.MaxUserProfiles == 0 {
+		cfg.Provisioning.MaxUserProfiles = defaultMaxUserProfiles
+	}
+	if cfg.Provisioning.InstallTimeoutMin == 0 {
+		cfg.Provisioning.InstallTimeoutMin = defaultInstallTimeoutMin
+	}
+	if cfg.Provisioning.VpsReadyTimeoutMin == 0 {
+		cfg.Provisioning.VpsReadyTimeoutMin = defaultVpsReadyTimeoutMin
+	}
+	if cfg.Provisioning.VpsPollIntervalSec == 0 {
+		cfg.Provisioning.VpsPollIntervalSec = defaultVpsPollIntervalSec
 	}
 }
 
@@ -438,5 +588,47 @@ func ResolvePruneUnhealthyMinutes(p *int) int {
 // MaxMasterTTLMinutes — верхняя граница [rotation] master_ttl_minutes.
 const MaxMasterTTLMinutes = 43200
 
+// defaultLegacyMaxNodes — дефолт [users] legacy_max_nodes (контракт §4).
+const defaultLegacyMaxNodes = 100000
+
+// Лимиты [provisioning] (beget-provisioning.md §4.6).
+const (
+	defaultMaxCreatesPerDay = 5
+	defaultCooldownMinutes  = 30
+	// addendum-profiles-vps.md §3-4: профили и установка.
+	defaultMaxUserProfiles   = 5
+	defaultInstallTimeoutMin = 20
+	// addendum §7.3: ограниченное ожидание RUNNING после платного заказа.
+	defaultVpsReadyTimeoutMin = 10
+	defaultVpsPollIntervalSec = 10
+)
+
+// ResolveUserProfilesEnabled — эффективное значение [provisioning]
+// user_profiles_enabled: nil = true (включено по умолчанию — решение владельца).
+// Флаг сохранён: оператор может выключить. Остаточный риск: команды профиля
+// исполняются как root на собственном VPS пользователя; секреты реестра в
+// SSH-сессию не попадают.
+func ResolveUserProfilesEnabled(p *bool) bool {
+	return p == nil || *p
+}
+
 // DefaultSRMDMaxNodesPerDomain — дефолт [srmd] max_nodes_per_domain.
 const DefaultSRMDMaxNodesPerDomain = 5
+
+// Мульти-мастер ([selection] masters_per_domain): дефолт и потолок.
+const (
+	DefaultMastersPerDomain = 1
+	MaxMastersPerDomain     = 8
+)
+
+// ResolveMastersPerDomain — эффективное число слотов мастера на домен:
+// 0/мусор → дефолт 1, выше потолка → потолок (защита на горячем применении).
+func ResolveMastersPerDomain(v int) int {
+	if v < DefaultMastersPerDomain {
+		return DefaultMastersPerDomain
+	}
+	if v > MaxMastersPerDomain {
+		return MaxMastersPerDomain
+	}
+	return v
+}

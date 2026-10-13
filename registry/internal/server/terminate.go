@@ -110,6 +110,20 @@ func (r *Registry) terminateNodeLocked(c *Candidate, now time.Time, reason, caus
 		Type: EventNodeTerminated, NodeID: c.NodeID, IP: c.IP, Detail: detail,
 	})
 	delete(r.state.Candidates, c.NodeID)
+	// Мульти-мастер: убираем ноду изо ВСЕХ слотов её доменов; желаемый
+	// DNS-набор сжимается, сверка набора подтянет записи. Пустой список
+	// слотов желаемое не меняет — «пустая очередь не снимает назначения»
+	// (A остаётся на последнем мастере до появления замены).
+	for d, ids := range r.state.Assignments {
+		nodes, since, removed := dropNodeFromSlots(ids, r.state.AssignmentsSince[d], c.NodeID)
+		if !removed {
+			continue
+		}
+		r.state.Assignments[d] = nodes
+		r.state.AssignmentsSince[d] = since
+		delete(r.ttlOverdue, d)
+		r.enqueueDNSDesiredFromAssignmentsLocked(d)
+	}
 	log.Printf("node %s (%s) TERMINATED: %s (%s)", c.NodeID, c.IP, msg, reason)
 	r.persistStateLocked()
 }

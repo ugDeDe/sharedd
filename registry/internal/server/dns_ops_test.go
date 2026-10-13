@@ -14,6 +14,23 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 )
 
+// applyDNSTargets — тестовый хелпер (ранее жил в dns.go): желаемый набор
+// A-мастеров домена + немедленная сверка. В продакшене путь селекции идёт
+// через enqueueDNSDesiredFromAssignmentsLocked + reconcileDNSDomain.
+func (r *Registry) applyDNSTargets(domain string, masters []dnsMaster) {
+	targets := make([]string, 0, len(masters))
+	nodes := make([]string, 0, len(masters))
+	for _, m := range masters {
+		targets = append(targets, m.IP)
+		nodes = append(nodes, m.NodeID)
+	}
+	r.mu.Lock()
+	r.enqueueDNSDesiredLocked(domain, "A", targets, nodes)
+	r.persistStateLocked()
+	r.mu.Unlock()
+	_ = r.reconcileDNSDomain(domain, true)
+}
+
 // fakeCF — in-memory реализация cfDNSAPI: хранит записи зоны,
 // честно делает list/create/update/delete. Ошибки можно инжектить флагами.
 type fakeCF struct {
@@ -139,11 +156,21 @@ func makeHealthyNow(r *Registry, id string) {
 
 func applyChanges(t *testing.T, r *Registry, changes []domainChange) {
 	t.Helper()
+	// Один домен — один желаемый НАБОР мастеров: группируем изменения по
+	// домену (мульти-мастер), затем применяем набор целиком.
+	byDomain := map[string][]dnsMaster{}
+	order := []string{}
 	for _, ch := range changes {
 		if ch.ToID == "" {
 			continue
 		}
-		r.applyDNSTarget(ch.Domain, ch.ToID, ch.ToIP)
+		if _, ok := byDomain[ch.Domain]; !ok {
+			order = append(order, ch.Domain)
+		}
+		byDomain[ch.Domain] = append(byDomain[ch.Domain], dnsMaster{NodeID: ch.ToID, IP: ch.ToIP})
+	}
+	for _, d := range order {
+		r.applyDNSTargets(d, byDomain[d])
 	}
 }
 
@@ -160,7 +187,7 @@ func TestMasterWritesAAndCleansStaleCNAME(t *testing.T) {
 	makeHealthyNow(r, "A")
 	applyChanges(t, r, r.evaluateAssignments(time.Now()))
 
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatalf("A must be master, got %+v", r.state.Assignments)
 	}
 	recs := fc.find("d1.example.com", "")
@@ -321,7 +348,7 @@ func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
 	r.cf = fc
 	fc.failOp["list"] = true
 
-	r.applyDNSTarget("d1.example.com", "node-a", "1.2.3.4")
+	r.applyDNSTargets("d1.example.com", []dnsMaster{{NodeID: "node-a", IP: "1.2.3.4"}})
 	op := r.state.DNSOperations["d1.example.com"]
 	if op == nil || op.Attempts != 1 || op.LastError == "" || op.NextAttempt.IsZero() || !op.Drifted() {
 		t.Fatalf("failed operation was not persisted for retry: %+v", op)
@@ -331,7 +358,8 @@ func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
 	r.reconcileDNSDue()
 
 	op = r.state.DNSOperations["d1.example.com"]
-	if op.Attempts != 2 || op.LastError != "" || op.AppliedType != "A" || op.AppliedTarget != "1.2.3.4" || op.LastSuccess.IsZero() || op.Drifted() {
+	if op.Attempts != 2 || op.LastError != "" || op.AppliedType != "A" ||
+		len(op.AppliedTargets) != 1 || op.AppliedTargets[0] != "1.2.3.4" || op.LastSuccess.IsZero() || op.Drifted() {
 		t.Fatalf("successful retry did not converge: %+v", op)
 	}
 	if got := fc.find("d1.example.com", "A"); len(got) != 1 || got[0].Content != "1.2.3.4" {
@@ -342,7 +370,7 @@ func TestDNSReconcileFailedThenSuccessfulRetry(t *testing.T) {
 func TestDNSOperationPersistenceAndSRMDRecovery(t *testing.T) {
 	r := newTestRegistry(t)
 	r.state.Candidates["node-a"] = &Candidate{NodeID: "node-a", IP: "1.2.3.4"}
-	r.state.Assignments = map[string]string{"d1.example.com": "node-a"}
+	r.state.Assignments = map[string]AssignmentSlots{"d1.example.com": {"node-a"}}
 	r.cfg.Cloudflare.Domains = []string{"d1.example.com", "folded.example.com"}
 	r.state.SRMD.CNames = map[string]string{"folded.example.com": "d1.example.com"}
 	r.recoverDNSDesiredLocked()
@@ -360,12 +388,53 @@ func TestDNSOperationPersistenceAndSRMDRecovery(t *testing.T) {
 	r2.mu.Unlock()
 
 	a := r2.state.DNSOperations["d1.example.com"]
-	if a == nil || a.DesiredType != "A" || a.DesiredTarget != "1.2.3.4" || a.DesiredNode != "node-a" || a.Attempts != 3 || a.LastError != "temporary" {
+	if a == nil || a.DesiredType != "A" || len(a.DesiredTargets) != 1 || a.DesiredTargets[0] != "1.2.3.4" ||
+		len(a.DesiredNodes) != 1 || a.DesiredNodes[0] != "node-a" || a.Attempts != 3 || a.LastError != "temporary" {
 		t.Fatalf("A desired/retry state did not survive reload: %+v", a)
 	}
 	cname := r2.state.DNSOperations["folded.example.com"]
-	if cname == nil || cname.DesiredType != "CNAME" || cname.DesiredTarget != "d1.example.com" {
+	if cname == nil || cname.DesiredType != "CNAME" || len(cname.DesiredTargets) != 1 || cname.DesiredTargets[0] != "d1.example.com" {
 		t.Fatalf("SRMD CNAME was not recovered from persistent state: %+v", cname)
+	}
+}
+
+// Тест 5 (specs/multi-master-dns.md): полная сверка НАБОРА A-записей домена —
+// недостающие создаются, лишние удаляются, совпадающие не трогаются,
+// конфликтующий CNAME вычищается.
+func TestDNSReconcileFullSet(t *testing.T) {
+	fc := newFakeCF()
+	r := newTestRegistry(t)
+	r.cf = fc
+	fc.seed(
+		cloudflare.DNSRecord{Type: "A", Name: "d1.example.com", Content: "1.1.1.1"},  // совпадает — остаётся
+		cloudflare.DNSRecord{Type: "A", Name: "d1.example.com", Content: "9.9.9.9"},  // лишняя — удаляется
+		cloudflare.DNSRecord{Type: "CNAME", Name: "d1.example.com", Content: "x.ex"}, // конфликт — удаляется
+	)
+	keepID := fc.find("d1.example.com", "A")[0].ID
+
+	if err := r.reconcileARecord("d1.example.com", []string{"1.1.1.1", "2.2.2.2"}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	recs := fc.find("d1.example.com", "")
+	if len(recs) != 2 {
+		t.Fatalf("want exactly the desired A set, got %+v", recs)
+	}
+	got := map[string]bool{}
+	for _, rec := range recs {
+		if rec.Type != "A" {
+			t.Fatalf("non-A record survived: %+v", rec)
+		}
+		got[rec.Content] = true
+	}
+	if !got["1.1.1.1"] || !got["2.2.2.2"] {
+		t.Fatalf("desired set not converged: %+v", recs)
+	}
+	// совпадающая A не пересоздавалась (тот же record id)
+	for _, rec := range fc.find("d1.example.com", "A") {
+		if rec.Content == "1.1.1.1" && rec.ID != keepID {
+			t.Fatalf("matching A must not be recreated: old=%s new=%s", keepID, rec.ID)
+		}
 	}
 }
 

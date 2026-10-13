@@ -72,7 +72,7 @@ func statsFixtureRegistry(t *testing.T) *Registry {
 		},
 	}
 	r.state.Candidates[c.NodeID] = c
-	r.state.Assignments = map[string]string{"d1.example.com": c.NodeID}
+	r.state.Assignments = map[string]AssignmentSlots{"d1.example.com": {c.NodeID}}
 	r.mu.Lock()
 	r.addEventLocked(Event{Type: EventNodeRegistered, NodeID: c.NodeID, IP: c.IP,
 		Detail: "re-registered, ip changed 203.0.113.7 -> 198.51.100.9"})
@@ -222,8 +222,8 @@ func TestStatsListMasterTTLCountdown(t *testing.T) {
 		NodeID: "node-n", IP: "10.0.0.10", RegisteredAt: now.Add(-time.Hour),
 		LastHeartbeat: now,
 	}
-	r.state.Assignments = map[string]string{"d1.example.com": "node-m"}
-	r.state.AssignmentsSince = map[string]time.Time{"d1.example.com": now.Add(-12 * time.Minute)}
+	r.state.Assignments = map[string]AssignmentSlots{"d1.example.com": {"node-m"}}
+	r.state.AssignmentsSince = map[string]SinceSlots{"d1.example.com": {now.Add(-12 * time.Minute)}}
 	r.mu.Unlock()
 
 	mux := r.buildMux()
@@ -284,9 +284,9 @@ func TestProxyLinks(t *testing.T) {
 	now := time.Now()
 	r.state.Candidates["node-a"] = &Candidate{NodeID: "node-a", IP: "1.2.3.4", Port: 443, RegisteredAt: now, LastHeartbeat: now}
 	r.state.Candidates["node-b"] = &Candidate{NodeID: "node-b", IP: "1.2.3.5", Port: 8443, RegisteredAt: now, LastHeartbeat: now}
-	r.state.Assignments = map[string]string{
-		"shared.ddproxy.xyz":  "node-a", // MASTER — в списке
-		"shared1.ddproxy.xyz": "node-b", // MASTER — в списке
+	r.state.Assignments = map[string]AssignmentSlots{
+		"shared.ddproxy.xyz":  {"node-a"}, // MASTER — в списке
+		"shared1.ddproxy.xyz": {"node-b"}, // MASTER — в списке
 	}
 	// CNAME под СРМД — не в списке, пока не будет назначен мастер
 	r.state.SRMD.CNames = map[string]string{"shared2.ddproxy.xyz": "shared.ddproxy.xyz"}
@@ -318,7 +318,7 @@ func TestProxyLinks(t *testing.T) {
 
 	// назначили мастер свёрнутому домену (развернули) — он появляется в списке
 	delete(r.state.SRMD.CNames, "shared2.ddproxy.xyz")
-	r.state.Assignments["shared2.ddproxy.xyz"] = "node-a"
+	r.state.Assignments["shared2.ddproxy.xyz"] = AssignmentSlots{"node-a"}
 	rec2 := httptest.NewRecorder()
 	mux.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/proxylinks", nil))
 	var resp2 struct {
@@ -329,5 +329,183 @@ func TestProxyLinks(t *testing.T) {
 	}
 	if len(resp2.Links) != 3 {
 		t.Fatalf("unfolded domain with master must appear, got %+v", resp2.Links)
+	}
+}
+
+// ── публичный domains[]: агрегат managed-доменов ───────────────────────
+
+func healthyPublicCandidate(id, ip string, now time.Time) *Candidate {
+	return &Candidate{
+		NodeID: id, IP: ip, Port: 443, RegisteredAt: now.Add(-time.Hour),
+		LastHeartbeat: now, LastReportAt: now,
+		Healthy: true, GlobalpingOK: true, MetricsOK: true, MetricsHealthy: true,
+	}
+}
+
+type pubDomain struct {
+	Domain      string `json:"domain"`
+	Port        int    `json:"port"`
+	SlotsFilled string `json:"slots_filled"`
+	SlotsTotal  int    `json:"slots_total"`
+	Masters     []struct {
+		NodeID          string `json:"node_id"`
+		IPMasked        string `json:"ip_masked"`
+		Healthy         bool   `json:"healthy"`
+		TTLRemainingSec *int64 `json:"ttl_remaining_sec"`
+	} `json:"masters"`
+}
+
+type pubList struct {
+	Nodes []struct {
+		NodeID string `json:"node_id"`
+		IP     string `json:"ip"`
+	} `json:"nodes"`
+	Domains []pubDomain `json:"domains"`
+}
+
+func decodePubList(t *testing.T, r *Registry) pubList {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	r.handleStatsList(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/list", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d", rec.Code)
+	}
+	var out pubList
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return out
+}
+
+// Два домена по 2 слота: агрегат, стабильный порядок, маскировка IP совпадает
+// со строками nodes[], домен с одним мастером даёт «1/2».
+func TestStatsListDomainsAggregate(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.PanelEnabled = true
+	r.cfg.SharedProxy.Port = 443
+	r.cfg.Selection.MastersPerDomain = 2
+	r.cfg.Rotation.MasterTTLMinutes = new(int) // 0 → TTL выключен
+
+	now := time.Now()
+	r.cfg.Cloudflare.Domains = []string{"b.example.com", "a.example.com", "a.example.com"}
+	r.mu.Lock()
+	r.state.Candidates["a1"] = healthyPublicCandidate("a1", "203.0.113.7", now)
+	r.state.Candidates["a2"] = healthyPublicCandidate("a2", "203.0.113.8", now)
+	r.state.Candidates["b1"] = healthyPublicCandidate("b1", "198.51.100.4", now)
+	r.state.Candidates["b2"] = healthyPublicCandidate("b2", "198.51.100.5", now)
+	r.state.Assignments = map[string]AssignmentSlots{
+		"b.example.com": {"b1", "b2"},
+		"a.example.com": {"a1"}, // один слот из двух
+	}
+	r.mu.Unlock()
+
+	out := decodePubList(t, r)
+	if len(out.Domains) != 2 {
+		t.Fatalf("want 2 domains (deduped), got %+v", out.Domains)
+	}
+	// стабильный порядок по имени домена
+	if out.Domains[0].Domain != "a.example.com" || out.Domains[1].Domain != "b.example.com" {
+		t.Fatalf("domains must be sorted by name, got %q,%q", out.Domains[0].Domain, out.Domains[1].Domain)
+	}
+	a, b := out.Domains[0], out.Domains[1]
+	if a.SlotsFilled != "1/2" || a.SlotsTotal != 2 {
+		t.Fatalf("a: filled=%q total=%d, want 1/2 2", a.SlotsFilled, a.SlotsTotal)
+	}
+	if b.SlotsFilled != "2/2" || b.SlotsTotal != 2 || len(b.Masters) != 2 {
+		t.Fatalf("b: %+v, want 2/2 with 2 masters", b)
+	}
+	if a.Port != 443 || b.Port != 443 {
+		t.Fatalf("port must be exposed: %d/%d", a.Port, b.Port)
+	}
+	if !a.Masters[0].Healthy {
+		t.Fatal("a1 must be healthy")
+	}
+
+	// маскировка совпадает с nodes[].ip для той же ноды
+	nodeIP := map[string]string{}
+	for _, n := range out.Nodes {
+		nodeIP[n.NodeID] = n.IP
+	}
+	for _, d := range out.Domains {
+		for _, m := range d.Masters {
+			if m.IPMasked != nodeIP[m.NodeID] {
+				t.Fatalf("domain master %s ip_masked=%q != node ip %q", m.NodeID, m.IPMasked, nodeIP[m.NodeID])
+			}
+		}
+	}
+	if b.Masters[0].IPMasked != "198.x.x.4" {
+		t.Fatalf("b1 masked ip: %q", b.Masters[0].IPMasked)
+	}
+	// TTL выключен → поле отсутствует
+	for _, d := range out.Domains {
+		for _, m := range d.Masters {
+			if m.TTLRemainingSec != nil {
+				t.Fatalf("ttl must be omitted when disabled, got %d for %s", *m.TTLRemainingSec, m.NodeID)
+			}
+		}
+	}
+}
+
+// TTL включён: остаток отсчитывается ПО СЛОТУ; masters_per_domain=1 даёт
+// slots_total=1 (аддитивность, старый бэкенд-совместимый дефолт).
+func TestStatsListDomainsTTLAndSingleSlot(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.PanelEnabled = true
+	r.cfg.Cloudflare.Domains = []string{"solo.example.com"}
+	r.cfg.Selection.MastersPerDomain = 1
+	ttl := 30
+	r.cfg.Rotation.MasterTTLMinutes = &ttl
+
+	now := time.Now()
+	r.mu.Lock()
+	r.state.Candidates["m1"] = healthyPublicCandidate("m1", "10.0.0.9", now)
+	r.state.Assignments = map[string]AssignmentSlots{"solo.example.com": {"m1"}}
+	r.state.AssignmentsSince = map[string]SinceSlots{"solo.example.com": {now.Add(-12 * time.Minute)}}
+	r.mu.Unlock()
+
+	out := decodePubList(t, r)
+	if len(out.Domains) != 1 {
+		t.Fatalf("want 1 domain, got %+v", out.Domains)
+	}
+	d := out.Domains[0]
+	if d.SlotsTotal != 1 || d.SlotsFilled != "1/1" {
+		t.Fatalf("single-slot domain: %+v, want 1/1", d)
+	}
+	if len(d.Masters) != 1 || d.Masters[0].TTLRemainingSec == nil {
+		t.Fatalf("master must carry ttl, got %+v", d.Masters)
+	}
+	// 30 мин − 12 мин = 1080 c (±10 c)
+	if rem := *d.Masters[0].TTLRemainingSec; rem < 1070 || rem > 1085 {
+		t.Fatalf("ttl remaining mismatch: %d", rem)
+	}
+}
+
+// Нода-слот мёртвая/отсутствует → healthy=false, ip отсутствует.
+func TestStatsListDomainsDeadSlot(t *testing.T) {
+	r := newTestRegistry(t)
+	r.cfg.PanelEnabled = true
+	r.cfg.Cloudflare.Domains = []string{"d.example.com"}
+	r.cfg.Selection.MastersPerDomain = 2
+
+	now := time.Now()
+	r.mu.Lock()
+	r.state.Candidates["alive"] = healthyPublicCandidate("alive", "10.0.0.1", now)
+	r.state.Candidates["sick"] = &Candidate{NodeID: "sick", IP: "10.0.0.2", LastReportAt: now}
+	r.state.Assignments = map[string]AssignmentSlots{"d.example.com": {"alive", "sick", "ghost"}}
+	r.mu.Unlock()
+
+	out := decodePubList(t, r)
+	d := out.Domains[0]
+	if d.SlotsFilled != "3/2" { // 3 назначено при конфиг-лимите 2 (нештат) — счётчик честный
+		t.Fatalf("slots_filled must reflect actual assignment, got %q", d.SlotsFilled)
+	}
+	if !d.Masters[0].Healthy {
+		t.Fatal("alive slot must be healthy")
+	}
+	if d.Masters[1].Healthy || d.Masters[2].Healthy {
+		t.Fatal("unhealthy/missing slots must be healthy=false")
+	}
+	if d.Masters[2].IPMasked != "" {
+		t.Fatalf("missing candidate must not leak an ip, got %q", d.Masters[2].IPMasked)
 	}
 }

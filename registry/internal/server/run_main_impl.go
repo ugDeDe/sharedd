@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,15 +14,21 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sharedd/registry/internal/config"
 	"sharedd/registry/internal/state"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
+
+	"sharedd/registry/internal/control"
+	"sharedd/registry/internal/provision"
 )
 
 // ── история точек проверок: ёмкости колец ────────────────────────
@@ -40,6 +48,47 @@ type Registry struct {
 	// Db — вечная история (SQLite). nil = работаем без неё
 	// (файл не открылся / отключено) — пул и панель не страдают.
 	db *historyDB
+
+	// Control — контрольная БД user-режима (users/authkeys/владельцы нод,
+	// docs/api-contract.md §1). nil = [users] выключен ИЛИ открыть не
+	// удалось (fail-closed: user-API и authkey-регистрации отвечают 503).
+	control *control.Store
+	// ponytail: serialize manual acceptance and /register claims; split by node
+	// only if registration throughput makes this short critical section costly.
+	nodeClaimMu sync.Mutex
+
+	// controlErr — причина, по которой control не открылся (nil = открыт);
+	// controlLogAt — троттлинг серверного лога 503 (по одной записи в
+	// controlUnavailableLogInterval). Оператор по логу отличает окно
+	// перезапуска («not open yet») от реально сломанной БД.
+	controlErrMu sync.Mutex
+	controlErr   error
+	controlLogAt time.Time
+
+	// legacyShared — «Разрешить общий секрет» (contract §3): зеркало durable
+	// settings-строки. Обновляется POST /panel/api/admin/legacy-secret только
+	// после успешной записи (fail-closed); machine-запросы читают без блокировок.
+	legacyShared atomic.Bool
+
+	// masterKey — AES-GCM ключ секретов Beget (cryptoutil). nil = секции
+	// beget кабинета отвечают 503 (ключ не загрузился / [users] выключен).
+	masterKey []byte
+	// begetFactory — фабрика Beget-клиента (подменяется в тестах). nil →
+	// настоящий beget.New (в тестах без подмены бьёт в сеть — значит тест
+	// обязан инъектировать фабрику).
+	begetFactory func(login, password string) begetClient
+	// sshExec — исполнитель шагов профиля по SSH (provision.Executor). nil →
+	// provision.New подставит реальный sshx-исполнитель; тесты инъектируют мок.
+	sshExec provision.Executor
+	// provWorker — фоновые воркеры установки (H1): один на операцию, бюджет
+	// независим от 30с запросного ctx. Ленивая инициализация (provWorkerOnce).
+	provWorker     *provisionWorker
+	provWorkerOnce sync.Once
+	// rateMu защищает ленивую инициализацию regLimiter/loginLimiter/loginFailLimiter.
+	rateMu         sync.Mutex
+	regLimiter     *ipRateLimiter
+	loginLimiter   *ipRateLimiter
+	loginFailLimit *ipRateLimiter
 
 	// cfgMu защищает "горячие" поля cfg (панель их правит на лету).
 	// ПОРЯДОК ЛОКОВ: сначала mu, потом cfgMu — никогда наоборот.
@@ -68,6 +117,12 @@ type Registry struct {
 	srmdFoldTicks   int
 	srmdPending     []srmdDNSAction
 	dnsInFlight     map[string]bool
+}
+
+// provisionWorkers — лениво созданный воркер установки (H1).
+func (r *Registry) provisionWorkers() *provisionWorker {
+	r.provWorkerOnce.Do(func() { r.provWorker = newProvisionWorker() })
+	return r.provWorker
 }
 
 // newCFClient — фабрика Cloudflare-клиента (var ради подмены в тестах).
@@ -106,6 +161,10 @@ func Run() {
 	if cfg.DBEnabled {
 		reg.db = openHistoryDB(cfg.Database.File)
 	}
+	// user-режим: контрольная БД + привязка существующих нод к legacy-
+	// пользователю (контракт §4). Неудачный Open — не фатален: fail-closed.
+	reg.openControl()
+	reg.migrateLegacyOwners()
 
 	reg.mu.Lock()
 	reg.addEventLocked(Event{
@@ -121,17 +180,24 @@ func Run() {
 	go reg.expiryLoop()
 	go reg.eventPersistLoop()
 	go reg.historyDBLoop() // ротация событий в SQLite (баны вечны)
+	// DEF-C: до-подхват операций, застигнутых в installing (рестарт во время
+	// установки). Фоновый, без новых платных вызовов.
+	go reg.resumeInstallingOps(context.Background())
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := reg.serveHTTP(ctx); err != nil {
 		log.Printf("registry HTTP stopped: %v", err)
 	}
+	// Останавливаем фоновые воркеры установки: отменяем их базовый ctx, чтобы
+	// после shutdown не инициировались новые платные вызовы (H1).
+	reg.provisionWorkers().stop()
 	reg.mu.Lock()
 	reg.persistStateLocked()
 	reg.mu.Unlock()
 	if reg.db != nil {
 		reg.db.Close()
 	}
+	reg.closeControl()
 }
 
 const shutdownTimeout = 10 * time.Second
@@ -187,10 +253,16 @@ func serveHTTPServer(ctx context.Context, srv *http.Server, ln net.Listener) err
 func (r *Registry) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.Handle("POST /register", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /register", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body registerRequest
 		if err := decodeNodeJSON(w, req, &body); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		// Матрица machine-аутентификации (contract §1): OFF режет общий
+		// Bearer без authkey, node_secret обязан быть своим. ДО валидации
+		// тела (401 раньше 400) и любой работы с состоянием.
+		if !r.gateMachineAuth(w, req, body.NodeID, body.AuthKey) {
 			return
 		}
 		if r.nodeAPISecurityEnabled() {
@@ -221,7 +293,21 @@ func (r *Registry) buildMux() *http.ServeMux {
 			r.writeTerminate(w, rec)
 			return
 		}
-		if banUntil, banned := r.registerWithReverify(body, rec); banned {
+		// user-режим: authkey/node_secret-авторизация поверх Bearer (контракт §3).
+		// В legacy-режиме ([users] enabled=false) — прежнее поведение, gate
+		// пропускает всё. Расположен ПОСЛЕ terminate-проверки: убитым нодам
+		// место в квоте не расходуем.
+		r.nodeClaimMu.Lock()
+		defer r.nodeClaimMu.Unlock()
+		var regUserID int64
+		if r.usersEnabled() {
+			var ok bool
+			regUserID, ok = r.authorizeUserRegister(w, body, machineAuthFrom(req))
+			if !ok {
+				return
+			}
+		}
+		if banUntil, banned := r.registerWithReverify(body, rec, regUserID); banned {
 			// Карантин после prune — 429 + Retry-After. Агенты +
 			// уважают Retry-After и молчат до дедлайна; старые продолжат
 			// долбиться по heartbeat'ам — отказ дешёвый, лог троттлится.
@@ -235,10 +321,36 @@ func (r *Registry) buildMux() *http.ServeMux {
 			_, _ = fmt.Fprintf(w, `{"error":"node was pruned as inactive, re-registration deferred","retry_after_sec":%d}`+"\n", retryAfter)
 			return
 		}
+		// Выдача node_secret (contract §1): перевыпуск при /register.
+		// ИСКЛЮЧЕНИЕ (DEF-A/DEF-B): перерегистрация, аутентифицированная ЛИЧНЫМ
+		// секретом этой же ноды, идемпотентна — секрет НЕ ротируется. Иначе
+		// verify-шаг штатного профиля и retry-install лишаются валидного токена
+		// (реестр отрендерил его до /register), а живой агент обесточивается.
+		// Только user-режим: без control-БД хранить хеш негде; старые агенты
+		// тело игнорируют.
+		resp := registerResponse{}
+		if r.control != nil {
+			auth := machineAuthFrom(req)
+			// Секрет не ротируем: перерегистрация своей ноды личным секретом
+			// или первый claim pending-секрета (manual install) — секрет уже
+			// у агента; выдавать новый нельзя.
+			ownSecret := (auth.kind == machineAuthNode && auth.ownerNodeID == body.NodeID) ||
+				auth.kind == machineAuthPending
+			if !ownSecret {
+				if sec, err := r.issueNodeSecret(body.NodeID); err != nil {
+					log.Printf("node secret issue %s: %v (omitted from response)", body.NodeID, err)
+				} else if sec != "" {
+					resp.NodeSecret = sec
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store") // тело содержит node_secret
 		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
 	})))
 
-	mux.Handle("POST /heartbeat", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /heartbeat", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			NodeID string `json:"node_id"`
 		}
@@ -251,6 +363,9 @@ func (r *Registry) buildMux() *http.ServeMux {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+		}
+		if !r.gateMachineAuth(w, req, body.NodeID, "") {
+			return
 		}
 		r.mu.Lock()
 		c, ok := r.state.Candidates[body.NodeID]
@@ -288,7 +403,11 @@ func (r *Registry) buildMux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	})))
 
-	mux.Handle("POST /report", r.requireNodeToken(http.HandlerFunc(r.handleHealthReport)))
+	mux.Handle("POST /report", r.requireNodeAuth(http.HandlerFunc(r.handleHealthReport)))
+
+	// GET /api/node/status — read-only подтверждение факта регистрации ноды
+	// (DEF-B): verify-шаг штатного профиля. Личный node_secret обязателен.
+	mux.Handle("GET /api/node/status", r.requireNodeAuth(http.HandlerFunc(r.handleNodeStatus)))
 
 	// POST /retire — агент сообщает о само-завершении по классу
 	// dead (локальные проверки красные > terminate_dead_min): регистратор
@@ -296,7 +415,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 	// по heartbeat-TTL, пока нода молчала. Привязка доверия — RemoteAddr ==
 	// заявленный ip (модель угроз как у открытого /register; стучаться в
 	// retire от чужого имени без его маршрутизируемого адреса нельзя).
-	mux.Handle("POST /retire", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /retire", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			NodeID string `json:"node_id"`
 			IP     string `json:"ip"`
@@ -304,6 +423,10 @@ func (r *Registry) buildMux() *http.ServeMux {
 		}
 		if err := decodeNodeJSON(w, req, &body); err != nil || body.NodeID == "" || body.IP == "" {
 			http.Error(w, "node_id, ip required", http.StatusBadRequest)
+			return
+		}
+		// Матрица ДО валидации (401 раньше 400).
+		if !r.gateMachineAuth(w, req, body.NodeID, "") {
 			return
 		}
 		if r.nodeAPISecurityEnabled() {
@@ -341,7 +464,12 @@ func (r *Registry) buildMux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	})))
 
-	mux.Handle("GET /config", r.requireNodeToken(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("GET /config", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Матрица machine-аутентификации: node_id маршрута — заголовок
+		// X-ShareDD-Node-ID (OFF требует совпадения с владельцем секрета).
+		if !r.gateMachineAuth(w, req, req.Header.Get("X-ShareDD-Node-ID"), "") {
+			return
+		}
 		// снапшот под cfgMu: эти секции панель может править на лету
 		r.cfgMu.RLock()
 		gpValidity := r.cfg.GlobalpingValidityTTL
@@ -395,12 +523,49 @@ func (r *Registry) buildMux() *http.ServeMux {
 	})
 
 	r.mountPanel(mux)
-	r.mountStats(mux)     // публичная статистика нод (/statistics/...)
-	r.mountDashboard(mux) // публичный дашборд блокировок (/dashboard/...)
-	r.mountLinks(mux)     // публичная страница прокси-ссылок (/links)
+	r.mountAdminUsers(mux)    // admin user-API (user-режим), под panelAuthorized
+	r.mountAdminProfiles(mux) // admin-профили установки (CRUD + версии)
+	r.mountInvites(mux)       // приглашения + «Разрешить общий секрет»
+	r.mountCabinet(mux)       // кабинет пользователя (session-cookie, /api/*)
+	r.mountMeProfiles(mux)    // пользовательские профили (/api/me/profiles)
+	r.mountMeServers(mux)     // свои серверы (/api/me/servers)
+	r.mountCabinetPages(mux)  // HTML-оболочки /signin и /cabinet
+	r.mountStats(mux)         // публичная статистика нод (/statistics/...)
+	r.mountDashboard(mux)     // публичный дашборд блокировок (/dashboard/...)
+	r.mountLinks(mux)         // публичная страница прокси-ссылок (/links)
 	mountAssets(mux)
 
 	return mux
+}
+
+// issueNodeSecret — сгенерировать и привязать секрет ноде (contract §1).
+// Пустая строка = выдавать нечего (нода не в node_owners).
+func (r *Registry) issueNodeSecret(nodeID string) (string, error) {
+	sec := randomURLSecret(32)
+	prefix, ok, err := r.control.SetNodeSecretWithEnc(nodeID, sec, r.sealNodeSecret(sec))
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil // секрет выдавать некому — старые агенты этого не заметят
+	}
+	_ = prefix // префикс хранится для отладки; в ответ уходит полный секрет
+	return sec, nil
+}
+
+// randomURLSecret — urlsafe-секрет из n случайных байт (base64.RawURL).
+func randomURLSecret(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("server: crypto/rand: %v", err))
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// registerResponse — тело успешного POST /register (contract §1):
+// node_secret выдаётся один раз, перевыпуск — при каждой перерегистрации.
+type registerResponse struct {
+	NodeSecret string `json:"node_secret,omitempty"`
 }
 
 // writeTerminate — kill-сигнал агенту: 403 + флаг terminate.
@@ -421,14 +586,16 @@ func (r *Registry) writeTerminate(w http.ResponseWriter, rec *TerminatedRecord) 
 // отвечает 429 + Retry-After, в state ничего не пишется (событие тоже не
 // плодим: отказов много, лента одна — подробности уже есть в node_pruned).
 func (r *Registry) register(body registerRequest) (time.Time, bool) {
-	return r.registerWithReverify(body, nil)
+	return r.registerWithReverify(body, nil, 0)
 }
 
-// RegisterWithReverify — register + reverify-трек rec не-nil,
+// registerWithReverify — register + reverify-трек rec не-nil,
 // когда нода регистрируется со СТАРОГО gp-забаненного ip (своего или чужого
 // по наследству IP). Терминальная запись снимается, кандидат уходит в
 // карантин с одной решающей попыткой (applyReverifyLocked).
-func (r *Registry) registerWithReverify(body registerRequest, reverify *TerminatedRecord) (time.Time, bool) {
+// regUserID — авторизованный user допущенного /register (0 = legacy/нет
+// арендного контекста); используется для owner-scoped замены по IP.
+func (r *Registry) registerWithReverify(body registerRequest, reverify *TerminatedRecord, regUserID int64) (time.Time, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -489,14 +656,26 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 
 	for oldID, c := range r.state.Candidates {
 		if c.IP == body.IP {
+			// Мультиарендность: чужую ноду по IP не вытесняем (tenant
+			// isolation). Замена допустима только для своей ноды или
+			// legacy/безвладельческой (контракт §2.1).
+			if !r.sameIPReplacementAllowedLocked(oldID, regUserID) {
+				log.Printf("register %s (%s): refusing to evict %s owned by another user (same IP)",
+					body.NodeID, body.IP, oldID)
+				continue
+			}
 			log.Printf("candidate %s had same IP %s as new registration %s — replacing", oldID, body.IP, body.NodeID)
 			// Stint старой записи не закрываем вручную: централизованный
 			// reconcile в evaluateAssignments. А вот назначения доменов
 			// переносим на новый ID БЕЗ master_lost/elected: IP тот же,
 			// A-записи остаются корректными — DNS-чехарда не нужна.
-			for d, id := range r.state.Assignments {
-				if id == oldID {
-					r.state.Assignments[d] = body.NodeID
+			// (Мульти-мастер: заменяем ноду во ВСЕХ её слотах; IP слота
+			// не меняется — инвариант разных IP сохраняется.)
+			for d, ids := range r.state.Assignments {
+				for i, id := range ids {
+					if id == oldID {
+						r.state.Assignments[d][i] = body.NodeID
+					}
 				}
 			}
 			r.addEventLocked(Event{
@@ -529,6 +708,24 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 	// функция, повторный Lock был бы дедлоком.
 	r.persistStateLocked()
 	return time.Time{}, false
+}
+
+// sameIPReplacementAllowedLocked — можно ли заменить кандидата oldID новым
+// /register с тем же IP. Чужая нода (владелец — другой user) не вытесняется
+// (tenant isolation). control nil (legacy-режим) или legacy/безвладельческая
+// нода → можно. ВЫЗЫВАТЬ под r.mu. Ошибка чтения владельца → fail-closed.
+func (r *Registry) sameIPReplacementAllowedLocked(oldID string, regUserID int64) bool {
+	if r.control == nil {
+		return true
+	}
+	owner, legacy, ok, err := r.control.NodeOwner(oldID)
+	if err != nil {
+		return false
+	}
+	if !ok || legacy {
+		return true
+	}
+	return owner == regUserID && regUserID != 0
 }
 
 func (r *Registry) probeLoop() {
@@ -615,12 +812,22 @@ func (r *Registry) selectionLoop() {
 		// (только тех, кем реально управляли — чужие записи зоны не трогаем).
 		r.sweepOrphans()
 		changes := r.evaluateAssignments(time.Now())
+		// желаемые наборы уже записаны evaluateAssignments; принудительная
+		// сверка — ОДИН проход на домен за тик (несколько слотов домена
+		// могут смениться в одном проходе)
+		seenDomain := make(map[string]bool, len(changes))
 		for _, ch := range changes {
 			if ch.ToID == "" {
 				continue
 			}
 			log.Printf("domain %s: master -> %s (%s)", ch.Domain, ch.ToID, ch.ToIP)
-			r.applyDNSTarget(ch.Domain, ch.ToID, ch.ToIP)
+			if seenDomain[ch.Domain] {
+				continue
+			}
+			seenDomain[ch.Domain] = true
+			if err := r.reconcileDNSDomain(ch.Domain, true); err != nil {
+				log.Printf("dns reconcile %s: %v (retry scheduled)", ch.Domain, err)
+			}
 		}
 		// CNAME-записи доменов, свёрнутых СРМД в этом (или прошлых
 		// со сбоя) тиках — вне локов, с ретраем при ошибке Cloudflare.
@@ -719,10 +926,10 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	sort.Strings(domains)
 
 	if r.state.Assignments == nil {
-		r.state.Assignments = make(map[string]string)
+		r.state.Assignments = make(map[string]state.AssignmentSlots)
 	}
 	if r.state.AssignmentsSince == nil {
-		r.state.AssignmentsSince = make(map[string]time.Time)
+		r.state.AssignmentsSince = make(map[string]state.SinceSlots)
 	}
 	if r.ttlOverdue == nil {
 		r.ttlOverdue = make(map[string]bool)
@@ -741,9 +948,19 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		healthyByID[c.NodeID] = c
 	}
 	holds := make(map[string][]string, len(r.state.Assignments))
-	for d, id := range r.state.Assignments {
-		holds[id] = append(holds[id], d)
+	for d, ids := range r.state.Assignments {
+		for _, id := range ids {
+			if id == "" || slices.Contains(holds[id], d) {
+				continue
+			}
+			holds[id] = append(holds[id], d)
+		}
 	}
+
+	// эффективное число слотов мастера на домен (горячее чтение — под cfgMu)
+	r.cfgMu.RLock()
+	mastersPerDomain := config.ResolveMastersPerDomain(r.cfg.Selection.MastersPerDomain)
+	r.cfgMu.RUnlock()
 
 	view := &selectionView{
 		queue:            list,
@@ -753,6 +970,7 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		Assignments:      r.state.Assignments,
 		AssignmentsSince: r.state.AssignmentsSince,
 		TTLOverdue:       r.ttlOverdue,
+		Masters:          mastersPerDomain,
 	}
 	var sink selectionSink
 
@@ -771,10 +989,15 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	}
 
 	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
+		// желаемый DNS-набор — ПОЛНЫЙ список мастеров домена (порядок не
+		// важен); домен с изменившимся слотом переписывает весь набор.
+		seenChanged := make(map[string]bool, len(changes))
 		for _, ch := range changes {
-			if ch.ToID != "" && ch.ToIP != "" {
-				r.enqueueDNSDesiredLocked(ch.Domain, "A", ch.ToIP, ch.ToID)
+			if seenChanged[ch.Domain] {
+				continue
 			}
+			seenChanged[ch.Domain] = true
+			r.enqueueDNSDesiredFromAssignmentsLocked(ch.Domain)
 		}
 		r.persistStateLocked()
 	}
