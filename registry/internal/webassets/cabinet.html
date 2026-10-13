@@ -2329,26 +2329,6 @@
     font-size: 11.5px;
     color: var(--fg-2);
   }
-  .legend-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 4px;
-    border: 0;
-    background: transparent;
-    color: var(--fg-2);
-    font: inherit;
-    font-size: 11.5px;
-    cursor: pointer;
-  }
-  .legend-btn:hover {
-    color: var(--fg);
-  }
-  .legend-btn[aria-pressed=false] {
-    color: var(--fg-3);
-    opacity: .5;
-    text-decoration: line-through;
-  }
   .legend-dot {
     width: 9px;
     height: 9px;
@@ -2567,7 +2547,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="57ac19b7c42fa1c0">
+  <meta name="sharedd-build" content="fa88fc8482d8b568">
 </head>
 <body>
 
@@ -3463,14 +3443,12 @@
   var DETAIL_ERR = null;
   var DETAIL_RETRY = false;
   var DETAIL_TAB = "overview";
-  var F_HIDDEN = /* @__PURE__ */ new Set();
   function openNodeDetail(id) {
     DETAIL_ID = id;
     DETAIL = null;
     DETAIL_ERR = null;
     DETAIL_RETRY = false;
     DETAIL_TAB = parseTabHash();
-    F_HIDDEN = /* @__PURE__ */ new Set();
     const el = $("node-detail");
     if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
     load(false);
@@ -3772,7 +3750,7 @@
   }
   function chartCHTML(d) {
     const c = d.connections_24h;
-    const head = `<div class="card-head"><h2>Соединения, 24 ч</h2><span class="hint">соединения · уникальные IP</span></div>`;
+    const head = `<div class="card-head"><h2>Уникальные IP, 24 ч</h2><span class="hint">по отчётам</span></div>`;
     if (!c) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
     const series = c.series;
     const clients = series.map((p) => p.clients);
@@ -3783,14 +3761,14 @@
       chart = `<span class="dim">накапливается — пока мало точек</span>`;
     } else {
       const x = series.map((p) => fmtClock(p.at));
-      const live = liveLineChart(x, [{ name: "Соединения", values: clients, texts: clients.map((v) => fmtNum(v)) }]);
-      chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(top)}">
+      const live = liveLineChart(x, [{ name: "Уникальные IP", values: clients, texts: clients.map((v) => fmtNum(v)) }]);
+      chart = `<div class="chart-wrap" role="img" aria-label="Уникальные IP за 24 часа, максимум ${fmtNum(top)}">
         <div class="chart-plot">
           <div class="chart-y" aria-hidden="true"><span>${fmtNum(top)}</span><span>0</span></div>
           ${live}
         </div>
       </div>
-      ${srTable("Соединения за 24 часа", ["Время", "Соединения"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
+      ${srTable("Уникальные IP за 24 часа", ["Время", "Уникальные IP"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
     }
     return `<section class="card">${head}
     <div class="card-body">
@@ -3798,7 +3776,7 @@
         ${kv("Соединения пользователей", c.current_user_connections)}
         ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
       </div>
-      <div class="chart-cap">Соединения по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
+      <div class="chart-cap">Уникальные IP по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
       ${chart}
       ${c.note ? `<div class="card-note" style="padding:10px 0 0">${esc(c.note)}</div>` : ""}
     </div>
@@ -3902,43 +3880,6 @@
       list.map((x) => [x.user, fmtNum(x.unique_ips)])
     )}`;
   }
-  var F_SERIES = [
-    { key: "ingress", label: "Принято", color: "var(--info)" },
-    { key: "egress", label: "Отдано", color: "var(--acc)" }
-  ];
-  function chartFHTML(d) {
-    var _a, _b;
-    const list = (_b = (_a = d.users) == null ? void 0 : _a.traffic_by_user) != null ? _b : null;
-    if (!list || !list.length) {
-      return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
-    }
-    const series = F_SERIES.map((s) => ({ ...s, visible: !F_HIDDEN.has(s.key) }));
-    const rows = list.map((u) => ({
-      bars: series.filter((s) => s.visible).map((s) => ({
-        value: s.key === "ingress" ? u.ingress_bytes : u.egress_bytes,
-        color: s.color
-      }))
-    }));
-    const max = Math.max(...list.flatMap((u) => [u.ingress_bytes, u.egress_bytes]), 1);
-    const legend2 = `<div class="chart-legend">${series.map((s) => `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
-      <span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}
-    </button>`).join("")}</div>`;
-    const capW = list.length * 92 + 44;
-    const chart = series.some((s) => s.visible) ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}"
-          style="max-width:min(100%,${capW}px);margin-inline:auto">
-        <div class="chart-plot">
-          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(max))}</span><span>0</span></div>
-          ${barChart(rows, { height: 32 })}
-        </div>
-        <div class="chart-x" aria-hidden="true">${list.map((u) => `<span class="mono">${esc(u.user)}</span>`).join("")}</div>
-      </div>` : `<span class="dim">серии скрыты</span>`;
-    return `${legend2}${chart}
-    ${srTable(
-      "Трафик по пользователям за 24 часа",
-      ["Пользователь", "Принято", "Отдано"],
-      list.map((u) => [u.user, fmtBytes(u.ingress_bytes), fmtBytes(u.egress_bytes)])
-    )}`;
-  }
   function usersTable(d) {
     var _a, _b, _c, _d;
     const uniq = (_b = (_a = d.users) == null ? void 0 : _a.unique_ips_by_user) != null ? _b : [];
@@ -3969,15 +3910,6 @@
       <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th>${trafficCols}</tr></thead>
       <tbody>${body}</tbody></table></div>`;
   }
-  document.addEventListener("click", (e) => {
-    var _a, _b;
-    const btn = (_b = (_a = e.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "[data-series]");
-    if (!btn || !DETAIL_ID) return;
-    const key = btn.dataset.series || "";
-    if (F_HIDDEN.has(key)) F_HIDDEN.delete(key);
-    else F_HIDDEN.add(key);
-    render(false);
-  });
   var LIVE_EL = null;
   function liveHide() {
     var _a, _b;
@@ -4099,8 +4031,6 @@
       ${summary}
       <div class="chart-cap">Уникальные IP по пользователям <span class="hint">сейчас</span></div>
       ${chartEHTML(d)}
-      <div class="chart-cap">Трафик по пользователям <span class="hint">за 24 часа</span></div>
-      ${chartFHTML(d)}
       <div class="chart-cap">Пользователи <span class="hint">IP · трафик 24 ч</span></div>
       ${usersTable(d)}
     </div>

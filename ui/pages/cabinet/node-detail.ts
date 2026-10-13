@@ -76,8 +76,6 @@ let DETAIL_ERR: { msg: string; status?: number } | null = null;
 let DETAIL_RETRY = false;
 // Активный таб. Живёт между опросами (5 с); сбрасывается в openNodeDetail.
 let DETAIL_TAB = "overview";
-// Скрытые серии графика F (легенда-кнопки). Живёт между опросами (5 с).
-let F_HIDDEN = new Set<string>();
 
 export function nodeDetailId(): string { return DETAIL_ID; }
 
@@ -88,7 +86,6 @@ export function openNodeDetail(id: string): void {
   DETAIL_ERR = null;
   DETAIL_RETRY = false;
   DETAIL_TAB = parseTabHash(); // дефолт «Обзор»; валидный #?tab= восстанавливаем
-  F_HIDDEN = new Set();
   const el = $("node-detail");
   if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
   load(false);
@@ -422,11 +419,13 @@ function chartAHTML(d: NodeDetail): string {
 
 function availColor(p: number): string { return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad"; }
 
-// §6 «Соединения, 24 ч»: плитки + график C (линия clients). me-writers удалён
-// по требованию владельца — поле writers нигде не рисуется (specs §5).
+// §6 «Уникальные IP, 24 ч»: плитки + график C (линия clients). clients —
+// это telemt_user_unique_ips_current (уникальные IP, не соединения), поэтому
+// заголовок честно назван «Уникальные IP». me-writers удалён по требованию
+// владельца — поле writers нигде не рисуется (specs §5).
 function chartCHTML(d: NodeDetail): string {
   const c = d.connections_24h;
-  const head = `<div class="card-head"><h2>Соединения, 24 ч</h2><span class="hint">соединения · уникальные IP</span></div>`;
+  const head = `<div class="card-head"><h2>Уникальные IP, 24 ч</h2><span class="hint">по отчётам</span></div>`;
   if (!c) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
 
   const series = c.series;
@@ -441,14 +440,14 @@ function chartCHTML(d: NodeDetail): string {
     chart = `<span class="dim">накапливается — пока мало точек</span>`;
   } else {
     const x = series.map((p) => fmtClock(p.at));
-    const live = liveLineChart(x, [{ name: "Соединения", values: clients, texts: clients.map((v) => fmtNum(v)) }]);
-    chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(top)}">
+    const live = liveLineChart(x, [{ name: "Уникальные IP", values: clients, texts: clients.map((v) => fmtNum(v)) }]);
+    chart = `<div class="chart-wrap" role="img" aria-label="Уникальные IP за 24 часа, максимум ${fmtNum(top)}">
         <div class="chart-plot">
           <div class="chart-y" aria-hidden="true"><span>${fmtNum(top)}</span><span>0</span></div>
           ${live}
         </div>
       </div>
-      ${srTable("Соединения за 24 часа", ["Время", "Соединения"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
+      ${srTable("Уникальные IP за 24 часа", ["Время", "Уникальные IP"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
   }
 
   return `<section class="card">${head}
@@ -457,7 +456,7 @@ function chartCHTML(d: NodeDetail): string {
         ${kv("Соединения пользователей", c.current_user_connections)}
         ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
       </div>
-      <div class="chart-cap">Соединения по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
+      <div class="chart-cap">Уникальные IP по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
       ${chart}
       ${c.note ? `<div class="card-note" style="padding:10px 0 0">${esc(c.note)}</div>` : ""}
     </div>
@@ -558,49 +557,6 @@ function chartEHTML(d: NodeDetail): string {
       list.map((x) => [x.user, fmtNum(x.unique_ips)]))}`;
 }
 
-// §8 график F: сгруппированные столбики — трафик по пользователям за 24 ч
-// (итоги, не временной ряд). Легенда — кнопки видимости серий (specs §6.3).
-const F_SERIES = [
-  { key: "ingress", label: "Принято", color: "var(--info)" },
-  { key: "egress", label: "Отдано", color: "var(--acc)" },
-] as const;
-
-function chartFHTML(d: NodeDetail): string {
-  const list = d.users?.traffic_by_user ?? null;
-  if (!list || !list.length) {
-    return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
-  }
-  const series = F_SERIES.map((s) => ({ ...s, visible: !F_HIDDEN.has(s.key) }));
-  const rows = list.map((u) => ({
-    bars: series.filter((s) => s.visible).map((s) => ({
-      value: s.key === "ingress" ? u.ingress_bytes : u.egress_bytes,
-      color: s.color,
-    })),
-  }));
-  const max = Math.max(...list.flatMap((u) => [u.ingress_bytes, u.egress_bytes]), 1);
-  const legend = `<div class="chart-legend">${series.map((s) =>
-    `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
-      <span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}
-    </button>`).join("")}</div>`;
-  // Потолок ширины: 1–2 пользователя не должны растягивать столбики в плиты
-  // (SVG preserveAspectRatio="none" иначе тянет их на всю карточку). CSS:
-  // min(100%, Npx) — на узком экране всё равно 100%, на широком — потолок.
-  const capW = list.length * 92 + 44;
-  const chart = series.some((s) => s.visible)
-    ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}"
-          style="max-width:min(100%,${capW}px);margin-inline:auto">
-        <div class="chart-plot">
-          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(max))}</span><span>0</span></div>
-          ${barChart(rows, { height: 32 })}
-        </div>
-        <div class="chart-x" aria-hidden="true">${list.map((u) => `<span class="mono">${esc(u.user)}</span>`).join("")}</div>
-      </div>`
-    : `<span class="dim">серии скрыты</span>`;
-  return `${legend}${chart}
-    ${srTable("Трафик по пользователям за 24 часа", ["Пользователь", "Принято", "Отдано"],
-      list.map((u) => [u.user, fmtBytes(u.ingress_bytes), fmtBytes(u.egress_bytes)]))}`;
-}
-
 // §8 таблица «Пользователи»: объединяет уникальные IP и 24-ч трафик по имени.
 function usersTable(d: NodeDetail): string {
   const uniq = d.users?.unique_ips_by_user ?? [];
@@ -632,15 +588,6 @@ function usersTable(d: NodeDetail): string {
       <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th>${trafficCols}</tr></thead>
       <tbody>${body}</tbody></table></div>`;
 }
-
-// Переключение серий графика F по кнопкам легенды (клавиатура — нативная).
-document.addEventListener("click", (e) => {
-  const btn = (e.target as HTMLElement)?.closest?.("[data-series]") as HTMLElement | null;
-  if (!btn || !DETAIL_ID) return;
-  const key = btn.dataset.series || "";
-  if (F_HIDDEN.has(key)) F_HIDDEN.delete(key); else F_HIDDEN.add(key);
-  render(false);
-});
 
 /* ── Наведение на линейные графики (C, хостинг) ───────────────────────
    Делегировано на document: innerHTML-перерисовка (5 с) сносит слушатели,
@@ -778,8 +725,6 @@ function telemtHTML(d: NodeDetail): string {
       ${summary}
       <div class="chart-cap">Уникальные IP по пользователям <span class="hint">сейчас</span></div>
       ${chartEHTML(d)}
-      <div class="chart-cap">Трафик по пользователям <span class="hint">за 24 часа</span></div>
-      ${chartFHTML(d)}
       <div class="chart-cap">Пользователи <span class="hint">IP · трафик 24 ч</span></div>
       ${usersTable(d)}
     </div>
