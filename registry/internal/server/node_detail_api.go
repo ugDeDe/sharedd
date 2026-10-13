@@ -16,6 +16,7 @@ import (
 	"net/http"
 
 	"sharedd/registry/internal/config"
+	"sharedd/registry/internal/history"
 	"sharedd/registry/internal/state"
 )
 
@@ -69,12 +70,27 @@ type nodeCheck struct {
 	Detail string    `json:"detail,omitempty"`
 }
 
+type nodeCPURAMPoint struct {
+	At         time.Time `json:"at"`
+	CPUPercent *float64  `json:"cpu_percent"`
+	RAMPercent *float64  `json:"ram_percent"`
+}
+
+type nodeNetPoint struct {
+	At           time.Time `json:"at"`
+	IngressBytes int64     `json:"ingress_bytes"`
+	EgressBytes  int64     `json:"egress_bytes"`
+}
+
 type nodeHosting struct {
 	CPUPercent *float64 `json:"cpu_percent"`
 	RAMPercent *float64 `json:"ram_percent"`
 	// Сеть — из накопительных счётчиков трафика ноды (metrics_snapshot).
 	NetIngressBytes *float64 `json:"net_ingress_bytes_total,omitempty"`
 	NetEgressBytes  *float64 `json:"net_egress_bytes_total,omitempty"`
+	// Графики 24ч из history (пустые массивы, не null).
+	CPURAMSeries []nodeCPURAMPoint `json:"cpu_ram_series"`
+	NetSeries    []nodeNetPoint    `json:"net_series"`
 }
 
 type nodeConnPoint struct {
@@ -189,6 +205,19 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 		}
 	}
 
+	// 24ч-серии графиков из history (тоже вне r.mu). Пустые массивы, не null.
+	cpuRAMSeries := []nodeCPURAMPoint{}
+	netSeries := []nodeNetPoint{}
+	if r.db != nil {
+		since := now.Add(-24 * time.Hour)
+		if rows, herr := r.db.HostMetricsSince(nodeID, since); herr == nil {
+			cpuRAMSeries = buildCPURAMSeries(rows, since, now)
+		}
+		if rows, herr := r.db.TrafficSeriesSince(nodeID, since); herr == nil {
+			netSeries = buildNetSeries(rows, since, now)
+		}
+	}
+
 	r.mu.RLock()
 	c := r.state.Candidates[nodeID]
 	dcsSnap, hasDCS := r.dcStats[nodeID]
@@ -233,6 +262,8 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 			RAMPercent:      metricPtr(c, hostRAMMetric),
 			NetIngressBytes: metricPtr(c, trafficIngressMetric),
 			NetEgressBytes:  metricPtr(c, trafficEgressMetric),
+			CPURAMSeries:    cpuRAMSeries,
+			NetSeries:       netSeries,
 		}
 		for i := len(r.state.Events) - 1; i >= 0 && len(resp.Events) < 50; i-- {
 			ev := r.state.Events[i]
@@ -464,4 +495,123 @@ func buildNodeUsers(c *Candidate, traffic []nodeUserTraffic) *nodeUsers {
 	}
 	sort.Slice(u.UniqueIPsByUser, func(i, j int) bool { return u.UniqueIPsByUser[i].User < u.UniqueIPsByUser[j].User })
 	return u
+}
+
+// seriesMaxPoints — потолок точек серии для UI.
+const seriesMaxPoints = 500
+
+// buildCPURAMSeries — host-точки → ≤seriesMaxPoints, по возрастанию времени.
+// Точки не пересекают потолок — отдаются как есть; иначе бакеты по времени
+// (среднее cpu/ram внутри бакета), метка времени — последняя точка бакета.
+func buildCPURAMSeries(rows []history.HostMetricsRow, since, now time.Time) []nodeCPURAMPoint {
+	out := make([]nodeCPURAMPoint, 0, len(rows))
+	if len(rows) <= seriesMaxPoints {
+		for _, r := range rows {
+			out = append(out, nodeCPURAMPoint{At: r.TS, CPUPercent: r.CPUPercent, RAMPercent: r.RAMPercent})
+		}
+		return out
+	}
+	bucket := seriesBucketSpan(since, now)
+	type acc struct {
+		at     time.Time
+		cpuSum float64
+		cpuN   int
+		ramSum float64
+		ramN   int
+	}
+	buckets := make([]*acc, seriesMaxPoints)
+	for _, r := range rows {
+		idx := seriesBucketIndex(r.TS, since, bucket)
+		b := buckets[idx]
+		if b == nil {
+			b = &acc{}
+			buckets[idx] = b
+		}
+		b.at = r.TS
+		if r.CPUPercent != nil {
+			b.cpuSum += *r.CPUPercent
+			b.cpuN++
+		}
+		if r.RAMPercent != nil {
+			b.ramSum += *r.RAMPercent
+			b.ramN++
+		}
+	}
+	for _, b := range buckets {
+		if b == nil {
+			continue
+		}
+		p := nodeCPURAMPoint{At: b.at}
+		if b.cpuN > 0 {
+			v := b.cpuSum / float64(b.cpuN)
+			p.CPUPercent = &v
+		}
+		if b.ramN > 0 {
+			v := b.ramSum / float64(b.ramN)
+			p.RAMPercent = &v
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// buildNetSeries — дельты трафика → ≤seriesMaxPoints, по возрастанию.
+// Точки УЖЕ положительные дельты — не дифаем; при переполнении суммируем бакет.
+func buildNetSeries(rows []history.TrafficRow, since, now time.Time) []nodeNetPoint {
+	out := make([]nodeNetPoint, 0, len(rows))
+	if len(rows) <= seriesMaxPoints {
+		for _, r := range rows {
+			out = append(out, nodeNetPoint{At: r.TS, IngressBytes: r.Ingress, EgressBytes: r.Egress})
+		}
+		return out
+	}
+	bucket := seriesBucketSpan(since, now)
+	type acc struct {
+		at              time.Time
+		ingress, egress int64
+	}
+	buckets := make([]*acc, seriesMaxPoints)
+	for _, r := range rows {
+		idx := seriesBucketIndex(r.TS, since, bucket)
+		b := buckets[idx]
+		if b == nil {
+			b = &acc{}
+			buckets[idx] = b
+		}
+		b.at = r.TS
+		b.ingress += r.Ingress
+		b.egress += r.Egress
+	}
+	for _, b := range buckets {
+		if b == nil {
+			continue
+		}
+		out = append(out, nodeNetPoint{At: b.at, IngressBytes: b.ingress, EgressBytes: b.egress})
+	}
+	return out
+}
+
+// seriesBucketSpan — ширина бакета при переполнении (окно / потолок).
+func seriesBucketSpan(since, now time.Time) time.Duration {
+	span := now.Sub(since)
+	if span <= 0 {
+		span = 24 * time.Hour
+	}
+	bucket := span / time.Duration(seriesMaxPoints)
+	if bucket <= 0 {
+		bucket = time.Second
+	}
+	return bucket
+}
+
+// seriesBucketIndex — индекс бакета точки t, зажатый в [0, seriesMaxPoints).
+func seriesBucketIndex(t, since time.Time, bucket time.Duration) int {
+	idx := int(t.Sub(since) / bucket)
+	if idx < 0 {
+		return 0
+	}
+	if idx >= seriesMaxPoints {
+		return seriesMaxPoints - 1
+	}
+	return idx
 }

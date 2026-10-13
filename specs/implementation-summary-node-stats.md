@@ -28,18 +28,22 @@
 | График | Тип | Источник | Данные |
 |---|---|---|---|
 | A «Доступность, 7 дней» | столбики | `availability.daily[].ok_pct` | data-ready |
-| C «Соединения, 24 ч» | линия | `connections_24h.series[].clients` | data-ready |
-| E «Уникальные IP (сейчас)» | горизонтальные столбики | `users.unique_ips_by_user[]` | снимок |
-| F «Трафик по пользователям, 24 ч» | сгруппированные столбики | `users.traffic_by_user[]` | итоги |
+| C «Соединения, 24 ч» | линия **интерактивная** | `connections_24h.series[].clients` | data-ready |
+| D «Хостинг CPU/RAM/сеть» | 2 линии **интерактивные** | `hosting.cpu_ram_series[]`, `hosting.net_series[]` | data-ready |
+| E «Уникальные IP (сейчас)» | горизонтальные столбики (hover) | `users.unique_ips_by_user[]` | снимок |
+| F «Трафик по пользователям, 24 ч» | сгруппированные столбики (кап ширины) | `users.traffic_by_user[]` | итоги |
 
 - **me-writers удалён**: поле `writers` не участвует ни в одном графике/плитке. `current_writers`
   убран из видимой части. Раздел не удалён — заменён линией `clients` (§5).
 - График A: цвет столбика = здоровье дня (`availColor`: ok≥99 / warn≥95 / bad<95); ось Y 0–100%.
-- График C: разрыв линии на пропуске сэмпла (`null`); подпись «Соединения по отчётам».
+- График C: разрыв линии на пропуске сэмпла (`null`); подпись «Соединения по отчётам»;
+  наведение/тап → кроссхэйр + точка + тултип «время · соединения».
+- График D: две панели (CPU/RAM %, сеть байт); наведение как у C; пустые серии →
+  «данные копятся — пока мало точек», не холст.
 - График F: легенда-кнопки «Принято» (`--info`) / «Отдано» (`--acc`), `aria-pressed`,
-  переключение видимости серий; состояние живёт между опросами (`F_HIDDEN`).
+  переключение видимости серий; состояние живёт между опросами (`F_HIDDEN`);
+  ширина ограничена `min(100%, rows*92px+44px)` — 1–2 пользователя не рисуют плиты.
 - График B — оставлен таблицей «Последние проверки» (backend-blocked §3 G4), без пустого холста.
-- График D — оставлен плитками + note «история появится после включения сбора» (backend G1/G5).
 
 ## A11y (DESIGN §13.4)
 - Каждый график A/C/E/F: контейнер `role="img"` + русский `aria-label`.
@@ -48,6 +52,8 @@
 - `.sr-only` добавлена в `ui/components/misc.css` (+ `table.sr-only { table-layout: fixed }`).
 - Цвет-носитель состояния дублируется текстом в sr-only-таблице.
 - Легенда F — `<button>` с `aria-pressed` (нативная клавиатура).
+- Интерактив линий (C, D) — только указатель/тап; `role="img"`+`aria-label`+`sr-only`-таблица
+  сохранены, клавиатурный путь = таблица (обоснование — §6.7 спеки).
 
 ## Состояния
 - A/C: `<2` точек → `dim` «накапливается — пока мало точек»; `null`-раздел → `.table-empty`.
@@ -57,28 +63,37 @@
 - loading — существующий `skel-block` через `openNodeDetail`/`render`.
 
 ## Файлы
-- `ui/lib/chart.ts` — **новый**: `lineChart()` / `barChart()` (inline-SVG, `preserveAspectRatio="none"`,
-  цвета — только токены), поглощает идею прежнего `spark()`.
-- `ui/pages/cabinet/node-detail.ts` — табы разделов + графики A/C/E/F, таблица «Пользователи»,
-  обработчик легенды; панели `panelHTML()`/`paramsHTML()`/`ipHistoryHTML()`/`checksHTML()`/
-  `eventsHTML()`/`actionsHTML()`; hash-хелперы `parseTabHash`/`writeTabHash`/`activateTab`.
-- `ui/pages/cabinet/page.css` — раскладка `.nd-tabs`/`.nd-panel` (порт `.c-tabs`) +
-  `.chart-wrap/.chart-plot/.chart-y/.chart-svg/.chart-x/.chart-legend/.h-bar*`, адаптив ≤640px.
-- `ui/pages/cabinet/main.ts` — `routeNodeId()` срезает `?tab=` из id ноды (иначе хэш-параметр
-  ломал бы маршрут).
+- `ui/lib/chart.ts` — `lineChart()` / `barChart()` / **`liveLineChart()`** (inline-SVG,
+  `preserveAspectRatio="none"`, цвета — только токены).
+- `ui/pages/cabinet/node-detail.ts` — табы разделов + графики A/C/D/E/F, таблица
+  «Пользователи», обработчики легенды F и наведения на линии; панели `panelHTML()`/…
+- `ui/pages/cabinet/page.css` — `.nd-tabs`/`.nd-panel`, `.chart-*`, `.h-bar*`, адаптив
+  ≤640px; добавлены `.chart-canvas`/`.chart-cross`/`.chart-dots`/`.chart-tip`/`.legend-static`.
+- `ui/pages/cabinet/main.ts` — `routeNodeId()` срезает `?tab=` из id ноды.
 - `ui/components/misc.css` — утилита `.sr-only`.
-- `ui/pages/cabinet/api.ts` — **не менялся**: формы ответа уже совпадали с реальным API
-  (`clients`/`writers`, `unique_ips_by_user`, `traffic_by_user`).
+- `ui/pages/cabinet/api.ts` — добавлены `NodeHostingCpuRam`/`NodeHostingNet` и поля
+  `cpu_ram_series`/`net_series` в `NodeHosting`.
 - `registry/internal/webassets/*.html` — регенерированы `build_ui.sh` (не правились руками).
 
 ## Оставлено бэкенду (не фейкуем)
-- График D — нет серии истории хостинга (G1/G5): плитки + note.
+- График D разблокирован: `cpu_ram_series`/`net_series` приходят в `/detail` (G1/G5).
 - E/F как «24 ч тренд» — нет временного ряда (G2/G3): показан текущий снимок/итоги, заголовки честные.
 - График B с переключателем периода — окно проверок фиксировано бэкендом (G4): таблица.
+
+## Интерактив линий (C, D) — `liveLineChart`
+- `ui/lib/chart.ts`: `liveLineChart(xLabels, series, opts)` → `.chart-canvas[data-live]`
+  (SVG + пустые `.chart-cross`/`.chart-dots`/`.chart-tip`); данные тултипа — JSON в `data-live`.
+- Обработчик — делегирован на `document` (`pointermove`/`pointerdown`): переживает
+  innerHTML-перерисовку опроса (5 с). Индекс — по доле ширины, точка — по доле высоты
+  (та же шкала `pad=3`/`h`, что у растянутого SVG). Тузлтип — время + строки серий.
+- **Клавиатура:** точки не фокусируются — данные даёт `sr-only`-таблица (см. §6.7 спеки).
+- E: наведение красит трек + `title`; F: кап ширины (см. выше).
 
 ## Верификация
 - `bash scripts/build_ui.sh` — собирается без npm (esbuild Go-embedded), 6 страниц.
 - `bash scripts/build_ui.sh -check` — **все шесть «без изменений»**.
+- В `cabinet.html` присутствуют `.chart-canvas[data-live]`, `.chart-tip` (графики C/D/E).
+- Формулы обработчика проверены standalone-ассертами (y-доля точки, кап ширины F).
 - `git grep writers ui/pages/cabinet/node-detail.ts` — только `alive_writers`/`fresh_alive_writers`
   в таблице Control API (метрики ДЦ, не me-writers-график) + комментарий; в графиках/плитках `writers` нет.
 - Нет `tsconfig.json`/`package.json` → `nuxi typecheck` невозможен; типы проверены только

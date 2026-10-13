@@ -7,7 +7,16 @@
    Подписи осей — HTML рядом с SVG: при preserveAspectRatio="none" буквы
    внутри растянулись бы по горизонтали. */
 
+import { esc } from "./dom.ts";
+
 const VB_W = 100;
+
+/** Верх шкалы Y: запас 8 % только для авто-максимума, ровно opts.max если он
+ *  задан. Единственный источник правды для линии, точек наведения и подписи оси —
+ *  иначе точка уезжает с вершины (H1) и подпись не совпадает с верхом (L1). */
+export function chartTop(nums: number[], max?: number): number {
+  return (max ?? Math.max(...nums, 1)) * (max != null ? 1 : 1.08);
+}
 
 export interface LineSeries {
   /** null/NaN — пропуск сэмпла: линия рвётся (как mtplane «нет сэмпла»). */
@@ -30,7 +39,7 @@ export function lineChart(series: LineSeries[], opts: ChartOpts = {}): string {
     .filter((v): v is number => typeof v === "number" && isFinite(v));
   if (nums.length < 2) return "";
   const height = opts.height ?? 26;
-  const max = (opts.max ?? Math.max(...nums, 1)) * (opts.max != null ? 1 : 1.08); // запас, чтобы линия не липла к верху
+  const max = chartTop(nums, opts.max); // запас, чтобы линия не липла к верху
   const pad = 3;
   const plot = height - pad * 2;
   const paths = series.map((s) => {
@@ -85,4 +94,41 @@ export function barChart(rows: BarRow[], opts: ChartOpts = {}): string {
     }).join("");
   }).join("");
   return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+}
+
+/** Серия для интерактивной линии: подпись в тултипе + значения (null — пропуск)
+ *  + готовые строки значений (иначе число как есть). */
+export interface LiveSeries {
+  name: string;
+  color?: string;
+  values: (number | null)[];
+  /** Тексты точек для тултипа (те же форматтеры, что в sr-таблице). */
+  texts?: (string | null)[];
+}
+
+export interface LiveOpts { height?: number; max?: number; }
+
+/* Линия + слой наведения. Возвращает блок .chart-canvas: сам SVG и пустые
+   узлы кроссхэйра/точек/тултипа. Данные для тултипа кладутся в data-live (JSON),
+   обработчик — на странице (node-detail): он чисто строит оверлей из долей
+   ширины/высоты, без пересчёта шкал и без канваса. Пусто (<2 точек) → "". */
+export function liveLineChart(xLabels: string[], series: LiveSeries[], opts: LiveOpts = {}): string {
+  const svg = lineChart(series.map((s) => ({ values: s.values, color: s.color })), opts);
+  if (!svg) return "";
+  const nums = series.flatMap((s) => s.values).filter((v): v is number => typeof v === "number" && isFinite(v));
+  const payload = {
+    h: opts.height ?? 26,
+    pad: 3,
+    max: chartTop(nums, opts.max),
+    x: xLabels,
+    series: series.map((s) => ({
+      name: s.name, color: s.color || "var(--acc)", v: s.values, t: s.texts || null,
+    })),
+  };
+  return `<div class="chart-canvas" data-live="${esc(JSON.stringify(payload))}">
+      ${svg}
+      <div class="chart-cross" hidden></div>
+      <div class="chart-dots" aria-hidden="true"></div>
+      <div class="chart-tip" hidden></div>
+    </div>`;
 }

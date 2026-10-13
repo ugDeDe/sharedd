@@ -163,11 +163,17 @@ export interface NodeAvailability {
   report_hist: { at: string; metrics_ok: boolean; clients: number; writers: number }[];
 }
 export interface NodeCheck { at: string; source: string; ok: boolean; detail?: string; }
+// Серии хостинга (24 ч, по возрастанию времени). Пустые массивы = «данные
+// копятся»; cpu_percent/ram_percent внутри точки могут быть null (пропуск).
+export interface NodeHostingCpuRam { at: string; cpu_percent: number | null; ram_percent: number | null; }
+export interface NodeHostingNet { at: string; ingress_bytes: number; egress_bytes: number; }
 export interface NodeHosting {
   cpu_percent: number | null;
   ram_percent: number | null;
   net_ingress_bytes_total?: number;
   net_egress_bytes_total?: number;
+  cpu_ram_series?: NodeHostingCpuRam[];
+  net_series?: NodeHostingNet[];
 }
 export interface NodeConnections {
   current_writers?: number; current_unique_ips?: number; current_user_connections?: number;

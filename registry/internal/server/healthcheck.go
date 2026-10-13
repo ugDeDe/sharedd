@@ -366,6 +366,16 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				}
 			}
 			r.db.RecordTraffic(time.Now(), candidate.NodeID, ingress, egress)
+			// host-история (CPU/RAM) — гейджи, sameUsers-гейт (counter-reset)
+			// к ним не относится: пишем, если есть хотя бы одна метрика.
+			var cpu, ram *float64
+			if v, ok := payload.MetricsSnapshot[hostCPUMetric]; ok {
+				cpu = &v
+			}
+			if v, ok := payload.MetricsSnapshot[hostRAMMetric]; ok {
+				ram = &v
+			}
+			r.db.RecordHostMetrics(time.Now(), candidate.NodeID, cpu, ram)
 		}
 		candidate.MetricsSnapshot = payload.MetricsSnapshot
 	}

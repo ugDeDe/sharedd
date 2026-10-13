@@ -2322,6 +2322,13 @@
     gap: 4px 14px;
     margin-bottom: 8px;
   }
+  .legend-static {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--fg-2);
+  }
   .legend-btn {
     display: inline-flex;
     align-items: center;
@@ -2381,6 +2388,72 @@
   .h-bar-v {
     color: var(--fg);
     font-variant-numeric: tabular-nums;
+  }
+  .h-bar:hover .h-bar-track {
+    box-shadow: 0 0 0 2px var(--acc-soft);
+  }
+  .chart-canvas {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .chart-cross {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    margin-left: -0.5px;
+    background: var(--fg-3);
+    opacity: .55;
+    pointer-events: none;
+  }
+  .chart-dots {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .chart-dots .chart-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px var(--surf);
+  }
+  .chart-tip {
+    position: absolute;
+    top: 4px;
+    z-index: 5;
+    pointer-events: none;
+    transform: translateX(-50%);
+    padding: 6px 8px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--surf);
+    box-shadow: var(--sh-pop);
+    font-size: 11px;
+    color: var(--fg);
+    max-width: 100%;
+    white-space: normal;
+  }
+  .chart-tip .tip-t {
+    color: var(--fg-3);
+    margin-bottom: 3px;
+  }
+  .chart-tip .tip-r {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chart-tip .tip-r b {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-tip .tip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: none;
   }
   .srv-grid {
     display: grid;
@@ -2471,7 +2544,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="cc915ea381abd80b">
+  <meta name="sharedd-build" content="d15c6c52be6a37d2">
 </head>
 <body>
 
@@ -3213,12 +3286,15 @@
 
   // ui/lib/chart.ts
   var VB_W = 100;
+  function chartTop(nums, max) {
+    return (max != null ? max : Math.max(...nums, 1)) * (max != null ? 1 : 1.08);
+  }
   function lineChart(series, opts = {}) {
-    var _a, _b;
+    var _a;
     const nums = series.flatMap((s) => s.values).filter((v) => typeof v === "number" && isFinite(v));
     if (nums.length < 2) return "";
     const height = (_a = opts.height) != null ? _a : 26;
-    const max = ((_b = opts.max) != null ? _b : Math.max(...nums, 1)) * (opts.max != null ? 1 : 1.08);
+    const max = chartTop(nums, opts.max);
     const pad = 3;
     const plot = height - pad * 2;
     const paths = series.map((s) => {
@@ -3263,6 +3339,30 @@
       }).join("");
     }).join("");
     return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+  }
+  function liveLineChart(xLabels, series, opts = {}) {
+    var _a;
+    const svg = lineChart(series.map((s) => ({ values: s.values, color: s.color })), opts);
+    if (!svg) return "";
+    const nums = series.flatMap((s) => s.values).filter((v) => typeof v === "number" && isFinite(v));
+    const payload = {
+      h: (_a = opts.height) != null ? _a : 26,
+      pad: 3,
+      max: chartTop(nums, opts.max),
+      x: xLabels,
+      series: series.map((s) => ({
+        name: s.name,
+        color: s.color || "var(--acc)",
+        v: s.values,
+        t: s.texts || null
+      }))
+    };
+    return `<div class="chart-canvas" data-live="${esc(JSON.stringify(payload))}">
+      ${svg}
+      <div class="chart-cross" hidden></div>
+      <div class="chart-dots" aria-hidden="true"></div>
+      <div class="chart-tip" hidden></div>
+    </div>`;
   }
 
   // ui/pages/cabinet/node-detail.ts
@@ -3446,6 +3546,9 @@
     <thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
+  function legend(items) {
+    return `<div class="chart-legend">${items.map(([name, color]) => `<span class="legend-static"><span class="legend-dot" style="background:${color}"></span>${esc(name)}</span>`).join("")}</div>`;
+  }
   function detailHTML(d) {
     const n = d.node;
     if (!n) {
@@ -3626,16 +3729,18 @@
     if (!c) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
     const series = c.series;
     const clients = series.map((p) => p.clients);
-    const max = clients.length ? Math.max(...clients) : 0;
+    const top = chartTop(clients);
     const kv = (label, v) => `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v == null ? "нет данных" : fmtNum(v)}</span></div>`;
     let chart;
     if (clients.length < 2) {
       chart = `<span class="dim">накапливается — пока мало точек</span>`;
     } else {
-      chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(max)}">
+      const x = series.map((p) => fmtClock(p.at));
+      const live = liveLineChart(x, [{ name: "Соединения", values: clients, texts: clients.map((v) => fmtNum(v)) }]);
+      chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(top)}">
         <div class="chart-plot">
-          <div class="chart-y" aria-hidden="true"><span>${fmtNum(max)}</span><span>0</span></div>
-          ${lineChart([{ values: clients }])}
+          <div class="chart-y" aria-hidden="true"><span>${fmtNum(top)}</span><span>0</span></div>
+          ${live}
         </div>
       </div>
       ${srTable("Соединения за 24 часа", ["Время", "Соединения"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
@@ -3653,16 +3758,69 @@
   </section>`;
   }
   function hostingHTML(d) {
-    var _a, _b, _c, _d;
-    return `<section class="card">
-    <div class="card-head"><h2>Хостинг: CPU / RAM / сеть</h2><span class="hint">текущие значения</span></div>
-    <div class="nd-grid">
-      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : (_a = d.hosting) == null ? void 0 : _a.cpu_percent))}</span></div>
-      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : (_b = d.hosting) == null ? void 0 : _b.ram_percent))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes((_c = d.hosting) == null ? void 0 : _c.net_ingress_bytes_total))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes((_d = d.hosting) == null ? void 0 : _d.net_egress_bytes_total))}</span></div>
-    </div>
-    <p class="card-note" style="padding:0 var(--pad) var(--pad)">История появится после включения сбора на сервере — сейчас доступны только текущие значения.</p>
+    var _a, _b;
+    const h = d.hosting;
+    const head = `<div class="card-head"><h2>Хостинг: CPU / RAM / сеть</h2><span class="hint">текущие значения · 24 ч</span></div>`;
+    if (!h) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
+    const tiles = `<div class="nd-grid" style="padding:0 0 2px">
+      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : h.cpu_percent))}</span></div>
+      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : h.ram_percent))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes(h.net_ingress_bytes_total))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes(h.net_egress_bytes_total))}</span></div>
+    </div>`;
+    const cr = (_a = h.cpu_ram_series) != null ? _a : [];
+    let cpuRam;
+    if (cr.length < 2) {
+      cpuRam = `<div class="chart-cap">CPU и RAM <span class="hint">%</span></div>
+      <span class="dim">данные копятся — пока мало точек</span>`;
+    } else {
+      const x = cr.map((p) => fmtClock(p.at));
+      const series = [
+        { name: "CPU", color: "var(--acc)", values: cr.map((p) => p.cpu_percent), texts: cr.map((p) => fmtPct(p.cpu_percent)) },
+        { name: "RAM", color: "var(--info)", values: cr.map((p) => p.ram_percent), texts: cr.map((p) => fmtPct(p.ram_percent)) }
+      ];
+      cpuRam = `<div class="chart-cap">CPU и RAM <span class="hint">%</span></div>
+      ${legend([["CPU", "var(--acc)"], ["RAM", "var(--info)"]])}
+      <div class="chart-wrap" role="img" aria-label="CPU и RAM за 24 часа, в процентах, точек ${cr.length}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>100%</span><span>0%</span></div>
+          ${liveLineChart(x, series, { max: 100 })}
+        </div>
+      </div>
+      ${srTable(
+        "Хостинг — CPU и RAM",
+        ["Время", "CPU %", "RAM %"],
+        cr.map((p) => [fmtClock(p.at), fmtPct(p.cpu_percent), fmtPct(p.ram_percent)])
+      )}`;
+    }
+    const net = (_b = h.net_series) != null ? _b : [];
+    let netHTML;
+    if (net.length < 2) {
+      netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано</span></div>
+      <span class="dim">данные копятся — пока мало точек</span>`;
+    } else {
+      const x = net.map((p) => fmtClock(p.at));
+      const maxN = Math.max(...net.flatMap((p) => [p.ingress_bytes, p.egress_bytes]), 1);
+      const series = [
+        { name: "Принято", color: "var(--info)", values: net.map((p) => p.ingress_bytes), texts: net.map((p) => fmtBytes(p.ingress_bytes)) },
+        { name: "Отдано", color: "var(--acc)", values: net.map((p) => p.egress_bytes), texts: net.map((p) => fmtBytes(p.egress_bytes)) }
+      ];
+      netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано, за интервал</span></div>
+      ${legend([["Принято", "var(--info)"], ["Отдано", "var(--acc)"]])}
+      <div class="chart-wrap" role="img" aria-label="Сетевой трафик за 24 часа, принято и отдано, максимум ${esc(fmtBytes(maxN))}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(maxN))}</span><span>0</span></div>
+          ${liveLineChart(x, series, { max: maxN })}
+        </div>
+      </div>
+      ${srTable(
+        "Хостинг — сеть",
+        ["Время", "Принято", "Отдано"],
+        net.map((p) => [fmtClock(p.at), fmtBytes(p.ingress_bytes), fmtBytes(p.egress_bytes)])
+      )}`;
+    }
+    return `<section class="card">${head}
+    <div class="card-body">${tiles}${cpuRam}${netHTML}</div>
   </section>`;
   }
   function chartEHTML(d) {
@@ -3672,7 +3830,7 @@
       return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
     }
     const max = Math.max(...list.map((x) => x.unique_ips), 1);
-    const bars = list.map((x) => `<div class="h-bar" aria-hidden="true">
+    const bars = list.map((x) => `<div class="h-bar" title="${esc(x.user)} — ${fmtNum(x.unique_ips)} IP" aria-hidden="true">
       <span class="h-bar-k mono">${esc(x.user)}</span>
       <span class="h-bar-track"><span class="h-bar-fill" style="width:${Math.max(0, Math.min(100, x.unique_ips / max * 100)).toFixed(1)}%"></span></span>
       <span class="h-bar-v">${fmtNum(x.unique_ips)}</span>
@@ -3704,17 +3862,19 @@
       }))
     }));
     const max = Math.max(...list.flatMap((u) => [u.ingress_bytes, u.egress_bytes]), 1);
-    const legend = `<div class="chart-legend">${series.map((s) => `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
+    const legend2 = `<div class="chart-legend">${series.map((s) => `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
       <span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}
     </button>`).join("")}</div>`;
-    const chart = series.some((s) => s.visible) ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}">
+    const capW = list.length * 92 + 44;
+    const chart = series.some((s) => s.visible) ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}"
+          style="max-width:min(100%,${capW}px);margin-inline:auto">
         <div class="chart-plot">
           <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(max))}</span><span>0</span></div>
           ${barChart(rows, { height: 32 })}
         </div>
         <div class="chart-x" aria-hidden="true">${list.map((u) => `<span class="mono">${esc(u.user)}</span>`).join("")}</div>
       </div>` : `<span class="dim">серии скрыты</span>`;
-    return `${legend}${chart}
+    return `${legend2}${chart}
     ${srTable(
       "Трафик по пользователям за 24 часа",
       ["Пользователь", "Принято", "Отдано"],
@@ -3760,6 +3920,97 @@
     else F_HIDDEN.add(key);
     render(false);
   });
+  var LIVE_EL = null;
+  function liveHide() {
+    var _a, _b;
+    const el = LIVE_EL;
+    LIVE_EL = null;
+    if (!el || !el.isConnected) return;
+    (_a = el.querySelector(".chart-cross")) == null ? void 0 : _a.setAttribute("hidden", "");
+    (_b = el.querySelector(".chart-tip")) == null ? void 0 : _b.setAttribute("hidden", "");
+    const dots = el.querySelector(".chart-dots");
+    if (dots) dots.innerHTML = "";
+  }
+  function liveShow(canvas, clientX) {
+    let p;
+    try {
+      p = JSON.parse(canvas.dataset.live || "");
+    } catch {
+      return;
+    }
+    const n = p.x.length;
+    if (n < 2) return;
+    if (LIVE_EL && LIVE_EL !== canvas) liveHide();
+    LIVE_EL = canvas;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 1) return;
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const idx = Math.round(frac * (n - 1));
+    const leftPct = idx / (n - 1) * 100;
+    const plotH = p.h - p.pad * 2;
+    const cross = canvas.querySelector(".chart-cross");
+    if (cross) {
+      cross.hidden = false;
+      cross.style.left = leftPct + "%";
+    }
+    const dots = canvas.querySelector(".chart-dots");
+    if (dots) {
+      dots.innerHTML = "";
+      for (const s of p.series) {
+        const v = s.v[idx];
+        if (typeof v !== "number" || !isFinite(v)) continue;
+        const yPct = (p.pad + (1 - v / p.max) * plotH) / p.h * 100;
+        const dot = document.createElement("span");
+        dot.className = "chart-dot";
+        dot.style.left = leftPct + "%";
+        dot.style.top = yPct + "%";
+        dot.style.background = s.color;
+        dots.appendChild(dot);
+      }
+    }
+    const tip = canvas.querySelector(".chart-tip");
+    if (!tip) return;
+    tip.hidden = false;
+    tip.textContent = "";
+    const cap = document.createElement("div");
+    cap.className = "tip-t";
+    cap.textContent = p.x[idx] || "";
+    tip.appendChild(cap);
+    for (const s of p.series) {
+      const v = s.v[idx];
+      const row = document.createElement("div");
+      row.className = "tip-r";
+      const dot = document.createElement("span");
+      dot.className = "tip-dot";
+      dot.style.background = s.color;
+      const name = document.createElement("span");
+      name.textContent = s.name;
+      const val = document.createElement("b");
+      val.textContent = typeof v === "number" && isFinite(v) ? s.t && s.t[idx] != null ? String(s.t[idx]) : String(v) : "—";
+      row.append(dot, name, val);
+      tip.appendChild(row);
+    }
+    const halfW = tip.offsetWidth / 2;
+    const cx = leftPct / 100 * rect.width;
+    tip.style.left = Math.min(Math.max(cx, halfW), Math.max(rect.width - halfW, halfW)) + "px";
+  }
+  function onChartPointer(e) {
+    var _a, _b;
+    const canvas = (_b = (_a = e.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, ".chart-canvas[data-live]");
+    if (!canvas || !DETAIL_ID) {
+      liveHide();
+      return;
+    }
+    liveShow(canvas, e.clientX);
+  }
+  document.addEventListener("pointermove", onChartPointer);
+  document.addEventListener("pointerdown", onChartPointer);
+  document.addEventListener("mouseleave", liveHide);
+  function onChartUp(e) {
+    if (e.pointerType === "touch") liveHide();
+  }
+  document.addEventListener("pointerup", onChartUp);
+  document.addEventListener("touchcancel", liveHide);
   function telemtHTML(d) {
     var _a, _b;
     const t = d.telemt;

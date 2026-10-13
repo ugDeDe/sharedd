@@ -110,7 +110,15 @@ CREATE TABLE IF NOT EXISTS traffic_user (
  ingress_bytes INTEGER NOT NULL,
  egress_bytes INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_traffic_user_node_ts ON traffic_user(node_id, ts);`
+CREATE INDEX IF NOT EXISTS idx_traffic_user_node_ts ON traffic_user(node_id, ts);
+CREATE TABLE IF NOT EXISTS host_metrics (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ ts INTEGER NOT NULL,
+ node_id TEXT NOT NULL,
+ cpu_percent REAL,
+ ram_percent REAL
+);
+CREATE INDEX IF NOT EXISTS idx_host_metrics_node_ts ON host_metrics(node_id, ts);`
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("history db %s: schema failed: %v — continuing WITHOUT persistent history", path, err)
 		_ = db.Close()
@@ -192,6 +200,79 @@ func (d *DB) RecordTraffic(ts time.Time, nodeID string, ingress, egress int64) {
 	}
 }
 
+// TrafficSeriesSince — дельты трафика ОДНОЙ ноды новее since, по возрастанию.
+func (d *DB) TrafficSeriesSince(nodeID string, since time.Time) ([]TrafficRow, error) {
+	rows, err := d.sql.Query(
+		`SELECT ts, ingress_bytes, egress_bytes FROM traffic WHERE node_id = ? AND ts >= ? ORDER BY ts ASC, id ASC`,
+		nodeID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []TrafficRow{}
+	for rows.Next() {
+		var r TrafficRow
+		var ts int64
+		if err := rows.Scan(&ts, &r.Ingress, &r.Egress); err != nil {
+			return nil, err
+		}
+		r.TS = time.Unix(ts, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// HostMetricsRow — одна точка host-снапшота (CPU/RAM в процентах, 0..100).
+// Поля — указатели: агент может прислать только одну из метрик.
+type HostMetricsRow struct {
+	TS         time.Time
+	CPUPercent *float64
+	RAMPercent *float64
+}
+
+// RecordHostMetrics — точка host-истории ноды. Пишем, если есть хотя бы одна
+// метрика (иначе писать нечего).
+func (d *DB) RecordHostMetrics(ts time.Time, nodeID string, cpu, ram *float64) {
+	if cpu == nil && ram == nil {
+		return
+	}
+	if _, err := d.sql.Exec(`INSERT INTO host_metrics (ts, node_id, cpu_percent, ram_percent) VALUES (?,?,?,?)`,
+		ts.Unix(), nodeID, cpu, ram); err != nil {
+		log.Printf("history db: record host metrics for %s: %v", nodeID, err)
+	}
+}
+
+// HostMetricsSince — host-точки ноды новее since, по возрастанию времени.
+func (d *DB) HostMetricsSince(nodeID string, since time.Time) ([]HostMetricsRow, error) {
+	rows, err := d.sql.Query(
+		`SELECT ts, cpu_percent, ram_percent FROM host_metrics WHERE node_id = ? AND ts >= ? ORDER BY ts ASC, id ASC`,
+		nodeID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []HostMetricsRow{}
+	for rows.Next() {
+		var r HostMetricsRow
+		var ts int64
+		var cpu, ram sql.NullFloat64
+		if err := rows.Scan(&ts, &cpu, &ram); err != nil {
+			return nil, err
+		}
+		r.TS = time.Unix(ts, 0)
+		if cpu.Valid {
+			v := cpu.Float64
+			r.CPUPercent = &v
+		}
+		if ram.Valid {
+			v := ram.Float64
+			r.RAMPercent = &v
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 func (d *DB) TrafficSince(since time.Time) ([]TrafficRow, error) {
 	rows, err := d.sql.Query(`SELECT ts, ingress_bytes, egress_bytes FROM traffic WHERE ts >= ? ORDER BY ts ASC, id ASC`, since.Unix())
 	if err != nil {
@@ -228,6 +309,9 @@ func (d *DB) PruneEvents(olderThan time.Time) {
 	}
 	if _, err := d.sql.Exec(`DELETE FROM traffic_user WHERE ts < ?`, cutoff); err != nil {
 		log.Printf("history db: user traffic retention: %v", err)
+	}
+	if _, err := d.sql.Exec(`DELETE FROM host_metrics WHERE ts < ?`, cutoff); err != nil {
+		log.Printf("history db: host metrics retention: %v", err)
 	}
 }
 

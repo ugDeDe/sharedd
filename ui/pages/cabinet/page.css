@@ -166,6 +166,7 @@
   color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
+.legend-static { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-2); }
 .legend-btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px;
   border: 0; background: transparent; color: var(--fg-2);
@@ -181,6 +182,31 @@
 .h-bar-track { height: 9px; border-radius: var(--r-xs); background: var(--surf-3); overflow: hidden; }
 .h-bar-fill { display: block; height: 100%; background: var(--acc); border-radius: var(--r-xs); }
 .h-bar-v { color: var(--fg); font-variant-numeric: tabular-nums; }
+.h-bar:hover .h-bar-track { box-shadow: 0 0 0 2px var(--acc-soft); }
+
+/* ═══ Наведение на линейные графики (chart.ts liveLineChart) ══════════
+   Оверлей поверх SVG: кроссхэйр, точки серий, тултип. Позиции — в % от
+   .chart-canvas (та же линейная шкала, что у растянутого SVG). */
+.chart-canvas { position: relative; flex: 1 1 0; min-width: 0; }
+.chart-cross {
+  position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px;
+  background: var(--fg-3); opacity: .55; pointer-events: none;
+}
+.chart-dots { position: absolute; inset: 0; pointer-events: none; }
+.chart-dots .chart-dot {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--surf);
+}
+.chart-tip {
+  position: absolute; top: 4px; z-index: 5; pointer-events: none;
+  transform: translateX(-50%); padding: 6px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surf); box-shadow: var(--sh-pop);
+  font-size: 11px; color: var(--fg); max-width: 100%; white-space: normal;
+}
+.chart-tip .tip-t { color: var(--fg-3); margin-bottom: 3px; }
+.chart-tip .tip-r { display: flex; align-items: center; gap: 6px; }
+.chart-tip .tip-r b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chart-tip .tip-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 
 /* ═══ Свои серверы (addendum-manual-servers.md §3) ════════════════════
    Только раскладка поверх существующих .card/.field/.btn/.seg/.node-card. */
