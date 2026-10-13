@@ -174,6 +174,45 @@ func TestBuildMetricsSnapshotUserTrafficKeys(t *testing.T) {
 	}
 }
 
+func TestBuildMetricsSnapshotUserTrafficKeysTotalSuffix(t *testing.T) {
+	// telemt 3.x экспортирует octets-счётчики с prometheus `_total` суффиксом;
+	// старые сборки — без него. Оба варианта обязаны матчиться.
+	shared := map[string]string{"u0cb271": "0123456789abcdef0123456789abcdef"}
+	const (
+		n = 1000
+		m = 2000
+	)
+	cases := []struct {
+		name     string
+		from, to string
+	}{
+		{"total_suffix", userOctetsFromMetricName + "_total", userOctetsToMetricName + "_total"},
+		{"legacy", userOctetsFromMetricName, userOctetsToMetricName},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			samples := []promSample{
+				{name: healthMetricName, value: 1},
+				{name: tc.from, labels: `user="u0cb271"`, value: n},
+				{name: tc.to, labels: `user="u0cb271"`, value: m},
+			}
+			snapshot, _ := buildMetricsSnapshot(samples, shared)
+			if snapshot[trafficIngressMetricName] != n {
+				t.Fatalf("aggregate ingress: want %v, got %v", n, snapshot[trafficIngressMetricName])
+			}
+			if snapshot[trafficEgressMetricName] != m {
+				t.Fatalf("aggregate egress: want %v, got %v", m, snapshot[trafficEgressMetricName])
+			}
+			if snapshot[userIngressMetricName+`{user="u0cb271"}`] != n {
+				t.Fatalf("per-user ingress key missing: %v", snapshot)
+			}
+			if snapshot[userEgressMetricName+`{user="u0cb271"}`] != m {
+				t.Fatalf("per-user egress key missing: %v", snapshot)
+			}
+		})
+	}
+}
+
 func TestEvaluateSuccessRatio(t *testing.T) {
 	m := &globalpingMeasurement{Results: []globalpingProbeMeasurement{
 		{Result: globalpingProbeResult{Status: "finished", StatusCode: 200}},

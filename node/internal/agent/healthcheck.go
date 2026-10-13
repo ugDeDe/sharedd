@@ -395,7 +395,7 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 			}
 			connSum += s.value
 			connSeen = true
-		case userOctetsFromMetricName:
+		case userOctetsFromMetricName, userOctetsFromMetricName + "_total":
 			if counted(promUserLabel(s.labels)) {
 				ingressSum += s.value
 				ingressSeen = true
@@ -405,7 +405,7 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 					userSeries++
 				}
 			}
-		case userOctetsToMetricName:
+		case userOctetsToMetricName, userOctetsToMetricName + "_total":
 			if counted(promUserLabel(s.labels)) {
 				egressSum += s.value
 				egressSeen = true
