@@ -1573,6 +1573,20 @@
     color: var(--fg);
     font-weight: 560;
   }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  table.sr-only {
+    table-layout: fixed;
+  }
 
   /* ui/components/modal.css */
   .modal {
@@ -2197,46 +2211,125 @@
   .chart-cap .hint {
     margin-left: auto;
   }
-  .day-bars {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    height: 64px;
+  .chart-wrap {
+    width: 100%;
   }
-  .day-bar {
-    flex: 1 1 0;
-    min-width: 0;
+  .chart-plot {
+    display: flex;
+    gap: 6px;
+  }
+  .chart-y {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 5px;
+    justify-content: space-between;
+    flex: none;
+    font-size: 10px;
+    color: var(--fg-3);
+    white-space: nowrap;
   }
-  .day-bar-track {
+  .chart-svg {
+    display: block;
     width: 100%;
-    height: 48px;
+    height: 160px;
+  }
+  .chart-svg .chart-line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .chart-svg .bar {
+    fill: var(--fg-3);
+  }
+  .chart-svg .bar.ok {
+    fill: var(--ok);
+  }
+  .chart-svg .bar.warn {
+    fill: var(--warn);
+  }
+  .chart-svg .bar.bad {
+    fill: var(--bad);
+  }
+  .chart-x {
+    display: flex;
+    margin-top: 4px;
+  }
+  .chart-x > span {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+    font-size: 10px;
+    color: var(--fg-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-bottom: 8px;
+  }
+  .legend-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .legend-btn:hover {
+    color: var(--fg);
+  }
+  .legend-btn[aria-pressed=false] {
+    color: var(--fg-3);
+    opacity: .5;
+    text-decoration: line-through;
+  }
+  .legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    flex: none;
+  }
+  .h-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .h-bar {
+    display: grid;
+    grid-template-columns: minmax(56px, 22%) 1fr auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .h-bar-k {
+    color: var(--fg-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .h-bar-track {
+    height: 9px;
     border-radius: var(--r-xs);
     background: var(--surf-3);
-    display: flex;
-    align-items: flex-end;
     overflow: hidden;
   }
-  .day-bar-fill {
-    width: 100%;
-    background: var(--fg-3);
+  .h-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--acc);
     border-radius: var(--r-xs);
   }
-  .day-bar-fill.ok {
-    background: var(--ok);
-  }
-  .day-bar-fill.warn {
-    background: var(--warn);
-  }
-  .day-bar-fill.bad {
-    background: var(--bad);
-  }
-  .day-bar > span {
-    font-size: 10.5px;
-    white-space: nowrap;
+  .h-bar-v {
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
   }
   .srv-grid {
     display: grid;
@@ -2316,12 +2409,18 @@
     .srv .node-side {
       justify-content: flex-start;
     }
+    .chart-svg {
+      height: 140px;
+    }
+    .chart-x > span {
+      font-size: 9px;
+    }
   }
   [hidden] {
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="7f1aa88a3b268f30">
+  <meta name="sharedd-build" content="09067d42520a9cc3">
 </head>
 <body>
 
@@ -3061,6 +3160,60 @@
     return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   }
 
+  // ui/lib/chart.ts
+  var VB_W = 100;
+  function lineChart(series, opts = {}) {
+    var _a, _b;
+    const nums = series.flatMap((s) => s.values).filter((v) => typeof v === "number" && isFinite(v));
+    if (nums.length < 2) return "";
+    const height = (_a = opts.height) != null ? _a : 26;
+    const max = ((_b = opts.max) != null ? _b : Math.max(...nums, 1)) * (opts.max != null ? 1 : 1.08);
+    const pad = 3;
+    const plot = height - pad * 2;
+    const paths = series.map((s) => {
+      const n = s.values.length;
+      if (n < 2) return "";
+      let d = "";
+      let pen = false;
+      s.values.forEach((v, i) => {
+        if (typeof v !== "number" || !isFinite(v)) {
+          pen = false;
+          return;
+        }
+        const x = i / (n - 1) * VB_W;
+        const y = pad + (1 - v / max) * plot;
+        d += `${pen ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)} `;
+        pen = true;
+      });
+      return `<path class="chart-line" d="${d.trim()}" stroke="${s.color || "var(--acc)"}"/>`;
+    }).join("");
+    return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
+  }
+  function barChart(rows, opts = {}) {
+    var _a, _b;
+    const all = rows.flatMap((r) => r.bars.map((b) => b.value)).filter((v) => isFinite(v));
+    if (!rows.length || !all.length) return "";
+    const height = (_a = opts.height) != null ? _a : 26;
+    const max = (_b = opts.max) != null ? _b : Math.max(...all, 1);
+    const pad = 3;
+    const plot = height - pad * 2;
+    const slot = VB_W / rows.length;
+    const inner = slot * 0.72;
+    const rects = rows.map((row, ri) => {
+      const k = Math.max(row.bars.length, 1);
+      const bw = inner / k;
+      return row.bars.map((b, bi) => {
+        const h = Math.max(0, b.value / max * plot);
+        const x = ri * slot + (slot - inner) / 2 + bi * bw;
+        const y = pad + plot - h;
+        const cls = b.cls ? `bar ${b.cls}` : "bar";
+        const style = b.color ? ` style="fill:${b.color}"` : "";
+        return `<rect class="${cls}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(bw - 0.4, 0.3).toFixed(2)}" height="${h.toFixed(2)}"${style}/>`;
+      }).join("");
+    }).join("");
+    return `<svg class="chart-svg" viewBox="0 0 ${VB_W} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+  }
+
   // ui/pages/cabinet/node-detail.ts
   var EMPTY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
   var STATUS_META = {
@@ -3103,11 +3256,13 @@
   var DETAIL = null;
   var DETAIL_ERR = null;
   var DETAIL_RETRY = false;
+  var F_HIDDEN = /* @__PURE__ */ new Set();
   function openNodeDetail(id) {
     DETAIL_ID = id;
     DETAIL = null;
     DETAIL_ERR = null;
     DETAIL_RETRY = false;
+    F_HIDDEN = /* @__PURE__ */ new Set();
     const el = $("node-detail");
     if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
     load(false);
@@ -3179,17 +3334,12 @@
   function chip(ok, okText, badText) {
     return ok ? `<span class="badge ok">${esc(okText)}</span>` : `<span class="badge bad">${esc(badText)}</span>`;
   }
-  function spark(pts) {
-    if (pts.length < 2) return `<span class="dim">накапливается — пока мало точек</span>`;
-    const max = Math.max(...pts, 1);
-    const step = 100 / (pts.length - 1);
-    const d = pts.map((v, i) => `${(i * step).toFixed(1)},${(26 - 3 - v / max * 20).toFixed(1)}`).join(" ");
-    return `<svg class="metric-spark" viewBox="0 0 100 26" preserveAspectRatio="none">
-    <polyline points="${d}" fill="none" stroke="var(--acc)" stroke-width="1.6"
-      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+  function srTable(caption, headers, rows) {
+    return `<table class="sr-only"><caption>${esc(caption)}</caption>
+    <thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
   function detailHTML(d) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
     const n = d.node;
     if (!n) {
       return `<div class="empty-state">${EMPTY_SVG}<span class="t">Нода вне пула</span>
@@ -3233,7 +3383,7 @@
     </div>
   </section>
 
-  ${availabilityHTML(d)}
+  ${chartAHTML(d)}
 
   <section class="card">
     <div class="card-head"><h2>История IP</h2><span class="hint">по журналу событий</span></div>
@@ -3259,35 +3409,9 @@
           </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">проверок пока нет</div>`}
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>Хостинг</h2><span class="hint">CPU / RAM / сеть</span></div>
-    <div class="nd-grid">
-      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : (_a = d.hosting) == null ? void 0 : _a.cpu_percent))}</span></div>
-      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : (_b = d.hosting) == null ? void 0 : _b.ram_percent))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes((_c = d.hosting) == null ? void 0 : _c.net_ingress_bytes_total))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes((_d = d.hosting) == null ? void 0 : _d.net_egress_bytes_total))}</span></div>
-    </div>
-  </section>
+  ${chartCHTML(d)}
 
-  ${connectionsHTML(d)}
-
-  <section class="card">
-    <div class="card-head"><h2>Уникальные IP по пользователям</h2><span class="hint">из снимка telemt</span></div>
-    ${((_f = (_e = d.users) == null ? void 0 : _e.unique_ips_by_user) == null ? void 0 : _f.length) ? `<div class="table-wrap"><table class="table-cards">
-          <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th></tr></thead>
-          <tbody>${d.users.unique_ips_by_user.map((u) => `<tr>
-            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
-            <td class="num" data-label="Уникальных IP">${fmtNum(u.unique_ips)}</td>
-          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
-    <div class="card-head"><h2>Трафик по пользователям</h2><span class="hint">за 24 часа</span></div>
-    ${((_h = (_g = d.users) == null ? void 0 : _g.traffic_by_user) == null ? void 0 : _h.length) && !d.absent.includes("users.traffic_by_user") ? `<div class="table-wrap"><table class="table-cards">
-          <thead><tr><th>Пользователь</th><th class="num">Принято</th><th class="num">Отдано</th></tr></thead>
-          <tbody>${d.users.traffic_by_user.map((u) => `<tr>
-            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
-            <td class="num" data-label="Принято">${esc(fmtBytes(u.ingress_bytes))}</td>
-            <td class="num" data-label="Отдано">${esc(fmtBytes(u.egress_bytes))}</td>
-          </tr>`).join("")}</tbody></table></div>` : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
-  </section>
+  ${hostingHTML(d)}
 
   ${telemtHTML(d)}
 
@@ -3317,84 +3441,214 @@
         return s;
     }
   }
-  function availabilityHTML(d) {
+  function chartAHTML(d) {
     const a = d.availability;
-    if (!a) {
-      return `<section class="card"><div class="card-head"><h2>Доступность</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
-    }
-    const bars = a.daily.map((day) => {
-      const pct = Math.max(0, Math.min(100, day.ok_pct));
-      const cls = pct >= 99 ? "ok" : pct >= 95 ? "warn" : "bad";
-      const [, m, dd] = day.date.split("-");
-      const title = `${day.date}: ok ${day.ok_pct.toFixed(1)}% (tcp ${day.tcp_ok}/${day.tcp_total}, отчёты ${day.reports_ok}/${day.reports_total})`;
-      return `<div class="day-bar" title="${esc(title)}">
-      <div class="day-bar-track"><div class="day-bar-fill ${cls}" style="height:${pct}%"></div></div>
-      <span class="dim">${esc(dd)}.${esc(m)}</span></div>`;
-    }).join("");
-    const overallCls = availColor(a.overall_pct);
-    return `<section class="card">
-    <div class="card-head"><h2>Доступность</h2><span class="hint">окно ${a.window_days} дней</span></div>
-    <div class="card-body">
-      <div class="metrics" style="margin-bottom:14px">
-        <div class="card metric">
-          <div class="metric-label">Общая доступность</div>
-          <div class="metric-value ${overallCls}" style="font-size:24px">${a.overall_pct.toFixed(1)}%</div>
-          <div class="metric-foot">отчётов ok: ${a.reports_ok}/${a.reports_total}</div>
-        </div>
-        <div class="card metric">
-          <div class="metric-label">GP верификации</div>
-          <div class="metric-value ${availColor(a.gp_verified_pct)}" style="font-size:24px">${a.gp_verified_pct.toFixed(1)}%</div>
-          <div class="metric-foot">проверок: ${a.gp_checks_total}</div>
-        </div>
+    const head = `<div class="card-head"><h2>Доступность, 7 дней</h2>` + (a ? `<span class="hint">окно ${a.window_days} ${plural(a.window_days, "день", "дня", "дней")}</span>` : "") + `</div>`;
+    if (!a) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
+    const days = a.daily;
+    const tiles = `<div class="metrics" style="margin-bottom:14px">
+      <div class="card metric">
+        <div class="metric-label">Общая доступность</div>
+        <div class="metric-value ${availColor(a.overall_pct)}" style="font-size:24px">${a.overall_pct.toFixed(1)}%</div>
+        <div class="metric-foot">отчётов ok: ${a.reports_ok}/${a.reports_total}</div>
       </div>
-      <div class="chart-cap">По дням <span class="hint">${a.daily.length} ${plural(a.daily.length, "день", "дня", "дней")}</span></div>
-      ${a.daily.length ? `<div class="day-bars">${bars}</div>` : `<span class="dim">пока нет точек за окно</span>`}
+      <div class="card metric">
+        <div class="metric-label">GP верификации</div>
+        <div class="metric-value ${availColor(a.gp_verified_pct)}" style="font-size:24px">${a.gp_verified_pct.toFixed(1)}%</div>
+        <div class="metric-foot">проверок: ${a.gp_checks_total}</div>
+      </div>
+    </div>`;
+    let chart;
+    if (days.length < 2) {
+      chart = `<span class="dim">накапливается — пока мало точек</span>`;
+    } else {
+      const rows = days.map((day) => {
+        const pct = Math.max(0, Math.min(100, day.ok_pct));
+        return { bars: [{ value: pct, cls: availColor(pct) }] };
+      });
+      chart = `<div class="chart-wrap" role="img" aria-label="Доступность за ${days.length} дней, средняя ${a.overall_pct.toFixed(1)} процента">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>100%</span><span>0%</span></div>
+          ${barChart(rows, { max: 100 })}
+        </div>
+        <div class="chart-x" aria-hidden="true">${days.map((day) => {
+        const [, m, dd] = day.date.split("-");
+        return `<span>${esc(dd)}.${esc(m)}</span>`;
+      }).join("")}</div>
+      </div>
+      ${srTable(
+        "Доступность по дням",
+        ["День", "OK %", "TCP ok/total", "Отчёты ok/total"],
+        days.map((day) => [day.date, fmtPct(day.ok_pct), `${day.tcp_ok}/${day.tcp_total}`, `${day.reports_ok}/${day.reports_total}`])
+      )}
+      ${days.length < a.window_days ? `<p class="card-note">данные за ${days.length} из ${a.window_days} ${plural(a.window_days, "дня", "дней", "дней")}</p>` : ""}`;
+    }
+    return `<section class="card">${head}
+    <div class="card-body">${tiles}
+      <div class="chart-cap">По дням <span class="hint">${days.length} ${plural(days.length, "день", "дня", "дней")}</span></div>
+      ${chart}
     </div>
   </section>`;
   }
   function availColor(p) {
     return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
   }
-  function connectionsHTML(d) {
+  function chartCHTML(d) {
     const c = d.connections_24h;
-    if (!c) {
-      return `<section class="card"><div class="card-head"><h2>Соединения 24ч</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
+    const head = `<div class="card-head"><h2>Соединения, 24 ч</h2><span class="hint">соединения · уникальные IP</span></div>`;
+    if (!c) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
+    const series = c.series;
+    const clients = series.map((p) => p.clients);
+    const max = clients.length ? Math.max(...clients) : 0;
+    const kv = (label, v) => `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v == null ? "нет данных" : fmtNum(v)}</span></div>`;
+    let chart;
+    if (clients.length < 2) {
+      chart = `<span class="dim">накапливается — пока мало точек</span>`;
+    } else {
+      chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(max)}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>${fmtNum(max)}</span><span>0</span></div>
+          ${lineChart([{ values: clients }])}
+        </div>
+      </div>
+      ${srTable("Соединения за 24 часа", ["Время", "Соединения"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
     }
-    const series = c.series.map((p) => p.writers);
-    const kv = (label, v) => `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v === void 0 || v === null ? "нет данных" : fmtNum(v)}</span></div>`;
-    return `<section class="card">
-    <div class="card-head"><h2>Соединения 24ч</h2></div>
+    return `<section class="card">${head}
     <div class="card-body">
       <div class="nd-grid" style="padding:0;margin-bottom:12px">
-        ${kv("Писатели (сейчас)", c.current_writers)}
-        ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
         ${kv("Соединения пользователей", c.current_user_connections)}
+        ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
       </div>
-      <div class="chart-cap">Writers по отчётам <span class="hint">${c.series.length} ${plural(c.series.length, "точка", "точки", "точек")}</span></div>
-      ${spark(series)}
+      <div class="chart-cap">Соединения по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
+      ${chart}
       ${c.note ? `<div class="card-note" style="padding:10px 0 0">${esc(c.note)}</div>` : ""}
     </div>
   </section>`;
   }
+  function hostingHTML(d) {
+    var _a, _b, _c, _d;
+    return `<section class="card">
+    <div class="card-head"><h2>Хостинг: CPU / RAM / сеть</h2><span class="hint">текущие значения</span></div>
+    <div class="nd-grid">
+      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : (_a = d.hosting) == null ? void 0 : _a.cpu_percent))}</span></div>
+      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : (_b = d.hosting) == null ? void 0 : _b.ram_percent))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes((_c = d.hosting) == null ? void 0 : _c.net_ingress_bytes_total))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes((_d = d.hosting) == null ? void 0 : _d.net_egress_bytes_total))}</span></div>
+    </div>
+    <p class="card-note" style="padding:0 var(--pad) var(--pad)">История появится после включения сбора на сервере — сейчас доступны только текущие значения.</p>
+  </section>`;
+  }
+  function chartEHTML(d) {
+    var _a, _b;
+    const list = (_b = (_a = d.users) == null ? void 0 : _a.unique_ips_by_user) != null ? _b : null;
+    if (!list || !list.length) {
+      return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+    }
+    const max = Math.max(...list.map((x) => x.unique_ips), 1);
+    const bars = list.map((x) => `<div class="h-bar" aria-hidden="true">
+      <span class="h-bar-k mono">${esc(x.user)}</span>
+      <span class="h-bar-track"><span class="h-bar-fill" style="width:${Math.max(0, Math.min(100, x.unique_ips / max * 100)).toFixed(1)}%"></span></span>
+      <span class="h-bar-v">${fmtNum(x.unique_ips)}</span>
+    </div>`).join("");
+    return `<div class="chart-wrap h-bars" role="img" aria-label="Уникальные IP по пользователям, текущий снимок, максимум ${fmtNum(max)}">
+      ${bars}
+    </div>
+    ${srTable(
+      "Уникальные IP по пользователям (сейчас)",
+      ["Пользователь", "Уникальных IP"],
+      list.map((x) => [x.user, fmtNum(x.unique_ips)])
+    )}`;
+  }
+  var F_SERIES = [
+    { key: "ingress", label: "Принято", color: "var(--info)" },
+    { key: "egress", label: "Отдано", color: "var(--acc)" }
+  ];
+  function chartFHTML(d) {
+    var _a, _b;
+    const list = (_b = (_a = d.users) == null ? void 0 : _a.traffic_by_user) != null ? _b : null;
+    if (!list || !list.length) {
+      return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+    }
+    const series = F_SERIES.map((s) => ({ ...s, visible: !F_HIDDEN.has(s.key) }));
+    const rows = list.map((u) => ({
+      bars: series.filter((s) => s.visible).map((s) => ({
+        value: s.key === "ingress" ? u.ingress_bytes : u.egress_bytes,
+        color: s.color
+      }))
+    }));
+    const max = Math.max(...list.flatMap((u) => [u.ingress_bytes, u.egress_bytes]), 1);
+    const legend = `<div class="chart-legend">${series.map((s) => `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
+      <span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}
+    </button>`).join("")}</div>`;
+    const chart = series.some((s) => s.visible) ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(max))}</span><span>0</span></div>
+          ${barChart(rows, { height: 32 })}
+        </div>
+        <div class="chart-x" aria-hidden="true">${list.map((u) => `<span class="mono">${esc(u.user)}</span>`).join("")}</div>
+      </div>` : `<span class="dim">серии скрыты</span>`;
+    return `${legend}${chart}
+    ${srTable(
+      "Трафик по пользователям за 24 часа",
+      ["Пользователь", "Принято", "Отдано"],
+      list.map((u) => [u.user, fmtBytes(u.ingress_bytes), fmtBytes(u.egress_bytes)])
+    )}`;
+  }
+  function usersTable(d) {
+    var _a, _b, _c, _d;
+    const uniq = (_b = (_a = d.users) == null ? void 0 : _a.unique_ips_by_user) != null ? _b : [];
+    const traffic = (_d = (_c = d.users) == null ? void 0 : _c.traffic_by_user) != null ? _d : null;
+    const names = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const x of [...uniq, ...traffic != null ? traffic : []]) {
+      if (!seen.has(x.user)) {
+        seen.add(x.user);
+        names.push(x.user);
+      }
+    }
+    if (!names.length) return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+    const uMap = new Map(uniq.map((x) => [x.user, x.unique_ips]));
+    const tMap = new Map((traffic != null ? traffic : []).map((x) => [x.user, x]));
+    const trafficCols = traffic ? `<th class="num">Принято</th><th class="num">Отдано</th>` : "";
+    const body = names.map((n) => {
+      const t = tMap.get(n);
+      const trafficCells = traffic ? `<td class="num" data-label="Принято">${t ? esc(fmtBytes(t.ingress_bytes)) : "—"}</td>
+        <td class="num" data-label="Отдано">${t ? esc(fmtBytes(t.egress_bytes)) : "—"}</td>` : "";
+      return `<tr>
+      <td class="mono" data-label="Пользователь">${esc(n)}</td>
+      <td class="num" data-label="Уникальных IP">${uMap.has(n) ? fmtNum(uMap.get(n)) : "—"}</td>
+      ${trafficCells}
+    </tr>`;
+    }).join("");
+    return `<div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th>${trafficCols}</tr></thead>
+      <tbody>${body}</tbody></table></div>`;
+  }
+  document.addEventListener("click", (e) => {
+    var _a, _b;
+    const btn = (_b = (_a = e.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "[data-series]");
+    if (!btn || !DETAIL_ID) return;
+    const key = btn.dataset.series || "";
+    if (F_HIDDEN.has(key)) F_HIDDEN.delete(key);
+    else F_HIDDEN.add(key);
+    render(false);
+  });
   function telemtHTML(d) {
+    var _a, _b;
     const t = d.telemt;
     const snap = t == null ? void 0 : t.metrics_snapshot;
     const keys = snap ? Object.keys(snap).sort() : [];
-    if (!t || !snap || !keys.length) {
-      return `<section class="card"><div class="card-head"><h2>Статистика telemt</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
-    }
-    return `<section class="card">
-    <div class="card-head"><h2>Статистика telemt</h2><span class="hint">снимок метрик</span></div>
-    <div class="card-body" style="padding-bottom:0">
-      <div class="nd-grid" style="padding:0">
-        <div class="kv"><span class="kv-k">Метрик в снимке</span><span class="kv-v">${keys.length}</span></div>
-        <div class="kv"><span class="kv-k">Собрано</span><span class="kv-v">${t.collected_at ? esc(fmtAgo(t.collected_at)) : "—"}</span></div>
-      </div>
-    </div>
-    <details class="op-step-log" style="margin:12px var(--pad) var(--pad)">
+    const ca = (_a = t == null ? void 0 : t.control_api) != null ? _a : null;
+    const dcs = (_b = ca == null ? void 0 : ca.dcs) != null ? _b : [];
+    const endpoints = dcs.reduce((s, x) => s + x.available_endpoints, 0);
+    const tile = (label, v) => `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v}</span></div>`;
+    const summary = `<div class="nd-grid" style="padding:0">
+      ${tile("Метрик в снимке", snap ? String(keys.length) : "нет данных")}
+      ${tile("Собрано", (t == null ? void 0 : t.collected_at) ? esc(fmtAgo(t.collected_at)) : "—")}
+      ${tile("ДЦ", ca ? String(dcs.length) : "нет данных")}
+      ${tile("Endpoints (доступно)", ca ? fmtNum(endpoints) : "нет данных")}
+    </div>`;
+    const snapshot = keys.length ? `<details class="op-step-log" style="margin:12px var(--pad) var(--pad)">
       <summary>Показать снимок (${keys.length})</summary>
       <div class="table-wrap"><table class="table-cards">
         <thead><tr><th>Метрика</th><th class="num">Значение</th></tr></thead>
@@ -3402,7 +3656,19 @@
           <td class="mono wrap" data-label="Метрика">${esc(k)}</td>
           <td class="num mono" data-label="Значение">${fmtNum(snap[k])}</td>
         </tr>`).join("")}</tbody></table></div>
-    </details>
+    </details>` : "";
+    return `<section class="card">
+    <div class="card-head"><h2>Статистика telemt</h2><span class="hint">снимок метрик · пользователи</span></div>
+    <div class="card-body" style="padding-bottom:0">
+      ${summary}
+      <div class="chart-cap">Уникальные IP по пользователям <span class="hint">сейчас</span></div>
+      ${chartEHTML(d)}
+      <div class="chart-cap">Трафик по пользователям <span class="hint">за 24 часа</span></div>
+      ${chartFHTML(d)}
+      <div class="chart-cap">Пользователи <span class="hint">IP · трафик 24 ч</span></div>
+      ${usersTable(d)}
+    </div>
+    ${snapshot}
   </section>`;
   }
   function controlApiHTML(d) {

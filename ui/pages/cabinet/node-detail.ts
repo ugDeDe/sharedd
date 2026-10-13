@@ -7,6 +7,7 @@
 
 import { $, esc, renderSection } from "../../lib/dom";
 import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
+import { barChart, lineChart } from "../../lib/chart";
 import { api } from "./api";
 import type { NodeDetail } from "./api";
 
@@ -58,6 +59,8 @@ let DETAIL_ID = "";
 let DETAIL: NodeDetail | null = null;
 let DETAIL_ERR: { msg: string; status?: number } | null = null;
 let DETAIL_RETRY = false;
+// Скрытые серии графика F (легенда-кнопки). Живёт между опросами (5 с).
+let F_HIDDEN = new Set<string>();
 
 export function nodeDetailId(): string { return DETAIL_ID; }
 
@@ -67,6 +70,7 @@ export function openNodeDetail(id: string): void {
   DETAIL = null;
   DETAIL_ERR = null;
   DETAIL_RETRY = false;
+  F_HIDDEN = new Set();
   const el = $("node-detail");
   if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
   load(false);
@@ -144,14 +148,12 @@ function chip(ok: boolean, okText: string, badText: string): string {
   return ok ? `<span class="badge ok">${esc(okText)}</span>` : `<span class="badge bad">${esc(badText)}</span>`;
 }
 
-function spark(pts: number[]): string {
-  if (pts.length < 2) return `<span class="dim">накапливается — пока мало точек</span>`;
-  const max = Math.max(...pts, 1);
-  const step = 100 / (pts.length - 1);
-  const d = pts.map((v, i) => `${(i * step).toFixed(1)},${(26 - 3 - (v / max) * 20).toFixed(1)}`).join(" ");
-  return `<svg class="metric-spark" viewBox="0 0 100 26" preserveAspectRatio="none">
-    <polyline points="${d}" fill="none" stroke="var(--acc)" stroke-width="1.6"
-      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+/** Текстовый эквивалент графика (DESIGN.md §13.4): тот же ряд значений теми
+ *  же форматтерами, что в видимой части. Показывается скринридеру. */
+function srTable(caption: string, headers: string[], rows: string[][]): string {
+  return `<table class="sr-only"><caption>${esc(caption)}</caption>
+    <thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
 function detailHTML(d: NodeDetail): string {
@@ -199,7 +201,7 @@ function detailHTML(d: NodeDetail): string {
     </div>
   </section>
 
-  ${availabilityHTML(d)}
+  ${chartAHTML(d)}
 
   <section class="card">
     <div class="card-head"><h2>История IP</h2><span class="hint">по журналу событий</span></div>
@@ -229,39 +231,9 @@ function detailHTML(d: NodeDetail): string {
       : `<div class="table-empty">проверок пока нет</div>`}
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>Хостинг</h2><span class="hint">CPU / RAM / сеть</span></div>
-    <div class="nd-grid">
-      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : d.hosting?.cpu_percent))}</span></div>
-      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : d.hosting?.ram_percent))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes(d.hosting?.net_ingress_bytes_total))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes(d.hosting?.net_egress_bytes_total))}</span></div>
-    </div>
-  </section>
+  ${chartCHTML(d)}
 
-  ${connectionsHTML(d)}
-
-  <section class="card">
-    <div class="card-head"><h2>Уникальные IP по пользователям</h2><span class="hint">из снимка telemt</span></div>
-    ${(d.users?.unique_ips_by_user?.length)
-      ? `<div class="table-wrap"><table class="table-cards">
-          <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th></tr></thead>
-          <tbody>${d.users!.unique_ips_by_user.map((u) => `<tr>
-            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
-            <td class="num" data-label="Уникальных IP">${fmtNum(u.unique_ips)}</td>
-          </tr>`).join("")}</tbody></table></div>`
-      : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
-    <div class="card-head"><h2>Трафик по пользователям</h2><span class="hint">за 24 часа</span></div>
-    ${(d.users?.traffic_by_user?.length && !d.absent.includes("users.traffic_by_user"))
-      ? `<div class="table-wrap"><table class="table-cards">
-          <thead><tr><th>Пользователь</th><th class="num">Принято</th><th class="num">Отдано</th></tr></thead>
-          <tbody>${d.users!.traffic_by_user!.map((u) => `<tr>
-            <td class="mono" data-label="Пользователь">${esc(u.user)}</td>
-            <td class="num" data-label="Принято">${esc(fmtBytes(u.ingress_bytes))}</td>
-            <td class="num" data-label="Отдано">${esc(fmtBytes(u.egress_bytes))}</td>
-          </tr>`).join("")}</tbody></table></div>`
-      : `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`}
-  </section>
+  ${hostingHTML(d)}
 
   ${telemtHTML(d)}
 
@@ -289,86 +261,231 @@ function sourceLabel(s: string): string {
   }
 }
 
-function availabilityHTML(d: NodeDetail): string {
+// §3 «Доступность, 7 дней»: плитки + график A (столбики по дням, цвет — здоровье дня).
+function chartAHTML(d: NodeDetail): string {
   const a = d.availability;
-  if (!a) {
-    return `<section class="card"><div class="card-head"><h2>Доступность</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
-  }
-  const bars = a.daily.map((day) => {
-    const pct = Math.max(0, Math.min(100, day.ok_pct));
-    const cls = pct >= 99 ? "ok" : pct >= 95 ? "warn" : "bad";
-    const [, m, dd] = day.date.split("-");
-    const title = `${day.date}: ok ${day.ok_pct.toFixed(1)}% (tcp ${day.tcp_ok}/${day.tcp_total}, отчёты ${day.reports_ok}/${day.reports_total})`;
-    return `<div class="day-bar" title="${esc(title)}">
-      <div class="day-bar-track"><div class="day-bar-fill ${cls}" style="height:${pct}%"></div></div>
-      <span class="dim">${esc(dd)}.${esc(m)}</span></div>`;
-  }).join("");
-  const overallCls = availColor(a.overall_pct);
-  return `<section class="card">
-    <div class="card-head"><h2>Доступность</h2><span class="hint">окно ${a.window_days} дней</span></div>
-    <div class="card-body">
-      <div class="metrics" style="margin-bottom:14px">
-        <div class="card metric">
-          <div class="metric-label">Общая доступность</div>
-          <div class="metric-value ${overallCls}" style="font-size:24px">${a.overall_pct.toFixed(1)}%</div>
-          <div class="metric-foot">отчётов ok: ${a.reports_ok}/${a.reports_total}</div>
-        </div>
-        <div class="card metric">
-          <div class="metric-label">GP верификации</div>
-          <div class="metric-value ${availColor(a.gp_verified_pct)}" style="font-size:24px">${a.gp_verified_pct.toFixed(1)}%</div>
-          <div class="metric-foot">проверок: ${a.gp_checks_total}</div>
-        </div>
+  const head = `<div class="card-head"><h2>Доступность, 7 дней</h2>` +
+    (a ? `<span class="hint">окно ${a.window_days} ${plural(a.window_days, "день", "дня", "дней")}</span>` : "") + `</div>`;
+  if (!a) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
+
+  const days = a.daily;
+  const tiles = `<div class="metrics" style="margin-bottom:14px">
+      <div class="card metric">
+        <div class="metric-label">Общая доступность</div>
+        <div class="metric-value ${availColor(a.overall_pct)}" style="font-size:24px">${a.overall_pct.toFixed(1)}%</div>
+        <div class="metric-foot">отчётов ok: ${a.reports_ok}/${a.reports_total}</div>
       </div>
-      <div class="chart-cap">По дням <span class="hint">${a.daily.length} ${plural(a.daily.length, "день", "дня", "дней")}</span></div>
-      ${a.daily.length ? `<div class="day-bars">${bars}</div>` : `<span class="dim">пока нет точек за окно</span>`}
+      <div class="card metric">
+        <div class="metric-label">GP верификации</div>
+        <div class="metric-value ${availColor(a.gp_verified_pct)}" style="font-size:24px">${a.gp_verified_pct.toFixed(1)}%</div>
+        <div class="metric-foot">проверок: ${a.gp_checks_total}</div>
+      </div>
+    </div>`;
+
+  let chart: string;
+  if (days.length < 2) {
+    chart = `<span class="dim">накапливается — пока мало точек</span>`;
+  } else {
+    const rows = days.map((day) => {
+      const pct = Math.max(0, Math.min(100, day.ok_pct));
+      return { bars: [{ value: pct, cls: availColor(pct) }] };
+    });
+    chart = `<div class="chart-wrap" role="img" aria-label="Доступность за ${days.length} дней, средняя ${a.overall_pct.toFixed(1)} процента">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>100%</span><span>0%</span></div>
+          ${barChart(rows, { max: 100 })}
+        </div>
+        <div class="chart-x" aria-hidden="true">${days.map((day) => {
+          const [, m, dd] = day.date.split("-");
+          return `<span>${esc(dd)}.${esc(m)}</span>`;
+        }).join("")}</div>
+      </div>
+      ${srTable("Доступность по дням", ["День", "OK %", "TCP ok/total", "Отчёты ok/total"],
+        days.map((day) => [day.date, fmtPct(day.ok_pct), `${day.tcp_ok}/${day.tcp_total}`, `${day.reports_ok}/${day.reports_total}`]))}
+      ${days.length < a.window_days ? `<p class="card-note">данные за ${days.length} из ${a.window_days} ${plural(a.window_days, "дня", "дней", "дней")}</p>` : ""}`;
+  }
+
+  return `<section class="card">${head}
+    <div class="card-body">${tiles}
+      <div class="chart-cap">По дням <span class="hint">${days.length} ${plural(days.length, "день", "дня", "дней")}</span></div>
+      ${chart}
     </div>
   </section>`;
 }
 
 function availColor(p: number): string { return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad"; }
 
-function connectionsHTML(d: NodeDetail): string {
+// §6 «Соединения, 24 ч»: плитки + график C (линия clients). me-writers удалён
+// по требованию владельца — поле writers нигде не рисуется (specs §5).
+function chartCHTML(d: NodeDetail): string {
   const c = d.connections_24h;
-  if (!c) {
-    return `<section class="card"><div class="card-head"><h2>Соединения 24ч</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
-  }
-  const series = c.series.map((p) => p.writers);
+  const head = `<div class="card-head"><h2>Соединения, 24 ч</h2><span class="hint">соединения · уникальные IP</span></div>`;
+  if (!c) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
+
+  const series = c.series;
+  const clients = series.map((p) => p.clients);
+  const max = clients.length ? Math.max(...clients) : 0;
   const kv = (label: string, v: number | undefined): string =>
-    `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v === undefined || v === null ? "нет данных" : fmtNum(v)}</span></div>`;
-  return `<section class="card">
-    <div class="card-head"><h2>Соединения 24ч</h2></div>
+    `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v == null ? "нет данных" : fmtNum(v)}</span></div>`;
+
+  let chart: string;
+  if (clients.length < 2) {
+    chart = `<span class="dim">накапливается — пока мало точек</span>`;
+  } else {
+    chart = `<div class="chart-wrap" role="img" aria-label="Соединения за 24 часа, максимум ${fmtNum(max)}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>${fmtNum(max)}</span><span>0</span></div>
+          ${lineChart([{ values: clients }])}
+        </div>
+      </div>
+      ${srTable("Соединения за 24 часа", ["Время", "Соединения"], series.map((p) => [fmtClock(p.at), fmtNum(p.clients)]))}`;
+  }
+
+  return `<section class="card">${head}
     <div class="card-body">
       <div class="nd-grid" style="padding:0;margin-bottom:12px">
-        ${kv("Писатели (сейчас)", c.current_writers)}
-        ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
         ${kv("Соединения пользователей", c.current_user_connections)}
+        ${kv("Уникальные IP (сейчас)", c.current_unique_ips)}
       </div>
-      <div class="chart-cap">Writers по отчётам <span class="hint">${c.series.length} ${plural(c.series.length, "точка", "точки", "точек")}</span></div>
-      ${spark(series)}
+      <div class="chart-cap">Соединения по отчётам <span class="hint">${series.length} ${plural(series.length, "точка", "точки", "точек")}</span></div>
+      ${chart}
       ${c.note ? `<div class="card-note" style="padding:10px 0 0">${esc(c.note)}</div>` : ""}
     </div>
   </section>`;
 }
 
+// §7 «Хостинг»: текущие значения + график D. D заблокирован бэкендом (нет
+// серии истории) — рисуем note, а не пустой холст (specs §2 D, §3 G1/G5).
+function hostingHTML(d: NodeDetail): string {
+  return `<section class="card">
+    <div class="card-head"><h2>Хостинг: CPU / RAM / сеть</h2><span class="hint">текущие значения</span></div>
+    <div class="nd-grid">
+      <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : d.hosting?.cpu_percent))}</span></div>
+      <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : d.hosting?.ram_percent))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes(d.hosting?.net_ingress_bytes_total))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes(d.hosting?.net_egress_bytes_total))}</span></div>
+    </div>
+    <p class="card-note" style="padding:0 var(--pad) var(--pad)">История появится после включения сбора на сервере — сейчас доступны только текущие значения.</p>
+  </section>`;
+}
+
+// §8 график E: горизонтальные столбики — уникальные IP по пользователям
+// (текущий снимок, не временной ряд: заголовок честный).
+function chartEHTML(d: NodeDetail): string {
+  const list = d.users?.unique_ips_by_user ?? null;
+  if (!list || !list.length) {
+    return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+  }
+  const max = Math.max(...list.map((x) => x.unique_ips), 1);
+  const bars = list.map((x) => `<div class="h-bar" aria-hidden="true">
+      <span class="h-bar-k mono">${esc(x.user)}</span>
+      <span class="h-bar-track"><span class="h-bar-fill" style="width:${Math.max(0, Math.min(100, (x.unique_ips / max) * 100)).toFixed(1)}%"></span></span>
+      <span class="h-bar-v">${fmtNum(x.unique_ips)}</span>
+    </div>`).join("");
+  return `<div class="chart-wrap h-bars" role="img" aria-label="Уникальные IP по пользователям, текущий снимок, максимум ${fmtNum(max)}">
+      ${bars}
+    </div>
+    ${srTable("Уникальные IP по пользователям (сейчас)", ["Пользователь", "Уникальных IP"],
+      list.map((x) => [x.user, fmtNum(x.unique_ips)]))}`;
+}
+
+// §8 график F: сгруппированные столбики — трафик по пользователям за 24 ч
+// (итоги, не временной ряд). Легенда — кнопки видимости серий (specs §6.3).
+const F_SERIES = [
+  { key: "ingress", label: "Принято", color: "var(--info)" },
+  { key: "egress", label: "Отдано", color: "var(--acc)" },
+] as const;
+
+function chartFHTML(d: NodeDetail): string {
+  const list = d.users?.traffic_by_user ?? null;
+  if (!list || !list.length) {
+    return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+  }
+  const series = F_SERIES.map((s) => ({ ...s, visible: !F_HIDDEN.has(s.key) }));
+  const rows = list.map((u) => ({
+    bars: series.filter((s) => s.visible).map((s) => ({
+      value: s.key === "ingress" ? u.ingress_bytes : u.egress_bytes,
+      color: s.color,
+    })),
+  }));
+  const max = Math.max(...list.flatMap((u) => [u.ingress_bytes, u.egress_bytes]), 1);
+  const legend = `<div class="chart-legend">${series.map((s) =>
+    `<button type="button" class="legend-btn" data-series="${s.key}" aria-pressed="${s.visible}">
+      <span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}
+    </button>`).join("")}</div>`;
+  const chart = series.some((s) => s.visible)
+    ? `<div class="chart-wrap" role="img" aria-label="Трафик по пользователям за 24 часа, принято и отдано, максимум ${fmtBytes(max)}">
+        <div class="chart-plot">
+          <div class="chart-y" aria-hidden="true"><span>${esc(fmtBytes(max))}</span><span>0</span></div>
+          ${barChart(rows, { height: 32 })}
+        </div>
+        <div class="chart-x" aria-hidden="true">${list.map((u) => `<span class="mono">${esc(u.user)}</span>`).join("")}</div>
+      </div>`
+    : `<span class="dim">серии скрыты</span>`;
+  return `${legend}${chart}
+    ${srTable("Трафик по пользователям за 24 часа", ["Пользователь", "Принято", "Отдано"],
+      list.map((u) => [u.user, fmtBytes(u.ingress_bytes), fmtBytes(u.egress_bytes)]))}`;
+}
+
+// §8 таблица «Пользователи»: объединяет уникальные IP и 24-ч трафик по имени.
+function usersTable(d: NodeDetail): string {
+  const uniq = d.users?.unique_ips_by_user ?? [];
+  const traffic = d.users?.traffic_by_user ?? null;
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const x of [...uniq, ...(traffic ?? [])]) {
+    if (!seen.has(x.user)) { seen.add(x.user); names.push(x.user); }
+  }
+  if (!names.length) return `<div class="table-empty">${d.users === null ? "нет данных" : "пользователей нет"}</div>`;
+  const uMap = new Map(uniq.map((x) => [x.user, x.unique_ips]));
+  const tMap = new Map((traffic ?? []).map((x) => [x.user, x]));
+  const trafficCols = traffic
+    ? `<th class="num">Принято</th><th class="num">Отдано</th>`
+    : "";
+  const body = names.map((n) => {
+    const t = tMap.get(n);
+    const trafficCells = traffic
+      ? `<td class="num" data-label="Принято">${t ? esc(fmtBytes(t.ingress_bytes)) : "—"}</td>
+        <td class="num" data-label="Отдано">${t ? esc(fmtBytes(t.egress_bytes)) : "—"}</td>`
+      : "";
+    return `<tr>
+      <td class="mono" data-label="Пользователь">${esc(n)}</td>
+      <td class="num" data-label="Уникальных IP">${uMap.has(n) ? fmtNum(uMap.get(n)) : "—"}</td>
+      ${trafficCells}
+    </tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Пользователь</th><th class="num">Уникальных IP</th>${trafficCols}</tr></thead>
+      <tbody>${body}</tbody></table></div>`;
+}
+
+// Переключение серий графика F по кнопкам легенды (клавиатура — нативная).
+document.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement)?.closest?.("[data-series]") as HTMLElement | null;
+  if (!btn || !DETAIL_ID) return;
+  const key = btn.dataset.series || "";
+  if (F_HIDDEN.has(key)) F_HIDDEN.delete(key); else F_HIDDEN.add(key);
+  render(false);
+});
+
 function telemtHTML(d: NodeDetail): string {
   const t = d.telemt;
   const snap = t?.metrics_snapshot;
   const keys = snap ? Object.keys(snap).sort() : [];
-  if (!t || !snap || !keys.length) {
-    return `<section class="card"><div class="card-head"><h2>Статистика telemt</h2></div>
-      <div class="table-empty">нет данных</div></section>`;
-  }
-  return `<section class="card">
-    <div class="card-head"><h2>Статистика telemt</h2><span class="hint">снимок метрик</span></div>
-    <div class="card-body" style="padding-bottom:0">
-      <div class="nd-grid" style="padding:0">
-        <div class="kv"><span class="kv-k">Метрик в снимке</span><span class="kv-v">${keys.length}</span></div>
-        <div class="kv"><span class="kv-k">Собрано</span><span class="kv-v">${t.collected_at ? esc(fmtAgo(t.collected_at)) : "—"}</span></div>
-      </div>
-    </div>
-    <details class="op-step-log" style="margin:12px var(--pad) var(--pad)">
+  const ca = t?.control_api ?? null;
+  const dcs = ca?.dcs ?? [];
+  const endpoints = dcs.reduce((s, x) => s + x.available_endpoints, 0);
+  const tile = (label: string, v: string): string =>
+    `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v">${v}</span></div>`;
+
+  const summary = `<div class="nd-grid" style="padding:0">
+      ${tile("Метрик в снимке", snap ? String(keys.length) : "нет данных")}
+      ${tile("Собрано", t?.collected_at ? esc(fmtAgo(t.collected_at)) : "—")}
+      ${tile("ДЦ", ca ? String(dcs.length) : "нет данных")}
+      ${tile("Endpoints (доступно)", ca ? fmtNum(endpoints) : "нет данных")}
+    </div>`;
+
+  const snapshot = keys.length ? `<details class="op-step-log" style="margin:12px var(--pad) var(--pad)">
       <summary>Показать снимок (${keys.length})</summary>
       <div class="table-wrap"><table class="table-cards">
         <thead><tr><th>Метрика</th><th class="num">Значение</th></tr></thead>
@@ -376,7 +493,20 @@ function telemtHTML(d: NodeDetail): string {
           <td class="mono wrap" data-label="Метрика">${esc(k)}</td>
           <td class="num mono" data-label="Значение">${fmtNum(snap![k])}</td>
         </tr>`).join("")}</tbody></table></div>
-    </details>
+    </details>` : "";
+
+  return `<section class="card">
+    <div class="card-head"><h2>Статистика telemt</h2><span class="hint">снимок метрик · пользователи</span></div>
+    <div class="card-body" style="padding-bottom:0">
+      ${summary}
+      <div class="chart-cap">Уникальные IP по пользователям <span class="hint">сейчас</span></div>
+      ${chartEHTML(d)}
+      <div class="chart-cap">Трафик по пользователям <span class="hint">за 24 часа</span></div>
+      ${chartFHTML(d)}
+      <div class="chart-cap">Пользователи <span class="hint">IP · трафик 24 ч</span></div>
+      ${usersTable(d)}
+    </div>
+    ${snapshot}
   </section>`;
 }
 
