@@ -1,7 +1,22 @@
 # HANDOFF.md — состояние работ и что делать дальше (для новой сессии)
 
-Ветка `dev`, всё **не закоммичено** (прод собран из рабочего дерева). Секреты здесь
+Ветка `dev` — **всё закоммичено** (2026-10-14, локально, БЕЗ push). Секреты здесь
 НЕ хранятся: они в конфигах на серверах и в переписке владельца.
+
+## 0. Деплой 2026-10-14 (что уже в проде)
+
+- **Реестр: `V1.1.0` выкачен** на `registrar.ddproxy.xyz` (healthz=200, все ноды
+  отчитываются). Бэкап: `/var/backups/sharedd-20261013-222428` (бинарь `prev24`
+  + `registry_state.json` + `control.db` + `registry.toml` + sha256).
+  Откат: `install .../sharedd-registry.prev24 /usr/local/bin/sharedd-registry` +
+  вернуть `registry_state.json` из бэкапа.
+- **Нода `test-lk-x3ha7` (169.128.68.34): агент `V1.1.1` выкачен** (бэкапы
+  `sharedd-node-agent.prev*`); в `/etc/sharedd/node.toml` добавлен
+  `[telemt] api_addr = "http://127.0.0.1:9091"` → включён DC2-режим.
+- **Проверено end-to-end** (temp-сессия, удалена): `hosting.cpu/ram` считаются,
+  `net_ingress/egress` непустые, `users.traffic_by_user` = `[{u0cb271,…}]`,
+  `telemt.control_api` = ok/12 DC, `absent=['actions']`.
+- Прочие ноды пока со старыми агентами (новый агент нужен и им для пп.3-5).
 
 ## 1. Прод
 
@@ -14,8 +29,8 @@
 - Бэкапы: `/var/backups/sharedd-*` (в т.ч. `sharedd-owner-hotfix-*`,
   `sharedd-profile-fix-*`) со sha256.
 - Откат: старые бинари лежат как `/usr/local/bin/sharedd-registry.prevNN`
-  (последний — `prev23`). **Формат state сменился на списки** — откат ТОЛЬКО
-  вместе с бэкапом `registry_state.json`.
+  (последний — `prev24`, это до V1.1.0). **Формат state сменился на списки** —
+  откат ТОЛЬКО вместе с бэкапом `registry_state.json`.
 - Юнит: `ProtectSystem=strict`, `ReadWritePaths=-/etc/sharedd -/var/lib/sharedd`
   (без второго пути панель не может сохранять конфиг — уже исправлено).
 
@@ -47,26 +62,29 @@ VERSION=Vx.y.z-desc GOOS=linux GOARCH=amd64 bash scripts/build_registry.sh
    фикс — на стороне агента: при apply обнулять/переименовывать локального юзера
    с секретом, совпадающим с секретом реестрового пользователя (сейчас
    `applyMtproxylCLI`/`ensureUser` только добавляют и «чужих юзеров не трогают»).
-3. **CPU/RAM хоста — КОД ГОТОВ, НЕ ВЫКАЧЕН.** Агент теперь пишет в снапшот
-   `sharedd_host_cpu_percent`/`sharedd_host_ram_percent` (`/proc/stat` дельта,
-   `/proc/meminfo`), регистратор отдаёт `hosting.cpu_percent/ram_percent` +
-   условный `absent[]`, кабинет рисует строки CPU/ОЗУ. Файлы:
+3. **CPU/RAM хоста — СДЕЛАНО, ВЫКАЧЕНО (test-lk, проверено).** Агент пишет в
+   снапшот `sharedd_host_cpu_percent`/`sharedd_host_ram_percent` (`/proc/stat`
+   дельта, `/proc/meminfo`), регистратор отдаёт `hosting.cpu_percent/ram_percent`
+   + условный `absent[]`, кабинет рисует строки CPU/ОЗУ. Файлы:
    `node/internal/agent/hoststats.go(+_test)`, `healthcheck.go`, `main.go`,
    `registry/internal/server/{panel,node_detail_api}.go`, `ui/pages/cabinet/node-detail.ts`.
-   Проверки зелёные (node/registry gofmt+vet+build, `build_ui.sh -check`).
-   Чтобы заработало: выкатить новый бинарь агента на ноды + собрать/перезапустить реестр.
-4. **Per-user трафик 24ч — КОД ГОТОВ, НЕ ВЫКАЧЕН.** Агент кладёт в снапшот
-   `sharedd_user_{ingress,egress}_bytes_total{user="X"}` (только shared-юзеры),
-   реестр пишет дельты в новую SQLite-таблицу `traffic_user` (retention 35д) и
-   отдаёт `users.traffic_by_user:[{user,ingress_bytes,egress_bytes}]` за 24ч;
-   кабинет рисует таблицу. Файлы: `node/internal/agent/{main,healthcheck}.go`,
+4. **Per-user трафик 24ч — СДЕЛАНО, ВЫКАЧЕНО (test-lk, проверено).** Агент кладёт
+   в снапшот `sharedd_user_{ingress,egress}_bytes_total{user="X"}` (только
+   shared-юзеры), реестр пишет дельты в SQLite-таблицу `traffic_user` (retention
+   35д) и отдаёт `users.traffic_by_user:[{user,ingress_bytes,egress_bytes}]` за
+   24ч; кабинет рисует таблицу. Файлы: `node/internal/agent/{main,healthcheck}.go`,
    `registry/internal/history/history.go`, `registry/internal/server/{panel,healthcheck,node_detail_api}.go`,
-   `ui/pages/cabinet/{api,node-detail}.ts`. Проверки зелёные (node/registry
-   gofmt+vet+build+targeted tests, `build_ui.sh -check`).
-   ⚠️ Полный `go test ./internal/server/...` в дереве падает на ДОСУЩЕСТВУЮЩЕМ
-   WIP-тесте (`cabinet_api_test.go`/`addendum_fixes_test.go`, untracked, 503
-   control-store) — к трафику отношения нет. Выкат: ребилд агента + реестра.
-5. **telemt Control API: DC/endpoints, качество/здоровье** (отдельный срез).
+   `ui/pages/cabinet/{api,node-detail}.ts`.
+   ⚠️ **Тут же найден и исправлен КРИТИЧНЫЙ продовый баг:** константы агента
+   `telemt_user_octets_{from,to}_client` писались БЕЗ суффикса `_total`, а telemt
+   3.x отдаёт `…_total` → октеты не матчились НИКОГДА: **агрегатный трафик нод был
+   0 всегда (дашборд!), и per-user пустой**. Фикс (коммит `fix(node): match telemt
+   octets counters…`): матч обоих имён. После выката агрегат и per-user пошли.
+5. **telemt Control API: DC/endpoints, качество/здоровье — СДЕЛАНО, ВЫКАЧЕНО
+   (test-lk).** Агент отдаёт полный `/v1/stats/dcs` (`dc_stats`), реестр держит
+   его in-memory и отдаёт `telemt.control_api{ok,generated_at,middle_proxy_enabled,
+   dcs[]}`; вердикт DC2-здоровья не менялся. Для данных нужен `[telemt] api_addr`
+   в node.toml (на test-lk включён).
 6. **Действия ноды** для пользователя (проверка/конфиг/переустановка).
 7. **Коммит `dev` — СДЕЛАНО (2026-10-14).** Всё дерево (было ~180 позиций, 23
    сборки) зафиксировано 5 логическими коммитами по слоям:
