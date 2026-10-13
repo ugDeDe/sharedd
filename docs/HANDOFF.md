@@ -74,8 +74,11 @@ VERSION=Vx.y.z-desc GOOS=linux GOARCH=amd64 bash scripts/build_registry.sh
    `feat(node):` DC2+hoststats → `feat(ui):`+webassets → `docs:`.
    Локально, БЕЗ push. origin=`git@github.com:ugDeDe/sharedd.git`, у `dev` нет
    upstream — пушить `git push -u origin dev` (по согласию).
-   ⚠️ Полный `go test ./internal/server/...` красный на WIP-тестах control-store
-   (503) — закоммичены как есть, нужен отдельный разбор.
+   ✅ Полный `go test ./...` в обоих модулях ЗЕЛЁНЫЙ (в т.ч. `-race`). Красные
+   WIP-тесты разобраны (коммит `fix(registry): repair cabinet test suite...`):
+   причина 503 — тест-харнесс не применял `SharedProxy.Port=443` (provision-vars
+   валидация 1..65535), + реальный баг квоты `UsedNodes` не считал pending-брони;
+   «дедлок» был следствием 503.
 8. **Beget** — API отвечает `INCORRECT_CREDENTIALS` на его логин/пароль; ждём от
    владельца скриншот `cp.beget.com/settings/security/api` (включён ли API, 2FA).
 
