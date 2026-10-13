@@ -2471,7 +2471,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="616762ae9262f1e4">
+  <meta name="sharedd-build" content="cc915ea381abd80b">
 </head>
 <body>
 
@@ -4223,9 +4223,10 @@
     const installing = meta.key === "installing";
     const authLabel = s.auth_type === "key" ? "приватный ключ" : "пароль";
     let installBtn = "";
-    if (!installing && meta.key !== "done" && meta.key !== "deleted") {
-      const retry = meta.key === "failed";
-      installBtn = `<button class="btn sm${retry ? "" : " primary"}" data-sinstall="${s.id}" data-sretry="${retry ? 1 : 0}">${retry ? "Повторить установку" : "Установить"}</button>`;
+    if (!installing && meta.key !== "deleted") {
+      const mode = meta.key === "failed" ? "retry" : meta.key === "done" ? "reinstall" : "install";
+      const label = mode === "retry" ? "Повторить установку" : mode === "reinstall" ? "Переустановить" : "Установить";
+      installBtn = `<button class="btn sm${mode === "install" ? " primary" : ""}" data-sinstall="${s.id}" data-smode="${mode}">${label}</button>`;
     }
     const opHtml = op ? `<div class="kv" style="gap:6px">
       <span class="kv-k">Операция #${op.id} · ${esc(op.kind)}</span>
@@ -4325,10 +4326,14 @@
     const p = [...m.published || [], ...m.profiles || []].find((x) => id ? x.id === id : x.name === "sharedd-node");
     return p ? parseVarsSchema(p.vars_schema) : [];
   }
-  function openInstall(s, isRetry) {
+  function openInstall(s, mode) {
+    const isRetry = mode === "retry";
+    const actionLabel = isRetry ? "Повторить установку" : mode === "reinstall" ? "Переустановить" : "Установить";
+    const title = isRetry ? `Повторить установку · ${s.label}` : mode === "reinstall" ? `Переустановка · ${s.label}` : `Установка · ${s.label}`;
+    const banner = mode === "reinstall" ? `<div class="banner bad" style="margin:0 0 12px"><span>Повторная установка перезапишет текущую конфигурацию прокси на сервере <span class="mono">${esc(s.host)}:${s.port}</span> и перезапустит прокси. Выберите профиль.</span></div>` : `<div class="banner info" style="margin:0 0 12px"><span>Установка выполняется по SSH на ваш существующий сервер <span class="mono">${esc(s.host)}:${s.port}</span>. Новый сервер не создаётся и не оплачивается.</span></div>`;
     openModal(
-      isRetry ? `Повторить установку · ${s.label}` : `Установка · ${s.label}`,
-      `<div class="banner info" style="margin:0 0 12px"><span>Установка выполняется по SSH на ваш существующий сервер <span class="mono">${esc(s.host)}:${s.port}</span>. Новый сервер не создаётся и не оплачивается.</span></div>
+      title,
+      `${banner}
      <div class="field" id="sv-install-prof-wrap">
        <label for="sv-install-prof">Профиль установки</label>
         <select id="sv-install-prof" disabled><option value="">Загрузка профиля…</option></select>
@@ -4342,7 +4347,7 @@
      <div class="banner bad" id="sv-install-err" role="alert" hidden style="margin:12px 0 0"></div>`,
       [
         { label: "Отмена", cls: "ghost", onClick: closeModal },
-        { label: isRetry ? "Повторить установку" : "Установить", cls: "primary", onClick: (ev) => doInstall(ev.currentTarget, s, isRetry) }
+        { label: actionLabel, cls: "primary", onClick: (ev) => doInstall(ev.currentTarget, s, mode) }
       ],
       true
     );
@@ -4354,7 +4359,7 @@
     const originalSelect = $("sv-install-prof");
     const load2 = () => {
       api.myProfiles().then((m) => {
-        var _a;
+        var _a, _b, _c, _d;
         const sel = $("sv-install-prof");
         if (sel !== originalSelect || !document.body.contains(sel)) return;
         if (isRetry) {
@@ -4369,8 +4374,18 @@
           delete sel.dataset.loadError;
           return;
         }
-        const opts = ['<option value="0">Стандартный профиль</option>'];
-        for (const p of m.published || []) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
+        const isReinstall = mode === "reinstall";
+        const curId = (_c = (_b = s.operation) == null ? void 0 : _b.profile_id) != null ? _c : 0;
+        const defaultId = (_d = (m.published || []).find((p) => p.name === "sharedd-node")) == null ? void 0 : _d.id;
+        const opts = [];
+        if (!isReinstall) {
+          opts.push('<option value="0">Стандартный профиль</option>');
+        } else {
+          if (defaultId !== void 0) opts.push(`<option value="${defaultId}">Стандартный профиль</option>`);
+          opts.push(`<option value="0">Оставить текущий профиль (id=${curId})</option>`);
+        }
+        for (const p of m.published || [])
+          if (!isReinstall || p.id !== defaultId) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
         for (const p of m.profiles || [])
           if (!(m.published || []).some((x) => x.id === p.id)) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
         sel.innerHTML = opts.join("");
@@ -4378,6 +4393,8 @@
         sel.dataset.ready = "true";
         delete sel.dataset.loadError;
         $("sv-profile-status").textContent = "Смена профиля сбрасывает переменные этой установки.";
+        const preselect = isReinstall && defaultId !== curId ? 0 : isReinstall ? defaultId : 0;
+        sel.value = String(preselect);
         let selected = sel.value;
         sel.addEventListener("change", () => {
           const ed = document.querySelector("#sv-install-vars .vars-editor");
@@ -4386,9 +4403,10 @@
             return;
           }
           selected = sel.value;
-          renderInstallVars(installProfileDecls(m, Number(sel.value) || 0));
+          const vid = Number(sel.value) || 0;
+          renderInstallVars(installProfileDecls(m, isReinstall && vid === 0 ? curId : vid));
         });
-        renderInstallVars(installProfileDecls(m, 0), pendingRows);
+        renderInstallVars(installProfileDecls(m, isReinstall ? curId : 0), pendingRows);
       }).catch(() => {
         if ($("sv-install-prof") !== originalSelect) return;
         $("sv-profile-status").innerHTML = `Не удалось загрузить ${isRetry ? "исходный профиль операции" : "профили"}. <button type="button" class="btn sm" id="sv-profile-retry">Повторить</button>`;
@@ -4402,8 +4420,9 @@
     };
     load2();
   }
-  function doInstall(btn, s, isRetry) {
+  function doInstall(btn, s, mode) {
     var _a;
+    const isRetry = mode === "retry";
     const sel = $("sv-install-prof");
     const profile_id = isRetry ? (_a = s.operation) == null ? void 0 : _a.profile_id : sel ? Number(sel.value) || 0 : 0;
     const errBox = $("sv-install-err");
@@ -4427,7 +4446,7 @@
     btn.textContent = isRetry ? "Повтор…" : "Запуск…";
     api.installServer(s.id, { profile_id, vars }).then(() => {
       closeModal();
-      showToast(isRetry ? "Повтор установки запущен. Новый сервер не создаётся." : "Установка запущена.");
+      showToast(isRetry ? "Повтор установки запущен. Новый сервер не создаётся." : mode === "reinstall" ? "Переустановка запущена." : "Установка запущена.");
       loadServers();
     }).catch((e) => {
       btn.disabled = false;
@@ -5416,7 +5435,7 @@
     const sinst = t.closest("[data-sinstall]");
     if (sinst) {
       const s = SERVERS.find((x) => x.id === Number(sinst.dataset.sinstall));
-      if (s) openInstall(s, sinst.dataset.sretry === "1");
+      if (s) openInstall(s, sinst.dataset.smode || "install");
       return;
     }
     const sdel = t.closest("[data-sdel]");

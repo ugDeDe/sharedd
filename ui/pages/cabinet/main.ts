@@ -359,6 +359,9 @@ function confirmRevokeAuthkey(): void {
 /* Уже существующий хост. Провайдер не участвует, платных вызовов нет.
    Контролы НИКОГДА не называют установку покупкой/созданием сервера. */
 type ServerStateKey = "new" | "checked" | "installing" | "done" | "failed" | "deleted";
+/* install — первый запуск; retry — после сбоя (исходный профиль закреплён);
+   reinstall — повтор на уже установленном сервере со свободным выбором профиля. */
+type InstallMode = "install" | "retry" | "reinstall";
 
 function serverState(s: ManualServer): { key: ServerStateKey; label: string; cls: string } {
   const st = s.operation?.state;
@@ -380,9 +383,10 @@ function serverCardHTML(s: ManualServer): string {
   const installing = meta.key === "installing";
   const authLabel = s.auth_type === "key" ? "приватный ключ" : "пароль";
   let installBtn = "";
-  if (!installing && meta.key !== "done" && meta.key !== "deleted") {
-    const retry = meta.key === "failed";
-    installBtn = `<button class="btn sm${retry ? "" : " primary"}" data-sinstall="${s.id}" data-sretry="${retry ? 1 : 0}">${retry ? "Повторить установку" : "Установить"}</button>`;
+  if (!installing && meta.key !== "deleted") {
+    const mode: InstallMode = meta.key === "failed" ? "retry" : meta.key === "done" ? "reinstall" : "install";
+    const label = mode === "retry" ? "Повторить установку" : mode === "reinstall" ? "Переустановить" : "Установить";
+    installBtn = `<button class="btn sm${mode === "install" ? " primary" : ""}" data-sinstall="${s.id}" data-smode="${mode}">${label}</button>`;
   }
   const opHtml = op ? `<div class="kv" style="gap:6px">
       <span class="kv-k">Операция #${op.id} · ${esc(op.kind)}</span>
@@ -485,10 +489,17 @@ function installProfileDecls(m: MyProfiles, id: number): ProfileVar[] {
   return p ? parseVarsSchema(p.vars_schema) : [];
 }
 
-/* Повтор — на тот же хост с исходным профилем; выбор доступен только впервые. */
-function openInstall(s: ManualServer, isRetry: boolean): void {
-  openModal(isRetry ? `Повторить установку · ${s.label}` : `Установка · ${s.label}`,
-    `<div class="banner info" style="margin:0 0 12px"><span>Установка выполняется по SSH на ваш существующий сервер <span class="mono">${esc(s.host)}:${s.port}</span>. Новый сервер не создаётся и не оплачивается.</span></div>
+/* Повтор — на тот же хост; при сбое исходный профиль закреплён, при переустановке
+   профиль выбирается заново (как при первой установке). */
+function openInstall(s: ManualServer, mode: InstallMode): void {
+  const isRetry = mode === "retry";
+  const actionLabel = isRetry ? "Повторить установку" : mode === "reinstall" ? "Переустановить" : "Установить";
+  const title = isRetry ? `Повторить установку · ${s.label}` : mode === "reinstall" ? `Переустановка · ${s.label}` : `Установка · ${s.label}`;
+  const banner = mode === "reinstall"
+    ? `<div class="banner bad" style="margin:0 0 12px"><span>Повторная установка перезапишет текущую конфигурацию прокси на сервере <span class="mono">${esc(s.host)}:${s.port}</span> и перезапустит прокси. Выберите профиль.</span></div>`
+    : `<div class="banner info" style="margin:0 0 12px"><span>Установка выполняется по SSH на ваш существующий сервер <span class="mono">${esc(s.host)}:${s.port}</span>. Новый сервер не создаётся и не оплачивается.</span></div>`;
+  openModal(title,
+    `${banner}
      <div class="field" id="sv-install-prof-wrap">
        <label for="sv-install-prof">Профиль установки</label>
         <select id="sv-install-prof" disabled><option value="">Загрузка профиля…</option></select>
@@ -502,7 +513,7 @@ function openInstall(s: ManualServer, isRetry: boolean): void {
      <div class="banner bad" id="sv-install-err" role="alert" hidden style="margin:12px 0 0"></div>`,
     [
       { label: "Отмена", cls: "ghost", onClick: closeModal },
-      { label: isRetry ? "Повторить установку" : "Установить", cls: "primary", onClick: (ev) => doInstall(ev.currentTarget as HTMLButtonElement, s, isRetry) },
+      { label: actionLabel, cls: "primary", onClick: (ev) => doInstall(ev.currentTarget as HTMLButtonElement, s, mode) },
     ], true);
    let pendingRows: ProfileVar[] | undefined;
    if (isRetry) $("sv-install-vars").textContent = "Загрузка переменных исходного профиля…";
@@ -523,23 +534,43 @@ function openInstall(s: ManualServer, isRetry: boolean): void {
        delete sel.dataset.loadError;
        return;
      }
-     const opts: string[] = ['<option value="0">Стандартный профиль</option>'];
-    for (const p of m.published || []) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
-    for (const p of m.profiles || [])
-      if (!(m.published || []).some((x) => x.id === p.id)) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
+     // Переустановка: у бэкенда profile_id=0 значит «оставить текущий профиль»,
+     // поэтому штатный профиль адресуем его реальным id (sharedd-node), а «оставить» —
+     // отдельной опцией. Первая установка сохраняет sentinel 0 = «Стандартный профиль».
+     const isReinstall = mode === "reinstall";
+     const curId = s.operation?.profile_id ?? 0;
+     const defaultId = (m.published || []).find((p) => p.name === "sharedd-node")?.id;
+     const opts: string[] = [];
+     if (!isReinstall) {
+       opts.push('<option value="0">Стандартный профиль</option>');
+     } else {
+       // ponytail: штатный профиль публикуется системой; если админ его снял с
+       // публикации, реального id нет — остаётся только «оставить текущий».
+       if (defaultId !== undefined) opts.push(`<option value="${defaultId}">Стандартный профиль</option>`);
+       opts.push(`<option value="0">Оставить текущий профиль (id=${curId})</option>`);
+     }
+     for (const p of m.published || [])
+       if (!isReinstall || p.id !== defaultId) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
+     for (const p of m.profiles || [])
+       if (!(m.published || []).some((x) => x.id === p.id)) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
      sel.innerHTML = opts.join("");
      sel.disabled = false;
      sel.dataset.ready = "true";
      delete sel.dataset.loadError;
-    $("sv-profile-status").textContent = "Смена профиля сбрасывает переменные этой установки.";
-    let selected = sel.value;
-    sel.addEventListener("change", () => {
-      const ed = document.querySelector<HTMLElement>("#sv-install-vars .vars-editor");
-      if (ed && Object.keys(collectInstallVars(ed)).length && !window.confirm("Смена профиля сбросит введённые переменные установки. Продолжить?")) { sel.value = selected; return; }
-      selected = sel.value;
-      renderInstallVars(installProfileDecls(m, Number(sel.value) || 0));
-    });
-    renderInstallVars(installProfileDecls(m, 0), pendingRows);
+     $("sv-profile-status").textContent = "Смена профиля сбрасывает переменные этой установки.";
+     // Переустановка предвыбирает текущий профиль (значение 0 = «оставить»);
+     // если текущий и есть штатный — предвыбираем его реальный id.
+     const preselect = isReinstall && defaultId !== curId ? 0 : (isReinstall ? defaultId : 0);
+     sel.value = String(preselect);
+     let selected = sel.value;
+     sel.addEventListener("change", () => {
+       const ed = document.querySelector<HTMLElement>("#sv-install-vars .vars-editor");
+       if (ed && Object.keys(collectInstallVars(ed)).length && !window.confirm("Смена профиля сбросит введённые переменные установки. Продолжить?")) { sel.value = selected; return; }
+       selected = sel.value;
+       const vid = Number(sel.value) || 0;
+       renderInstallVars(installProfileDecls(m, isReinstall && vid === 0 ? curId : vid));
+     });
+     renderInstallVars(installProfileDecls(m, isReinstall ? curId : 0), pendingRows);
    }).catch(() => {
      if ($("sv-install-prof") !== originalSelect) return;
      $("sv-profile-status").innerHTML = `Не удалось загрузить ${isRetry ? "исходный профиль операции" : "профили"}. <button type="button" class="btn sm" id="sv-profile-retry">Повторить</button>`;
@@ -550,7 +581,8 @@ function openInstall(s: ManualServer, isRetry: boolean): void {
   load();
 }
 
-function doInstall(btn: HTMLButtonElement, s: ManualServer, isRetry: boolean): void {
+function doInstall(btn: HTMLButtonElement, s: ManualServer, mode: InstallMode): void {
+  const isRetry = mode === "retry";
   const sel = $("sv-install-prof") as HTMLSelectElement | null;
   const profile_id = isRetry ? s.operation?.profile_id : sel ? (Number(sel.value) || 0) : 0;
   const errBox = $("sv-install-err");
@@ -568,7 +600,7 @@ function doInstall(btn: HTMLButtonElement, s: ManualServer, isRetry: boolean): v
   api.installServer(s.id, { profile_id, vars })
     .then(() => {
       closeModal();
-      showToast(isRetry ? "Повтор установки запущен. Новый сервер не создаётся." : "Установка запущена.");
+      showToast(isRetry ? "Повтор установки запущен. Новый сервер не создаётся." : mode === "reinstall" ? "Переустановка запущена." : "Установка запущена.");
       loadServers();
     })
     .catch((e: Error & { code?: string }) => {
@@ -1520,7 +1552,7 @@ document.addEventListener("click", (e) => {
   const scheck = t.closest<HTMLElement>("[data-scheck]");
   if (scheck) { const s = SERVERS.find((x) => x.id === Number(scheck.dataset.scheck)); if (s) checkServer(s); return; }
   const sinst = t.closest<HTMLElement>("[data-sinstall]");
-  if (sinst) { const s = SERVERS.find((x) => x.id === Number(sinst.dataset.sinstall)); if (s) openInstall(s, sinst.dataset.sretry === "1"); return; }
+  if (sinst) { const s = SERVERS.find((x) => x.id === Number(sinst.dataset.sinstall)); if (s) openInstall(s, (sinst.dataset.smode as InstallMode) || "install"); return; }
   const sdel = t.closest<HTMLElement>("[data-sdel]");
   if (sdel) { const s = SERVERS.find((x) => x.id === Number(sdel.dataset.sdel)); if (s) confirmDeleteServer(s); return; }
   const del = t.closest<HTMLElement>("[data-del]");

@@ -542,6 +542,221 @@ func TestManualServerOwnerChecks(t *testing.T) {
 	}
 }
 
+// ── переустановка (reinstall) завершённого manual-сервера ─────────
+
+// publishAltProfile — опубликованный альтернативный профиль (selectable для
+// любого пользователя) с теми же шагами, что штатный: verify-эмуляция
+// (verifyExecFn) регистрирует ноду по маркерам default-профиля.
+func publishAltProfile(t *testing.T, r *Registry) control.Profile {
+	t.Helper()
+	p, err := r.control.CreateProfile("alt-install", "переустановка", 0)
+	if err != nil {
+		t.Fatalf("create alt profile: %v", err)
+	}
+	if _, err := r.control.AddProfileVersion(p.ID, control.DefaultProfileSteps, control.DefaultProfileVarsSchema); err != nil {
+		t.Fatalf("alt profile version: %v", err)
+	}
+	pub, err := r.control.PublishProfile(p.ID)
+	if err != nil {
+		t.Fatalf("publish alt profile: %v", err)
+	}
+	return pub
+}
+
+// Reinstall a done server: same op/idem_key, NEW selectable profile, quota
+// unchanged, node re-binds, no orphan node_owners/pending_node_secrets rows.
+func TestManualReinstallDoneAllowsProfileSwitch(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	r.cfg.Security.NodeToken = testNodeToken
+	id := cabinetUser(t, r, "alice", 1) // ровно одно место — reinstall не должен его тратить
+	sess, csrf := cabinetLogin(t, r, "alice", "password-123")
+	ck := cookieMap(sess, csrf)
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+	def, err := r.control.ProfileByName(control.DefaultProfileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alt := publishAltProfile(t, r)
+
+	rec := cabinetCall(t, r, http.MethodPost, "/api/me/servers", ck, csrf,
+		`{"label":"box","host":"8.8.8.8","password":"secret"}`)
+	host := decodeManualHost(t, rec)
+
+	// первая установка штатным профилем
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("install: %d %s", rec.Code, rec.Body.String())
+	}
+	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	final := waitOpTerminal(t, r, op.ID)
+	if final.State != control.OpDone {
+		t.Fatalf("first install: %s (%q)", final.State, final.LastError)
+	}
+	waitWorkerIdle(r, op.ID)
+	if final.ProfileID != def.ID {
+		t.Fatalf("first profile = %d, want default %d", final.ProfileID, def.ID)
+	}
+	oldNodeID := final.NodeID
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("after first install used=%d, want 1", used)
+	}
+
+	// переустановка с ДРУГИМ профилем → 200, тот же op, новый профиль
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf,
+		fmt.Sprintf(`{"profile_id":%d}`, alt.ID))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reinstall: want 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	op2 := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	if op2.ID != op.ID {
+		t.Fatalf("reinstall must reuse the operation: %d vs %d", op2.ID, op.ID)
+	}
+	if op2.State != control.OpInstalling {
+		t.Fatalf("reinstall must return installing, got %s", op2.State)
+	}
+	if op2.ProfileID != alt.ID {
+		t.Fatalf("reinstall response profile = %d, want %d", op2.ProfileID, alt.ID)
+	}
+	final2 := waitOpTerminal(t, r, op2.ID)
+	if final2.State != control.OpDone {
+		t.Fatalf("reinstall: %s (%q)", final2.State, final2.LastError)
+	}
+	if final2.ProfileID != alt.ID {
+		t.Fatalf("final profile = %d, want %d", final2.ProfileID, alt.ID)
+	}
+	if final2.NodeID == "" {
+		t.Fatal("reinstall must re-bind a node")
+	}
+
+	// квота та же; ровно одна нода; нет pending-сироты
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("reinstall must not add a slot, used=%d", used)
+	}
+	nodes, err := r.control.NodesByUser(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || nodes[0].NodeID != final2.NodeID {
+		t.Fatalf("exactly one node expected, got %+v", nodes)
+	}
+	if _, err := r.control.PendingSecretByOperation(op2.ID); !errors.Is(err, control.ErrNotFound) {
+		t.Fatalf("pending secret must be consumed after reinstall, err=%v", err)
+	}
+	// смены node_id в эмуляции не было (label тот же) — старая привязка совпадает
+	// с новой; убеждаемся, что сироты нет.
+	if oldNodeID != final2.NodeID {
+		if _, _, ok, _ := r.control.NodeOwner(oldNodeID); ok {
+			t.Fatalf("old node binding %s must be retired", oldNodeID)
+		}
+	}
+	ops, _ := r.control.OperationsByUser(id)
+	manualOps := 0
+	for _, o := range ops {
+		if o.Kind == control.OpKindManualInstall {
+			manualOps++
+		}
+	}
+	if manualOps != 1 {
+		t.Fatalf("reinstall must not create a second operation, got %d", manualOps)
+	}
+}
+
+// Reinstall with the SAME profile (no profile_id in body) stays on the current
+// profile and completes again.
+func TestManualReinstallSameProfile(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	r.cfg.Security.NodeToken = testNodeToken
+	id := cabinetUser(t, r, "alice", 2)
+	sess, csrf := cabinetLogin(t, r, "alice", "password-123")
+	ck := cookieMap(sess, csrf)
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+	def, err := r.control.ProfileByName(control.DefaultProfileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := cabinetCall(t, r, http.MethodPost, "/api/me/servers", ck, csrf,
+		`{"label":"box","host":"8.8.8.8","password":"secret"}`)
+	host := decodeManualHost(t, rec)
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
+	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+		t.Fatalf("first install: %s (%q)", final.State, final.LastError)
+	}
+	waitWorkerIdle(r, op.ID)
+
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("same-profile reinstall: want 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	op2 := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	if op2.ProfileID != def.ID {
+		t.Fatalf("same-profile reinstall changed profile: %d != %d", op2.ProfileID, def.ID)
+	}
+	if final := waitOpTerminal(t, r, op2.ID); final.State != control.OpDone {
+		t.Fatalf("same-profile reinstall: %s (%q)", final.State, final.LastError)
+	}
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("used=%d, want 1", used)
+	}
+}
+
+// In-progress states still refuse a second install (409 in_progress).
+func TestManualReinstallInProgressRejected(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	r.cfg.Security.NodeToken = testNodeToken
+	cabinetUser(t, r, "alice", 5)
+	sess, csrf := cabinetLogin(t, r, "alice", "password-123")
+	ck := cookieMap(sess, csrf)
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+
+	rec := cabinetCall(t, r, http.MethodPost, "/api/me/servers", ck, csrf,
+		`{"label":"box","host":"8.8.8.8","password":"secret"}`)
+	host := decodeManualHost(t, rec)
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
+	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+		t.Fatalf("install: %s (%q)", final.State, final.LastError)
+	}
+	waitWorkerIdle(r, op.ID)
+
+	for _, state := range []string{control.OpPending, control.OpSent, control.OpDeleting} {
+		if err := r.control.UpdateOperationState(op.ID, state, "", ""); err != nil {
+			t.Fatal(err)
+		}
+		rec := cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), ck, csrf, `{}`)
+		if rec.Code != http.StatusConflict || errCode(t, rec) != "in_progress" {
+			t.Fatalf("state %s: want 409 in_progress, got %d %s", state, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Reinstalling someone else's (done) server is still hidden as 404.
+func TestManualReinstallForeignServerRejected(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	r.cfg.Security.NodeToken = testNodeToken
+	cabinetUser(t, r, "alice", 5)
+	cabinetUser(t, r, "bob", 5)
+	sessA, csrfA := cabinetLogin(t, r, "alice", "password-123")
+	sessB, csrfB := cabinetLogin(t, r, "bob", "password-123")
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+
+	rec := cabinetCall(t, r, http.MethodPost, "/api/me/servers", cookieMap(sessA, csrfA), csrfA,
+		`{"label":"box","host":"8.8.8.8","password":"secret"}`)
+	host := decodeManualHost(t, rec)
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), cookieMap(sessA, csrfA), csrfA, `{}`)
+	op := unmarshalOp(t, rec.Body.Bytes(), &operationJSON{})
+	if final := waitOpTerminal(t, r, op.ID); final.State != control.OpDone {
+		t.Fatalf("install: %s (%q)", final.State, final.LastError)
+	}
+	waitWorkerIdle(r, op.ID)
+
+	rec = cabinetCall(t, r, http.MethodPost, fmt.Sprintf("/api/me/servers/%d/install", host.ID), cookieMap(sessB, csrfB), csrfB, `{}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("bob reinstall alice's server: want 404, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestManualServerCheck(t *testing.T) {
 	r, _ := newCabinetRegistry(t)
 	cabinetUser(t, r, "alice", 5)

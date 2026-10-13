@@ -62,6 +62,11 @@ func manualInstallOperation(q interface{ QueryRow(string, ...any) *sql.Row }, ho
 // pending-secret reservation, operation state and host linkage either all
 // persist or all roll back. node_id остаётся пустым до claim при /register.
 // The caller must serialize acceptance with registration (nodeClaimMu).
+//
+// Переустановка (expected.State == OpDone) допустима: та же операция (id и
+// idem_key) возвращается в installing с новым profile_id; прежняя привязка
+// ноды снимается, место квоты переносится в pending и переоформляется на
+// claim'е (/register) — при той же или новой node_id. Секрет не ротируется.
 func (s *Store) AuthorizeManualOperation(host ManualHost, expected Operation, u User, profileID int64, secret, enc string) (Operation, error) {
 	if host.ID <= 0 || host.InstallKey == "" || host.UserID != u.ID || u.ID == s.legacyUserID || secret == "" || enc == "" {
 		return Operation{}, ErrOwnerMismatch
@@ -96,14 +101,33 @@ func (s *Store) AuthorizeManualOperation(host ManualHost, expected Operation, u 
 		return Operation{}, err
 	} else {
 		idem = op.IdemKey
+		// Профиль НЕ сверяем: переустановка (done) может выбрать другой профиль,
+		// retry — тоже (выбор уже прошёл selectableProfileVersion у вызывающего).
 		if op.ID != expected.ID || op.IdemKey != expected.IdemKey || op.UserID != u.ID ||
-			op.Kind != OpKindManualInstall || op.ProfileID != profileID || op.ProviderVPSID != "" ||
+			op.Kind != OpKindManualInstall || op.ProviderVPSID != "" ||
 			op.CreatedAt < host.CreatedAt || (host.OperationID != 0 && host.OperationID != op.ID) ||
 			(host.NodeID != "" && host.NodeID != op.NodeID) {
 			return Operation{}, ErrOwnerMismatch
 		}
-		if op.State != expected.State || (op.State != OpFailed && op.State != OpInstalling) {
+		if op.State != expected.State || (op.State != OpFailed && op.State != OpInstalling && op.State != OpDone) {
 			return Operation{}, ErrCreateInProgress
+		}
+		// Переустановка завершённой операции: прежняя привязка ноды снимается,
+		// нода перезаявляется через claim-on-first-register под ТЕМ ЖЕ владельцем.
+		// Место квоты не теряется — оно переносится в pending ниже (op.NodeID=="").
+		// Иначе новая node_id (агент переустановлен с чистого листа) осталась бы
+		// неподтверждённой, а старая строка — сиротой в node_owners.
+		if op.State == OpDone && op.NodeID != "" {
+			if _, err := tx.Exec(`DELETE FROM quota_reservations WHERE node_id = ?`, op.NodeID); err != nil {
+				return Operation{}, err
+			}
+			if _, err := tx.Exec(`DELETE FROM node_owners WHERE node_id = ?`, op.NodeID); err != nil {
+				return Operation{}, err
+			}
+			if _, err := tx.Exec(`UPDATE manual_hosts SET node_id = '' WHERE id = ?`, host.ID); err != nil {
+				return Operation{}, err
+			}
+			op.NodeID = ""
 		}
 	}
 	var maxNodes, disabled int
@@ -140,7 +164,8 @@ func (s *Store) AuthorizeManualOperation(host ManualHost, expected Operation, u 
 			return Operation{}, err
 		}
 		op.CreatedAt = now
-	} else if _, err := tx.Exec(`UPDATE operations SET state = ?, last_error = '', updated_at = ? WHERE id = ?`, OpInstalling, now, op.ID); err != nil {
+	} else if _, err := tx.Exec(`UPDATE operations SET state = ?, profile_id = ?, node_id = ?, last_error = '', updated_at = ? WHERE id = ?`,
+		OpInstalling, profileID, op.NodeID, now, op.ID); err != nil {
 		return Operation{}, err
 	}
 	// Pending-бронь — только пока node_id неизвестен. Claim'нутая нода уже в
@@ -162,6 +187,7 @@ func (s *Store) AuthorizeManualOperation(host ManualHost, expected Operation, u 
 		return Operation{}, err
 	}
 	op.State, op.UpdatedAt, op.LastError = OpInstalling, now, ""
+	op.ProfileID = profileID
 	return op, nil
 }
 

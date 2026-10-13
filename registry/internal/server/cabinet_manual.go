@@ -356,10 +356,9 @@ func (r *Registry) handleMeServerInstall(w http.ResponseWriter, req *http.Reques
 			writeManualInstallErr(w, control.ErrCreateInProgress, "manual.install.running_worker")
 			return
 		}
+		// OpDone НЕ отклоняем: это переустановка (reinstall) — операция
+		// перезапускается с тем же id/idem_key, возможно другим профилем.
 		switch op.State {
-		case control.OpDone:
-			controlAPIError(w, http.StatusConflict, "already_done", "установка на этот сервер уже завершена")
-			return
 		case control.OpDeleted:
 			controlAPIError(w, http.StatusBadRequest, "no_vps", "операция удалена")
 			return
@@ -372,10 +371,11 @@ func (r *Registry) handleMeServerInstall(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// Профиль повторяем ТОТ ЖЕ, что выбрал оператор при первом install.
-	effectiveProfile := body.ProfileID
-	if existing.ID != 0 {
-		effectiveProfile = existing.ProfileID
+	// Профиль: при первом install и переустановке — выбранный пользователем
+	// (пусто = штатный); при retry без выбора — прежний профиль операции.
+	effectiveProfile := existing.ProfileID
+	if body.ProfileID != 0 {
+		effectiveProfile = body.ProfileID
 	}
 	pv, err := r.selectableProfileVersion(u, effectiveProfile)
 	if err != nil {
@@ -474,6 +474,13 @@ func writeManualInstallErr(w http.ResponseWriter, err error, operation string) {
 // manualPendingSecret возвращает секрет pending-брони установки: на retry —
 // тот же, из восстановимой AES-GCM копии; иначе — свежий. Ротация живого
 // токена запрещена: нечитаемая копия → ошибка, а не новый секрет.
+//
+// Переустановка (existing.State == OpDone) ИДЁТ СЮДА ЖЕ: pending уже claim'нут,
+// node_id непустой, поэтому секрет берётся из node_owners и ПЕРЕИСПОЛЬЗУЕТСЯ
+// (без ротации). AuthorizeManualOperation снимает прежнюю привязку и кладёт
+// тот же секрет как pending; нода перезаявляется claim-on-first-register —
+// идемпотентно при сохранённом /var/lib/sharedd/node_id, корректно и при
+// смене node_id (старая строка node_owners не остаётся сиротой).
 func (r *Registry) manualPendingSecret(existing control.Operation) (string, string, error) {
 	if existing.ID != 0 {
 		p, err := r.control.PendingSecretByOperation(existing.ID)
@@ -489,7 +496,7 @@ func (r *Registry) manualPendingSecret(existing control.Operation) (string, stri
 			return secret, p.SecretEnc, nil
 		case errors.Is(err, control.ErrNotFound):
 			// pending уже claim'нут: нода привязана и секрет лежит в
-			// node_owners. Retry переиспользует ЕГО, не ротируя.
+			// node_owners. Retry И переустановка переиспользуют ЕГО, не ротируя.
 		default:
 			return "", "", err
 		}
