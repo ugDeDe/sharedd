@@ -159,6 +159,17 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if expectedPort == 0 { // tests and legacy in-memory configs created before shared_proxy.port
 		expectedPort = 443
 	}
+	if candidate.Port != payload.Port {
+		// Neither a GP measurement nor a TCP probe of the old port proves
+		// this endpoint ready. A verified GP result below can restore GP.
+		candidate.GlobalpingOK, candidate.Healthy = false, false
+		candidate.GlobalpingMeasurementID, candidate.LastGlobalpingAt = "", time.Time{}
+		candidate.GlobalpingMeasurementAt = time.Time{}
+		if candidate.Port != 0 { // the first port report still belongs to the registration epoch
+			candidate.EndpointRegisteredAt = time.Now()
+		}
+		candidate.TCPHist = nil
+	}
 	candidate.Port = payload.Port
 	portCompatible := payload.Port == expectedPort
 	candidate.PortCompatible = &portCompatible
@@ -180,6 +191,13 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	}
 	if verifyGP && verifiedKnown {
 		candidate.LastGlobalpingAt = time.Now()
+		// Keep legacy report/queue semantics, but destructive readiness uses only
+		// finished provider proof. Zero future-clock tolerance at receipt prevents
+		// a future timestamp from becoming usable merely by waiting for the clock.
+		candidate.GlobalpingMeasurementAt = time.Time{}
+		if measurement.Status == "finished" && !measurement.CreatedAt.After(candidate.LastGlobalpingAt) {
+			candidate.GlobalpingMeasurementAt = measurement.CreatedAt
+		}
 		candidate.LastGlobalpingRequestAt = time.Time{}
 		prevGP := candidate.GlobalpingOK
 		candidate.GlobalpingOK = verifiedOK
@@ -343,6 +361,12 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	// report advances cumulative traffic baselines; otherwise an older cached
 	// counter racing a newer metrics report looks like a telemt reset.
 	if payload.MetricsSnapshot != nil && !verifyGP {
+		// telemt 3.5.9 emits octet counters with a _total suffix; old agents
+		// don't recognize them. Normalize both stored and incoming snapshots so
+		// traffic deltas, per-user rows and node detail work without an agent
+		// rollout. Idempotent, never clobbers real sharedd_* values.
+		candidate.MetricsSnapshot = normalizeTelemtMetrics(candidate.MetricsSnapshot)
+		payload.MetricsSnapshot = normalizeTelemtMetrics(payload.MetricsSnapshot)
 		if r.db != nil {
 			sameUsers := candidate.MetricsSnapshot[trafficUsersMetric] == payload.MetricsSnapshot[trafficUsersMetric]
 			ingress, egress := int64(0), int64(0)

@@ -45,7 +45,9 @@ type Measurement struct {
 	Target             string             `json:"target"`
 	MeasurementOptions MeasurementOptions `json:"measurementOptions"`
 	Status             string             `json:"status"`
-	Results            []ProbeMeasurement `json:"results"`
+	// GET MeasurementResponse.createdAt is an RFC 3339 date-time, not fetch time.
+	CreatedAt time.Time          `json:"createdAt"`
+	Results   []ProbeMeasurement `json:"results"`
 }
 
 type GlobalpingChecker struct {

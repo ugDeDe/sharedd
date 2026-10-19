@@ -163,6 +163,7 @@ func TestMetricsOnlyReportPreservesGlobalping(t *testing.T) {
 	r.state.Candidates["n1"].GlobalpingOK = true
 	r.state.Candidates["n1"].GlobalpingVerifiedRatio = 0.9
 	r.state.Candidates["n1"].GlobalpingMeasurementID = "m-old"
+	r.state.Candidates["n1"].Port = 443 // Existing GP proof is for this unchanged endpoint.
 	r.mu.Unlock()
 
 	payload := HealthReportPayload{NodeID: "n1", Port: 443, MetricsOK: true, CheckedAt: time.Now()}

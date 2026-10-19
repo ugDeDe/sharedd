@@ -175,6 +175,10 @@ type TerminatedRecord struct {
 	// на новом. Такую запись не снимает terminateLiftIfIPChangedLocked
 	// (нода ничьих инструкций не выполняла — она просто бросила плохой ip).
 	StaleIP bool `json:"stale_ip,omitempty"`
+	// EpisodeID — stable ban episode id persisted together with the verdict.
+	// It lets the reconciler replay a failed control-DB insert (M5), making
+	// ban delivery at-least-once instead of at-most-once.
+	EpisodeID string `json:"episode_id,omitempty"`
 }
 
 // PruneTombstone — карантинная запись по вычищенной рипером ноде. Персистится
@@ -344,6 +348,9 @@ type Candidate struct {
 	Healthy         bool      `json:"healthy"`
 	ConsecutiveFail int       `json:"-"`
 	ConsecutiveOK   int       `json:"-"`
+	// EndpointRegisteredAt advances on IP/known-port changes. Legacy state uses
+	// RegisteredAt as the initial epoch; same-endpoint re-registration keeps it.
+	EndpointRegisteredAt time.Time `json:"endpoint_registered_at,omitempty"`
 
 	// Очередь мастерства считается по НЕПРЕРЫВНОМУ здоровью, а не по RegisteredAt:
 	// QueuedAt — момент последнего входа в fully-healthy состояние; пока нода
@@ -371,7 +378,10 @@ type Candidate struct {
 	GlobalpingOK            bool      `json:"globalping_ok"`
 	GlobalpingMeasurementID string    `json:"globalping_measurement_id"`
 	GlobalpingVerifiedRatio float64   `json:"globalping_verified_ratio"`
-	LastGlobalpingAt        time.Time `json:"last_globalping_at,omitempty"`
+	LastGlobalpingAt        time.Time `json:"last_globalping_at,omitempty"` // verification receipt only, not measurement freshness
+	// GlobalpingMeasurementAt comes only from a finished independent GET's
+	// createdAt. Missing legacy proof stays zero; never migrate from receipt time.
+	GlobalpingMeasurementAt time.Time `json:"globalping_measurement_at,omitempty"`
 	LastGlobalpingRequestAt time.Time `json:"-"`
 	MetricsOK               bool      `json:"metrics_ok"` // сырой вердикт ПОСЛЕДНЕГО отчёта (мигает от любого чиха)
 	// MetricsHealthy — защёлка metrics-здоровья по fail/recover-
