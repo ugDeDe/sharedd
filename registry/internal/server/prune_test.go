@@ -323,3 +323,58 @@ func TestRegisterEndpointReturns429DuringBan(t *testing.T) {
 		t.Fatalf("register after ban expiry must be 200, got %d", resp2.StatusCode)
 	}
 }
+
+// Нода выбыла из пула (prune по нездоровью) — место квоты освобождается,
+// владение остаётся, новая нода занимает слот.
+func TestPruneReleasesQuotaSlot(t *testing.T) {
+	r := newUsersTestRegistry(t)
+	id, key := userKey(t, r, "alice", 1)
+	if rec := registerCall(t, r, "node-a1b2c", "1.1.1.1", key); rec.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("used = %d, want 1", used)
+	}
+
+	now := time.Now()
+	c := r.state.Candidates["node-a1b2c"]
+	c.LastHeartbeat = now
+	c.UnhealthySince = now.Add(-2 * time.Hour)
+	r.sweepExpired(now)
+
+	if used, _ := r.control.UsedNodes(id); used != 0 {
+		t.Fatalf("pruned node must release quota, used = %d", used)
+	}
+	if _, _, ok, _ := r.control.NodeOwner("node-a1b2c"); !ok {
+		t.Fatal("ownership must survive prune")
+	}
+	if rec := registerCall(t, r, "node-b1b2c", "2.2.2.2", key); rec.Code != http.StatusOK {
+		t.Fatalf("register into freed slot: %d %s", rec.Code, rec.Body.String())
+	}
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("used = %d, want 1", used)
+	}
+}
+
+// Terminate (dead) освобождает место; dead-запись снимается register'ом,
+// и нода возвращается при свободном слоте.
+func TestTerminateReleasesQuotaSlot(t *testing.T) {
+	r := newUsersTestRegistry(t)
+	id, key := userKey(t, r, "alice", 1)
+	if rec := registerCall(t, r, "node-a1b2c", "1.1.1.1", key); rec.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	r.mu.Lock()
+	r.terminateNodeLocked(r.state.Candidates["node-a1b2c"], time.Now(), BanReasonDead, "test")
+	r.mu.Unlock()
+
+	if used, _ := r.control.UsedNodes(id); used != 0 {
+		t.Fatalf("terminated node must release quota, used = %d", used)
+	}
+	if rec := registerCall(t, r, "node-a1b2c", "1.1.1.1", key); rec.Code != http.StatusOK {
+		t.Fatalf("dead re-register with free slot: %d %s", rec.Code, rec.Body.String())
+	}
+	if used, _ := r.control.UsedNodes(id); used != 1 {
+		t.Fatalf("used = %d, want 1", used)
+	}
+}

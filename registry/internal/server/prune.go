@@ -6,6 +6,18 @@ import (
 	"time"
 )
 
+// releaseQuota — нода покинула пул: снимаем её место из квоты, ownership
+// (node_owners) остаётся. Ошибку только логируем: prune/terminate не должны
+// падать из-за БД, а рестарт/повторный register восстановят состояние.
+func (r *Registry) releaseQuota(nodeID string) {
+	if r.control == nil || nodeID == "" {
+		return
+	}
+	if err := r.control.ReleaseQuota(nodeID); err != nil {
+		log.Printf("release quota for %s: %v", nodeID, err)
+	}
+}
+
 // Рипер неактивных нод + карантин после prune.
 //
 // Раньше нода удалялась из пула ТОЛЬКО по протуханию heartbeat (expiryLoop).
@@ -168,6 +180,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 				Detail: fmt.Sprintf("no heartbeat for %s", now.Sub(c.LastHeartbeat).Round(time.Second)),
 			})
 			delete(r.state.Candidates, id)
+			r.releaseQuota(id)
 			changed = true
 			continue
 		}
@@ -215,6 +228,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 					pruneBanFor(tb.Strikes), tb.Strikes),
 			})
 			delete(r.state.Candidates, id)
+			r.releaseQuota(id)
 			changed = true
 		}
 	}
