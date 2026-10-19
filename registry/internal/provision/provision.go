@@ -406,19 +406,39 @@ func (p *Provisioner) Remove(ctx context.Context, opID int64) (control.Operation
 // Валидация переменных (addendum §6) — до запуска; первый упавший шаг
 // прерывает профиль; значения секретов маскируются в выводе.
 func (p *Provisioner) ApplyProfile(ctx context.Context, profileID int64, target sshx.Target, vars map[string]any) (RunResult, error) {
-	return p.applyProfile(ctx, 0, profileID, target, vars, nil)
+	return p.applyProfile(ctx, 0, profileID, 0, target, vars, nil)
 }
 
 // applyProfile — общее тело ApplyProfile. opID != 0 включает пошаговый журнал
 // (plan-ui-batch.md Фаза 3): один ряд operation_steps на шаг. extraSecrets —
 // дополнительные значения для маскировки (совпадает с финальным last_error).
-func (p *Provisioner) applyProfile(ctx context.Context, opID, profileID int64, target sshx.Target, vars map[string]any, extraSecrets []string) (RunResult, error) {
+func (p *Provisioner) applyProfile(ctx context.Context, opID, profileID, profileVersionID int64, target sshx.Target, vars map[string]any, extraSecrets []string) (RunResult, error) {
 	if target.Empty() {
 		return RunResult{}, ErrSSHUnavailable
 	}
-	pv, err := p.store.ProfileVersion(profileID, 0)
+	var pv control.ProfileVersion
+	var err error
+	if profileVersionID != 0 {
+		pv, err = p.store.ProfileVersionByNumericID(profileVersionID)
+	} else {
+		pv, err = p.store.ProfileVersion(profileID, 0)
+	}
 	if err != nil {
 		return RunResult{}, err
+	}
+	if profileVersionID != 0 && (pv.ProfileID != profileID || (pv.Format != "" && pv.Format != control.FormatText)) {
+		return RunResult{}, fmt.Errorf("%w: pinned version must belong to the selected text profile", ErrValidation)
+	}
+	// Only required standard references are checked; optional/custom variables
+	// retain their existing empty-value behavior. Never manufacture a node ID.
+	for _, name := range control.ProfileVarNames(pv.Steps) {
+		switch name {
+		case "secret", "proxy_secret", "registry_url", "node_id":
+			value, ok := vars[name].(string)
+			if !ok || strings.TrimSpace(value) == "" {
+				return RunResult{}, fmt.Errorf("%w: required standard variable %q is unavailable", ErrValidation, name)
+			}
+		}
 	}
 	if err := control.ValidateExtraVars(vars); err != nil {
 		return RunResult{}, err
@@ -497,7 +517,7 @@ func secretValues(varsSchema string, vars map[string]any) []string {
 		s := fmt.Sprint(v)
 		if s != "" && !seen[s] {
 			seen[s] = true
-			out = append(out, s)
+			out = append(out, s, control.ShellQuote(s))
 		}
 	}
 	for _, name := range control.SecretVarNames(varsSchema) {
@@ -505,7 +525,7 @@ func secretValues(varsSchema string, vars map[string]any) []string {
 			add(v)
 		}
 	}
-	for _, name := range []string{"node_secret", "node_token", "authkey", "password", "proxy_secret"} {
+	for _, name := range []string{"node_secret", "node_token", "authkey", "password", "proxy_secret", "secret"} {
 		if v, ok := vars[name]; ok {
 			add(v)
 		}
@@ -560,6 +580,8 @@ func (p *Provisioner) waitRunning(ctx context.Context, vpsID string) (string, bo
 type InstallRequest struct {
 	OperationID int64
 	ProfileID   int64
+	// ProfileVersionID pins profile_versions.id; zero preserves legacy latest.
+	ProfileVersionID int64
 	// Host — IP VPS/host (становится target.Host); Port — SSH-порт (0 → 22);
 	// User/Auth — SSH-креды.
 	Host string
@@ -590,7 +612,7 @@ func (p *Provisioner) InstallProfile(ctx context.Context, req InstallRequest) (c
 	// той же операции убираем, чтобы idx не дублировался в выдаче.
 	_ = p.store.ClearOperationSteps(op.ID)
 	target := sshx.Target{Host: req.Host, Port: req.Port, User: orSSHUser(req.User), Auth: req.Auth}
-	res, runErr := p.applyProfile(ctx, op.ID, req.ProfileID, target, req.Vars, req.Secrets)
+	res, runErr := p.applyProfile(ctx, op.ID, req.ProfileID, req.ProfileVersionID, target, req.Vars, req.Secrets)
 	if runErr != nil {
 		out := res.Output
 		if len(req.Secrets) > 0 {
