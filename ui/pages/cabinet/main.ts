@@ -4048,13 +4048,13 @@ async function refresh(): Promise<void> {
 function confirmDeleteNode(id: string): void {
   openModal(
     `Удалить ноду ${id}?`,
-    "Нода будет отмечена на удаление и освободится после подтверждения провайдера. Место освободит администратор. Ошибка здоровья или установки не создаёт новый сервер.",
+    "Нода будет сразу удалена из пула: назначения снимаются, место в квоте освобождается. Агент с этой identity больше не сможет вернуться — вернуть ноду можно только новой установкой.",
     [
       { label: "Отмена", cls: "ghost", onClick: closeModal },
       { label: "Удалить", cls: "danger", onClick: () => {
         closeModal();
         api.deleteNode(id)
-          .then(() => { showToast("Нода отмечена на удаление. Место освободит администратор."); refresh().catch(() => {}); })
+          .then(() => { showToast("Нода удалена из пула, место освобождено."); refresh().catch(() => {}); })
           .catch((e: Error) => showToast(e.message, true));
       } },
     ],

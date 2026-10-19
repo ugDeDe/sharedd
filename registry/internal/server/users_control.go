@@ -264,6 +264,8 @@ func (r *Registry) authorizeUserRegister(w http.ResponseWriter, body registerReq
 			controlAPIError(w, http.StatusForbidden, "owner_mismatch", "node belongs to another user")
 		case errors.Is(err, control.ErrQuotaExceeded):
 			controlAPIError(w, http.StatusForbidden, "quota_exceeded", fmt.Sprintf("max_nodes=%d reached", u.MaxNodes))
+		case errors.Is(err, control.ErrNodeDeleting):
+			controlAPIError(w, http.StatusForbidden, "node_deleting", "node was deleted by the owner; reinstall with a new identity")
 		default:
 			r.writeControlUnavailable(w)
 		}

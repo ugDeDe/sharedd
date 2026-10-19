@@ -65,6 +65,10 @@ func (s *Store) BindNodeOwnership(nodeID string, u User) error {
 	if owner != u.ID || legacy != 0 {
 		return ErrOwnerMismatch
 	}
+	// Новая установка по этому же node_id снимает отметку удаления.
+	if _, err := tx.Exec(`UPDATE node_owners SET deleting = 0 WHERE node_id = ?`, nodeID); err != nil {
+		return err
+	}
 	var used int
 	if err := tx.QueryRow(
 		`SELECT COUNT(DISTINCT node_id) FROM (
@@ -114,7 +118,8 @@ func (s *Store) AuthorizeNode(nodeID string, u User) error {
 	now := time.Now().Unix()
 	checkQuota := false
 	var owner int64
-	err = tx.QueryRow(`SELECT user_id FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner)
+	var deleting int
+	err = tx.QueryRow(`SELECT user_id, deleting FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &deleting)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		// свободна — захватываем место ниже
@@ -132,6 +137,11 @@ func (s *Store) AuthorizeNode(nodeID string, u User) error {
 	default:
 		if owner != u.ID {
 			return ErrOwnerMismatch
+		}
+		if deleting != 0 {
+			// Владелец удалил ноду: пул её больше не принимает. Вернуть
+			// можно только новой установкой с новой identity.
+			return ErrNodeDeleting
 		}
 		// Своя нода: резерв восстанавливаем, если нода была вне пула.
 		res, err := tx.Exec(`INSERT OR IGNORE INTO quota_reservations (node_id, user_id, created_at) VALUES (?,?,?)`,

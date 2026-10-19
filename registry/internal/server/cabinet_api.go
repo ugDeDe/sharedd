@@ -609,7 +609,32 @@ func (r *Registry) handleDeleteNode(w http.ResponseWriter, req *http.Request) {
 		r.writeControlUnavailable(w)
 		return
 	}
-	writeCabinetJSON(w, http.StatusOK, map[string]any{"node_id": nodeID, "state": "deleting"})
+	// Удаление владельцем — немедленное: нода уходит из пула, назначения
+	// снимаются, место в квоте освобождается. Никакого «освободит админ».
+	r.mu.Lock()
+	if c, ok := r.state.Candidates[nodeID]; ok {
+		r.addEventLocked(Event{
+			Type: EventNodeTerminated, NodeID: nodeID, IP: c.IP,
+			Detail: "удалена владельцем — выведена из пула, место освобождено",
+		})
+	}
+	delete(r.state.Candidates, nodeID)
+	for d, ids := range r.state.Assignments {
+		nodes, since, removed := dropNodeFromSlots(ids, r.state.AssignmentsSince[d], nodeID)
+		if !removed {
+			continue
+		}
+		r.state.Assignments[d] = nodes
+		r.state.AssignmentsSince[d] = since
+		delete(r.ttlOverdue, d)
+		r.enqueueDNSDesiredFromAssignmentsLocked(d)
+	}
+	r.persistStateLocked()
+	r.mu.Unlock()
+	// Место считает только активный пул: снимаем текущий резерв сразу,
+	// владение node_id остаётся (deleting=1) и блокирует возврат агента.
+	_ = r.control.ReleaseQuota(nodeID)
+	writeCabinetJSON(w, http.StatusOK, map[string]any{"node_id": nodeID, "state": "deleted"})
 }
 
 // strconv используется в beget-части (тот же файл пакета); держим импорт

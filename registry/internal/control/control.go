@@ -33,9 +33,11 @@ var (
 	ErrCooldown         = errors.New("cooldown active")
 	ErrCreateInProgress = errors.New("create already in progress")
 	ErrOwnerMismatch    = errors.New("owner mismatch")
-	ErrProfileInUse     = errors.New("profile in use")
-	ErrLastAdmin        = errors.New("cannot disable last active admin")
-	ErrLegacyProtected  = errors.New("legacy user is protected")
+	// ErrNodeDeleting — нода удалена владельцем; агент не должен возвращать её в пул.
+	ErrNodeDeleting    = errors.New("node is marked for deletion")
+	ErrProfileInUse    = errors.New("profile in use")
+	ErrLastAdmin       = errors.New("cannot disable last active admin")
+	ErrLegacyProtected = errors.New("legacy user is protected")
 	// Приглашения (contract §2): различимые коды отказа регистрации.
 	ErrInviteRequired = errors.New("invite required")
 	ErrInviteInvalid  = errors.New("invite invalid")
