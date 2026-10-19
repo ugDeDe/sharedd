@@ -283,8 +283,7 @@ func TestCreateCancelBeforeSendSucceeds(t *testing.T) {
 	}
 }
 
-// 2c. H1: подтверждённый VPS занимает место — второй заказ при max_nodes=1
-// отклонён по квоте (раньше место не расходовалось вовсе).
+// Confirmed VPS orders are not pool admissions, even when max_nodes is one.
 func TestCreateQuotaCountsProvisionedVps(t *testing.T) {
 	s := newStore(t)
 	m := &mockBeget{}
@@ -298,11 +297,11 @@ func TestCreateQuotaCountsProvisionedVps(t *testing.T) {
 	r2 := req("quota-2")
 	r2.MaxNodes = 1
 	r2.NodeID = "node-b2c3d" // другой заказ = другой node_id (как в проде из idem_key)
-	if _, err := p.Create(context.Background(), r2); !errors.Is(err, ErrQuotaExceeded) {
-		t.Fatalf("second create err = %v, want ErrQuotaExceeded", err)
+	if _, err := p.Create(context.Background(), r2); err != nil {
+		t.Fatalf("second create before registration: %v", err)
 	}
-	if c, _, _ := m.calls(); c != 1 {
-		t.Fatalf("CreateVps calls = %d, want 1 (quota blocks the paid call)", c)
+	if c, _, _ := m.calls(); c != 2 {
+		t.Fatalf("CreateVps calls = %d, want 2 (quota applies only to pool admission)", c)
 	}
 }
 
@@ -543,6 +542,50 @@ func TestApplyProfileAbortsOnFirstFailure(t *testing.T) {
 	}
 	if exec.ran() != 2 {
 		t.Fatalf("steps run = %d, want 2 (abort on second)", exec.ran())
+	}
+}
+
+func TestInstallProfileSSHFailureFinalizes(t *testing.T) {
+	for _, cause := range []error{sshx.ErrTransportLost, context.Canceled, context.DeadlineExceeded} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			s := newStore(t)
+			exec := &mockExec{runErr: cause}
+			p := New(s, &mockBeget{}, Config{Exec: exec})
+			prof, err := s.CreateProfile("ssh-failure", "", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.AddProfileVersion(prof.ID, "# first\ntrue\n# never\nfalse\n", ""); err != nil {
+				t.Fatal(err)
+			}
+			op, _, err := s.CreateOperation(control.Operation{
+				UserID: 1, NodeID: "ssh-a1b2c", Kind: control.OpKindCreate,
+				State: control.OpConfirmed, IdemKey: "ssh-failure", ProviderVPSID: "existing-vps",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = p.InstallProfile(context.Background(), InstallRequest{
+				OperationID: op.ID, ProfileID: prof.ID, Host: "203.0.113.9", Auth: okAuth(),
+			})
+			if !errors.Is(err, cause) || exec.ran() != 1 {
+				t.Fatalf("err=%v runs=%d; want cause and no subsequent step", err, exec.ran())
+			}
+			saved, err := s.Operation(op.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.State != control.OpFailed || saved.ProviderVPSID != "existing-vps" || !strings.Contains(saved.LastError, cause.Error()) {
+				t.Fatalf("failure was not persisted safely: %+v", saved)
+			}
+			steps, err := s.OperationSteps(op.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(steps) != 1 || steps[0].Status != control.StepError || steps[0].FinishedAt == 0 {
+				t.Fatalf("step was not finalized: %+v", steps)
+			}
+		})
 	}
 }
 

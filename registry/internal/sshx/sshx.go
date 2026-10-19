@@ -54,6 +54,14 @@ type Result struct {
 	Code   int
 }
 
+// ErrTransportLost means the SSH peer stopped acknowledging keepalives.
+var ErrTransportLost = errors.New("ssh_transport_lost")
+
+const (
+	keepaliveInterval = 20 * time.Second
+	keepaliveTimeout  = 60 * time.Second
+)
+
 func clientConfig(auth Auth) (*ssh.ClientConfig, error) {
 	cfg := &ssh.ClientConfig{
 		Auth:            []ssh.AuthMethod{},
@@ -105,6 +113,17 @@ func parseKey(pemKey string) (ssh.Signer, error) {
 // ограничивает один прогон (что наступит раньше). Ненулевой код выхода не
 // ошибка: он в Result.Code, err != nil только при сбое транспорта/таймауте.
 func Run(ctx context.Context, t Target, command string, timeout time.Duration, stdin string) (*Result, error) {
+	return run(ctx, t, command, timeout, stdin, keepaliveInterval, keepaliveTimeout)
+}
+
+func run(ctx context.Context, t Target, command string, timeout time.Duration, stdin string, interval, liveness time.Duration) (*Result, error) {
+	if timeout <= 0 {
+		timeout = 15 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ctx, cancelCause := context.WithCancelCause(ctx)
+	defer cancelCause(nil)
 	if t.Port == 0 {
 		t.Port = 22
 	}
@@ -123,18 +142,37 @@ func Run(ctx context.Context, t Target, command string, timeout time.Duration, s
 	if err != nil {
 		return nil, fmt.Errorf("ssh dial: %w", err)
 	}
+	defer func() { _ = conn.Close() }()
+	// Closing the transport interrupts handshake, session setup and blocked writes.
+	stopClose := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopClose()
+	if err := conn.SetDeadline(time.Now().Add(cfg.Timeout)); err != nil {
+		return nil, fmt.Errorf("ssh handshake deadline: %w", err)
+	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
 	if err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("ssh handshake: %w", err)
+		return nil, fmt.Errorf("ssh handshake: %w", errors.Join(err, ctx.Err()))
 	}
 	defer func() { _ = sshConn.Close() }()
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		return nil, fmt.Errorf("ssh session deadline: %w", err)
+	}
 	client := ssh.NewClient(sshConn, chans, reqs)
 	defer func() { _ = client.Close() }()
+	keepaliveDone := make(chan struct{})
+	go func() {
+		defer close(keepaliveDone)
+		keepalive(ctx, client, interval, liveness, cancelCause)
+	}()
+	defer func() {
+		cancelCause(nil)
+		_ = conn.Close() // Unblock an outstanding SendRequest before joining it.
+		<-keepaliveDone
+	}()
 
 	sess, err := client.NewSession()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ssh session: %w", errors.Join(err, context.Cause(ctx)))
 	}
 	defer func() { _ = sess.Close() }()
 
@@ -145,35 +183,42 @@ func Run(ctx context.Context, t Target, command string, timeout time.Duration, s
 	sess.Stdout = &stdout
 	sess.Stderr = &stderr
 
-	done := make(chan error, 1)
-	go func() { done <- sess.Run(command) }()
-
-	if timeout <= 0 {
-		timeout = 15 * time.Minute
+	// Run waits for output readers too, so buffers are safe to read on failure.
+	err = sess.Run(command)
+	res := &Result{Stdout: stdout.String(), Stderr: stderr.String()}
+	if ctx.Err() != nil {
+		return res, fmt.Errorf("ssh: %w", context.Cause(ctx))
 	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case err := <-done:
-		res := &Result{Stdout: stdout.String(), Stderr: stderr.String()}
-		if err != nil {
-			var ee *ssh.ExitError
-			if errors.As(err, &ee) {
-				res.Code = ee.ExitStatus()
-				return res, nil
-			}
-			return res, err
+	if err != nil {
+		var ee *ssh.ExitError
+		if errors.As(err, &ee) {
+			res.Code = ee.ExitStatus()
+			return res, nil
 		}
-		return res, nil
-	case <-timer.C:
-		_ = sess.Signal(ssh.SIGKILL)
-		_ = client.Close()
-		return &Result{Stdout: stdout.String(), Stderr: stderr.String()}, fmt.Errorf("ssh: timeout %s", timeout)
-	case <-ctx.Done():
-		_ = sess.Signal(ssh.SIGKILL)
-		_ = client.Close()
-		return &Result{Stdout: stdout.String(), Stderr: stderr.String()}, ctx.Err()
+	}
+	return res, err
+}
+
+func keepalive(ctx context.Context, client *ssh.Client, interval, timeout time.Duration, cancel context.CancelCauseFunc) {
+	// The independent watchdog closes the transport via the existing context hook,
+	// even when SendRequest is blocked writing or waiting for its reply.
+	watchdog := time.AfterFunc(timeout, func() { cancel(ErrTransportLost) })
+	defer watchdog.Stop()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
+			if err != nil {
+				cancel(fmt.Errorf("%w: %v", ErrTransportLost, err))
+				return
+			}
+			// SSH_REQUEST_FAILURE also proves that the peer is alive.
+			watchdog.Reset(timeout)
+		}
 	}
 }
 
