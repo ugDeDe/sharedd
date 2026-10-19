@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -176,27 +177,42 @@ func (g *GlobalpingChecker) CreateAndAwait(ip string, port int, fakeSNI string) 
 }
 
 func (g *GlobalpingChecker) pollUntilDone(id string, timeout time.Duration) (*globalpingMeasurement, error) {
-	deadline := time.Now().Add(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	for {
-		m, err := g.FetchMeasurement(id)
+		m, err := g.fetchMeasurement(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		// Top-level статус по Globalping OpenAPI — только "in-progress"/"finished";
 		// "failed"/"offline" оставлены для устойчивости к вариациям API
 		// (per-probe result.status такими бывает).
-		if m.Status == "finished" || m.Status == "failed" || m.Status == "offline" {
+		if m.Status == "finished" {
 			return m, nil
 		}
-		if time.Now().After(deadline) {
-			return m, fmt.Errorf("globalping measurement %s did not finish in time", id)
+		if m.Status == "failed" || m.Status == "offline" {
+			return m, fmt.Errorf("globalping measurement %s: %s", id, m.Status)
 		}
-		time.Sleep(2 * time.Second)
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return m, fmt.Errorf("globalping measurement %s did not finish: %w", id, ctx.Err())
+		case <-timer.C:
+		}
 	}
 }
 
 func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement, error) {
-	resp, err := g.Client.Get(g.APIBase + "/measurements/" + id)
+	return g.fetchMeasurement(context.Background(), id)
+}
+
+func (g *GlobalpingChecker) fetchMeasurement(ctx context.Context, id string) (*globalpingMeasurement, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.APIBase+"/measurements/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := g.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("globalping fetch error: %w", err)
 	}
@@ -513,6 +529,9 @@ func baseReport(nodeID, ip string, telemtCfg *TelemtConfig) HealthReport {
 // RunGlobalpingCheck — медленная внешняя проверка (HEAD/HTTPS с fake-SNI из РФ-проб).
 // Отчёт всегда содержит measurement_id (кроме случая, когда create упал ещё до id).
 func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
+	if cfg == nil {
+		return HealthReport{NodeID: nodeID, IP: ip, Error: "node config unavailable"}
+	}
 	telemtCfg, terr := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	report := baseReport(nodeID, ip, telemtCfg)
 
@@ -532,7 +551,7 @@ func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport 
 		report.Healthy = false
 		return report
 	}
-	if ip == "" {
+	if !isPublicIP(ip) {
 		report.Error = "public IP not yet detected"
 		report.Healthy = false
 		return report
@@ -811,9 +830,7 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 
 // TerminatedError — регистратор ответил kill-сигналом
 // (403 {"terminate":true,...}): обязана записать Message в лог дословно и
-// уйти в режим ожидания восстановления (terminate.go): ip_ban — ждём смены
-// IP, dead — ждём локального оздоровления, затем перезапуск и повторная
-// регистрация.
+// запланировать recovery без ожидания смены IP или рестарта процесса.
 type TerminatedError struct {
 	Reason  string
 	Message string
@@ -839,7 +856,11 @@ func parseTerminateBody(body []byte) (*TerminatedError, bool) {
 
 func SendReport(cfg *config.NodeConfig, report HealthReport) error {
 	data, _ := json.Marshal(report)
-	client := &http.Client{Timeout: 10 * time.Second}
+	timeout := 10 * time.Second
+	if report.GlobalpingMeasurementID != "" {
+		timeout = 85 * time.Second // allow bounded registry GET verification, below its 90s write timeout
+	}
+	client := &http.Client{Timeout: timeout}
 	resp, err := registryRequest(client, cfg, http.MethodPost, "/report", bytes.NewReader(data))
 	if err != nil {
 		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
@@ -848,6 +869,9 @@ func SendReport(cfg *config.NodeConfig, report HealthReport) error {
 	netw.noteOK()
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+			return &TerminatedError{Reason: "pruned", Message: "candidate missing; recovery registration required"}
+		}
 		body, _ := io.ReadAll(resp.Body)
 		if te, ok := parseTerminateBody(body); ok {
 			return te

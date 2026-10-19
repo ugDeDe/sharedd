@@ -440,6 +440,9 @@ func fetchSharedConfig(cfg *config.NodeConfig) (SharedConfig, error) {
 	if err := json.Unmarshal(body, &shared); err != nil {
 		return SharedConfig{}, fmt.Errorf("parse /config error: %w", err)
 	}
+	recovery.mu.Lock()
+	recovery.bootstrapped = true
+	recovery.mu.Unlock()
 	return shared, nil
 }
 

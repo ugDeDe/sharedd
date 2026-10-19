@@ -191,8 +191,8 @@ func TestGPQuarantineFullLifecycle(t *testing.T) {
 	if rec == nil || rec.Reason != BanReasonIPBan || rec.Message != MsgIPBan {
 		t.Fatalf("terminated record mismatch: %+v", rec)
 	}
-	if rec.Message != "Бан по ip, запустите службу заново после его смены" {
-		t.Fatalf("message must be the exact TZ line, got %q", rec.Message)
+	if !strings.Contains(rec.Message, "Globalping") || strings.Contains(rec.Message, "запустите службу заново") {
+		t.Fatalf("health ban must explain automatic GP recovery, not require restart/IP change: %q", rec.Message)
 	}
 	bans, _ = r.db.BansSince(time.Now().Add(-time.Hour), BanReasonIPBan)
 	if len(bans) != 1 || bans[0].NodeID != "node-q" || bans[0].LifetimeSec < 0 {
