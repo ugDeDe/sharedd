@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"sharedd/registry/internal/control"
 )
@@ -303,6 +304,17 @@ func (r *Registry) handleMeDeleteProfile(w http.ResponseWriter, req *http.Reques
 
 // handleMeProfiles — GET /api/me/profiles: свои профили (полные, для правки)
 // и published-профили (для выбора при создании VPS).
+func filterSystemProfiles(in []control.Profile) []control.Profile {
+	out := in[:0]
+	for _, p := range in {
+		if p.CreatedBy == 0 && strings.HasPrefix(p.Name, "system-") {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func (r *Registry) handleMeProfiles(w http.ResponseWriter, req *http.Request) {
 	u := sessionFrom(req).user
 	own, err := r.control.ProfilesByOwner(u.ID)
@@ -315,6 +327,9 @@ func (r *Registry) handleMeProfiles(w http.ResponseWriter, req *http.Request) {
 		writeControlErr(w, err, "user.profiles.list.published")
 		return
 	}
+	// Системные графы автопилота (created_by=0, system-*) — внутренние
+	// шаблоны замены; в пользовательских списках их быть не должно.
+	published = filterSystemProfiles(published)
 	ownViews := make([]profileAdminJSON, 0, len(own))
 	for _, p := range own {
 		view, err := r.profileAdminView(p)
