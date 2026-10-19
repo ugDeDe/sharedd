@@ -108,3 +108,77 @@ jobs:
             dist/sharedd-registry
             dist/sharedd-node-agent
           make_latest: true
+
+  # Ветка dev → движущийся prerelease-тег dev. Web-установщики качают его
+  # через --channel=dev (releases/download/dev/...). make_latest:false —
+  # dev никогда не перехватывает releases/latest (stable-канал).
+  release-dev:
+    if: github.ref == 'refs/heads/dev'
+    needs: [go, golangci, scripts, ui-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+          cache-dependency-path: |
+            registry/go.sum
+            node/go.sum
+      - name: Переместить dev-тег на текущий коммит
+        run: |
+          git tag -f dev
+          git push -f origin dev
+      - name: Сборка dev
+        run: VERSION="dev-${GITHUB_SHA::8}" bash scripts/build_all.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: dev (${GITHUB_SHA::8})
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/sharedd-registry
+            dist/sharedd-node-agent
+
+  # Ветка main → обычный stable-релиз (движущийся тег stable + latest).
+  # Тег-релизы vX.Y.Z остаются рабочими; ветка даёт "текущий стабильный"
+  # билд без ручного тега. Web-установщики по умолчанию качают latest.
+  release-main:
+    if: github.ref == 'refs/heads/main'
+    needs: [go, golangci, scripts, ui-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+          cache-dependency-path: |
+            registry/go.sum
+            node/go.sum
+      - name: Переместить stable-тег на текущий коммит
+        run: |
+          git tag -f stable
+          git push -f origin stable
+      - name: Сборка stable
+        run: VERSION="stable-${GITHUB_SHA::8}" bash scripts/build_all.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stable
+          name: stable (${GITHUB_SHA::8})
+          prerelease: false
+          make_latest: true
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/sharedd-registry
+            dist/sharedd-node-agent

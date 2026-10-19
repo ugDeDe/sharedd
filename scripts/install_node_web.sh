@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="${BINARY_URL:-https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent}"
+BINARY_URL="${BINARY_URL:-}"
+# Канал сборки: stable (releases/latest) или dev (moving tag dev).
+CHANNEL="${CHANNEL:-stable}"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -46,7 +48,8 @@ MTPROXYL_MODE=0
 #                    с именем node (node-xxxxx)
 #   --registry-token=TOKEN  обязательный Node API token регистратора
 #   --binary-url=URL        ссылка на скачивание бинарника агента
-# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL.
+#   --channel=stable|dev    канал сборки (по умолчанию stable; dev — ветка dev)
+# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL / CHANNEL.
 # Пример автоматизации:
 #   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --registry-token=TOKEN --name=ddproxy
 NODE_NAME="${NODE_NAME:-}"
@@ -54,15 +57,16 @@ REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 NONINTERACTIVE=0
 usage() {
     cat <<USAGE
-Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--binary-url=URL]
+Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--channel=stable|dev] [--binary-url=URL]
 
   --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
   --registry-token=TOKEN  Node API token из панели регистратора
   --name=ИМЯ       имя ноды длиной 1..10; итоговый id: ИМЯ-xxxxx, напр. helsinki-6an4o
-  --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent
+  --channel=stable|dev    канал сборки: stable (releases/latest) или dev (ветка dev)
+  --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent (перекрывает канал)
   -h, --help       эта справка
 
-Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME, BINARY_URL (флаги имеют приоритет).
+Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME, CHANNEL, BINARY_URL (флаги имеют приоритет).
 Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --registry-token=TOKEN --name=ИМЯ
 USAGE
 }
@@ -80,11 +84,21 @@ while [ $# -gt 0 ]; do
         --binary-url=*) BINARY_URL="${1#*=}" ;;
         --binary-url) shift; [ $# -gt 0 ] || die "--binary-url требует URL"
                       BINARY_URL="$1" ;;
+        --channel=*)  CHANNEL="${1#*=}" ;;
+        --channel)    shift; [ $# -gt 0 ] || die "--channel требует stable|dev"
+                      CHANNEL="$1" ;;
         -h|--help)    usage; exit 0 ;;
         *)            die "неизвестный параметр: $1 (справка: --help)" ;;
     esac
     shift
 done
+case "$CHANNEL" in
+    stable) BIN_BASE="https://github.com/ugDeDe/sharedd/releases/latest/download" ;;
+    dev)    BIN_BASE="https://github.com/ugDeDe/sharedd/releases/download/dev" ;;
+    *)      die "неизвестный --channel: $CHANNEL (stable|dev)" ;;
+esac
+[ -n "$BINARY_URL" ] || BINARY_URL="$BIN_BASE/sharedd-node-agent"
+
 if [ -n "$NODE_NAME" ]; then
     # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
     if ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
