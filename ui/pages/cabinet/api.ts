@@ -59,6 +59,58 @@ export interface ProfilePayload {
   name?: string; description?: string; steps?: string; vars_schema?: string;
 }
 
+// Frozen wire DTOs: blueprint/{model,registry}.go, blueprint_*_api.go.
+export type BlueprintType = "string" | "number" | "bool" | "config" | "server" | "operation" | "ssh_target" | "secretref";
+export interface BlueprintInput { type: BlueprintType; required: boolean; }
+export type BlueprintBinding = { ref: string; literal?: never } | { literal: string | number | boolean; ref?: never };
+export interface BlueprintNode {
+  id: string; type: string; params: Record<string, string | number>;
+  in: Record<string, BlueprintBinding>;
+  retry?: { max_attempts: number; backoff_seconds: number };
+}
+export interface BlueprintEdge { from: string; port: string; to: string; }
+export interface Blueprint {
+  schema_version: number; name: string; provider: Provider;
+  inputs: Record<string, BlueprintInput>; entries: { initial: string; observe: string };
+  nodes: BlueprintNode[]; edges: BlueprintEdge[];
+}
+export interface BlueprintBlock {
+  type: string;
+  ports: { inputs: { name: string; type: BlueprintType }[] | null; outputs: { name: string; type: BlueprintType }[] | null; control: string[] | null };
+  params_schema: { name: string; type: "string" | "integer"; required: boolean; enum?: string[] }[] | null;
+  effects: "read" | "mutation" | "purchase" | "control";
+  retry_class: "safe-read" | "none"; capabilities: Provider[];
+}
+export interface BlueprintDiagnostic { node_id?: string; port?: string; code: string; message: string; }
+export interface BlueprintValidation { valid: boolean; diagnostics: BlueprintDiagnostic[]; }
+export interface ProfileVersion {
+  profile_id: number; version: number; profile_version_id: number; format: "graph" | "text";
+  blueprint?: Blueprint; steps?: string; vars_schema?: string;
+}
+export interface GraphProfilePayload { name: string; description: string; format: "graph"; blueprint: Blueprint; }
+export interface APIError extends Error { code?: string; status?: number; reason?: string; diagnostics?: BlueprintDiagnostic[]; }
+export interface ProfileRunCheckpoint {
+  id: number; node_id: string; invocation: number; state: string; attempt: number;
+  error?: string; output?: Record<string, unknown>; next_attempt_at: number;
+}
+export interface ProfileRun {
+  id: number; operation_id?: number; profile_version_id: number; profile_id: number;
+  node_id?: string; entry: "initial" | "observe"; state: string; revision: number;
+  resource_id: number | null; policy_revision: number; cancel_requested: boolean;
+  next_wake_at?: number; last_error?: string;
+  waiting?: { type: string; after_episode_id?: string }; checkpoints?: ProfileRunCheckpoint[];
+}
+export interface ProfileRunBody {
+  profile_version_id: number; entry: "initial"; inputs: Record<string, unknown>;
+  vars?: Record<string, string>; node_id?: string; confirm: true;
+}
+export interface ProfileRunAck { operation_id: number; run_id: number; state: string; resource_id: number | null; }
+export type ResumeDecision = "reconcile" | "retry_safe" | "acknowledge";
+export interface ManagementBody {
+  mode: "manual" | "profile"; profile_version_id?: number; inputs?: Record<string, unknown>;
+  process_current_ban?: boolean; expected_revision: number;
+}
+
 export interface BegetLink { verified: boolean; last_error?: string; }
 
 export interface Region { id: string; name: string; name_en: string; country: string; available: boolean; }
@@ -234,6 +286,165 @@ export interface CreateVps {
   idem_key: string;
 }
 
+/* ── Хостинги: подключения и облачные ресурсы (docs/specs/hosting-blueprints) ──
+   Формы сняты с registry/internal/server/cabinet_hosting.go и cabinet_cloud.go.
+   Секретов в типах нет: read-эндпоинты plaintext никогда не отдают. */
+
+export type Provider = "nodehost" | "beget";
+
+export interface HostingCapabilities { create: boolean; change_ip: boolean; delete: boolean; }
+
+export interface HostingBalance {
+  amount: string | null; currency: string | null; scope: string;
+  freshness: "fresh" | "stale" | "unavailable";
+  checked_at: number | null; last_attempt_at: number | null; // unix-секунды (backend)
+  error: { code: string } | null; // безопасный код: provider_error|provider_timeout|credentials_unavailable|…
+}
+
+export interface HostingConnection {
+  id: number; provider: Provider; label: string;
+  revision: number; credential_revision: number; credentials_configured: boolean;
+  verified_at: number | null;
+  capabilities: HostingCapabilities;
+  balance: HostingBalance;
+}
+
+// POST/PATCH body (секреты write-only; пропуск — не менять бандл, объект — заменить целиком).
+export interface HostingConnectionInput {
+  provider?: Provider; label?: string;
+  credentials?: Record<string, string>; // nodehost:{api_key}; beget:{cloud_login,cloud_password,hosting_api_login?,hosting_api_password?}
+  expected_revision?: number; // PATCH
+}
+
+export interface CloudResource {
+  id: number; connection_id: number; provider: Provider; label: string;
+  state: string; revision: number; external_id?: string | null;
+  ip?: string | null; current_ip?: string | null; // читаем оба поля защитно (stage-05)
+  node_id?: string | null;
+  replaces_resource_id?: number | null; replaced_by_resource_id?: number | null;
+  active_operation_id?: number | null;
+  last_error?: string;
+}
+
+export interface CloudCheckResult { ssh_ok: boolean; error?: string; }
+
+// FROZEN: POST …/{id}/reconcile (CSRF) → 200 {resolved:"absent"} (ресурс станет
+// deleted) | 200 {resolved:"found", external_id} | 409 provider_reconcile_required.
+export interface CloudReconcileResult { resolved: "absent" | "found"; external_id?: string; }
+
+export interface NodehostConfiguration {
+  name: string; hostname?: string;
+  cpu: string; cores: number; ram: number; disk: number; diskType: string;
+  os: string; location: string; period: string; networkSpeed?: string;
+}
+
+export interface CloudCreateBody {
+  connection_id: number; label: string;
+  configuration: NodehostConfiguration;
+  management?: { mode: "manual" }; // forward-compatible: stage-05 игнорирует
+}
+
+export interface CloudReplaceBody {
+  connection_id: number; label: string;
+  configuration: NodehostConfiguration;
+  confirm: true; expected_revision: number;
+  installation_profile_version_id?: number; vars?: Record<string, unknown>;
+}
+
+/* ── флот/Autopilot (docs/specs/hosting-blueprints/fleet-autopilot.md) ──
+   FROZEN wire DTOs: создание принимает ровно один платный заказ на N нод,
+   статус опрашивается по fleet_id. Секретов в ответах нет. */
+export type FleetState = "running" | "succeeded" | "partial" | "failed";
+export type FleetItemState = "pending" | "creating" | "installing" | "admitted" | "error";
+
+export interface FleetItem {
+  idx: number;
+  label: string;
+  resource_id: number | null;
+  node_id: string | null;
+  state: FleetItemState;
+  last_error: string;
+  ip: string;
+}
+
+export interface Fleet {
+  id: number;
+  state: FleetState;
+  count: number;
+  auto_replace: boolean;
+  created_at: number;
+  items: FleetItem[];
+}
+
+export interface FleetSummary {
+  id: number;
+  state: FleetState;
+  count: number;
+  auto_replace: boolean;
+  created_at: number;
+  succeeded: number;
+  errors: number;
+}
+
+export interface FleetConfiguration {
+  name?: string;
+  cpu: string;
+  cores: number;
+  ram: number;
+  disk: number;
+  diskType: string;
+  os: string;
+  location: string;
+  period?: string;
+  networkSpeed?: string;
+}
+
+export interface FleetCreateBody {
+  connection_id: number;
+  name?: string;
+  count: number;
+  configuration: FleetConfiguration;
+  installation_profile_version_id: number;
+  auto_replace: boolean;
+}
+
+export interface FleetCreateAck { fleet_id: number; }
+
+export interface ManagementPolicy {
+  mode: "manual" | "profile"; profile_version_id: number | null;
+  inputs: Record<string, unknown>; process_current_ban: boolean;
+  revision: number; current_resource_id: number | null; active_run_id?: number | null;
+}
+
+export interface CommandAck { operation_id: number; state: string; resource_id: number | null; }
+
+export interface HostingVerifyResult { verified: boolean; checked_at: number; capabilities: HostingCapabilities; }
+
+/* ── FROZEN contract (backend реализует параллельно, формы не менять) ──────
+   GET /api/me/hosting-connections/{id}/catalog?location=CODE — 200 nodehost,
+   501 beget; network приходит только с location. */
+export interface CatalogItem { id: string; name: string; }
+export interface CatalogLocation { code: string; name: string; }
+export interface CatalogLimit { min: number; max: number; }
+export interface HostingCatalog {
+  provider: Provider; checked_at: number;
+  locations: CatalogLocation[];
+  os: CatalogItem[];
+  cpu_models: string[];
+  disk_types: CatalogItem[];
+  limits: { cores: CatalogLimit; ram_gb: CatalogLimit; disk_gb: CatalogLimit; types: { VPS: boolean } };
+  network?: { speeds: string[]; available: boolean };
+}
+
+export interface EstimateBody {
+  connection_id: number;
+  configuration: { cores: number; ram: number; disk: number; networkSpeed?: string; period?: string; location?: string };
+}
+export interface EstimateResult {
+  amount: string; currency: string; period: string; period_days: number;
+  checked_at: number; scope: string;
+}
+
 let redirecting = false;
 
 function gotoSignin(): void {
@@ -259,8 +470,10 @@ function csrfError(): Error & { code: string; status: number } {
   return e;
 }
 
-async function req<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const headers: Record<string, string> = {};
+async function req<T>(path: string, method = "GET", body?: unknown, opts?: { headers?: Record<string, string> }): Promise<T> {
+  // opts.headers — дополнительные заголовки команд (Idempotency-Key,
+  // X-Confirm-Action); Content-Type/CSRF добавляются ниже и не перетираются.
+  const headers: Record<string, string> = { ...(opts?.headers || {}) };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && method !== "HEAD") {
     const token = csrf();
@@ -278,18 +491,19 @@ async function req<T>(path: string, method = "GET", body?: unknown): Promise<T> 
   if (resp.status === 401) { gotoSignin(); throw new Error("unauthorized"); }
   if (resp.status === 204) return undefined as T;
   if (!resp.ok) {
-    const data = await resp.json().catch(() => ({} as any));
+    const data = await resp.json().catch(() => ({})) as { error?: string; message?: string; reason?: string; diagnostics?: BlueprintDiagnostic[] };
     if (data.error === "csrf_invalid") throw csrfError();
     // 503 control_unavailable: сервер отдаёт русское объяснение, но если
     // message отсутствует — подставляем то же слово в слово.
     const fallback = data.error === "control_unavailable"
       ? "Хранилище пользователей недоступно — обратитесь к администратору для проверки журнала регистратора"
       : undefined;
-    const err = new Error(data.message || fallback || data.error || ("HTTP " + resp.status)) as Error & { code?: string; status?: number; reason?: string };
+    const err = new Error(data.message || fallback || data.error || ("HTTP " + resp.status)) as APIError;
     err.code = data.error;
     err.status = resp.status;
     // reason — машиночитаемая причина (например, code_required для 2FA).
     err.reason = data.reason;
+    err.diagnostics = data.diagnostics;
     throw err;
   }
   return resp.json() as Promise<T>;
@@ -318,6 +532,16 @@ export const api = {
   copyProfile: (id: number) => req<OwnProfile>(`/api/me/profiles/${id}/copy`, "POST", {}),
   updateProfile: (id: number, body: ProfilePayload) => req<OwnProfile>(`/api/me/profiles/${id}`, "PUT", body),
   deleteProfile: (id: number) => req<void>(`/api/me/profiles/${id}`, "DELETE"),
+  blueprintBlocks: () => req<{ schema_version: number; blocks: BlueprintBlock[] }>("/api/me/blueprint-blocks"),
+  profileVersion: (id: number, version: number) => req<ProfileVersion>(`/api/me/profiles/${id}/versions/${version}`),
+  validateBlueprint: (blueprint: Blueprint, inputs?: Record<string, unknown>) =>
+    req<BlueprintValidation>("/api/me/profiles/validate", "POST", { format: "graph", blueprint, ...(inputs === undefined ? {} : { inputs }) }),
+  createGraphProfile: (body: GraphProfilePayload) => req<OwnProfile>("/api/me/profiles", "POST", body),
+  saveGraphProfile: (id: number, body: GraphProfilePayload & { expected_version: number }) => req<OwnProfile>(`/api/me/profiles/${id}`, "PUT", body),
+  createProfileRun: (body: ProfileRunBody, key: string) => req<ProfileRunAck>("/api/me/profile-runs", "POST", body, { headers: { "Idempotency-Key": key } }),
+  profileRun: (id: number) => req<ProfileRun>(`/api/me/profile-runs/${id}`),
+  cancelProfileRun: (id: number, expected_revision: number, key: string) => req<ProfileRunAck>(`/api/me/profile-runs/${id}/cancel`, "POST", { expected_revision }, { headers: { "Idempotency-Key": key } }),
+  resumeProfileRun: (id: number, body: { expected_revision: number; checkpoint_id: number; decision: ResumeDecision }, key: string) => req<ProfileRunAck>(`/api/me/profile-runs/${id}/resume`, "POST", body, { headers: { "Idempotency-Key": key } }),
   begetLink: () => req<BegetLink>("/api/me/beget/link"),
   connectBeget: (login: string, password: string, code?: string) =>
     req<{ verified: boolean }>("/api/me/beget/link", "PUT", { login, password, code: code || undefined }),
@@ -330,6 +554,54 @@ export const api = {
   retryInstall: (id: number, body?: { profile_id?: number; vars?: Record<string, unknown> }) =>
     req<Operation>(`/api/me/operations/${id}/retry-install`, "POST", body ?? {}),
   deleteNode: (id: string) => req<{ node_id: string; state: string }>(`/api/me/nodes/${encodeURIComponent(id)}`, "DELETE"),
+  // ── хостинги: подключения (cabinet_hosting.go) ──
+  hostingConnections: () => req<{ connections: HostingConnection[] }>("/api/me/hosting-connections"),
+  createHostingConnection: (body: HostingConnectionInput) =>
+    req<HostingConnection>("/api/me/hosting-connections", "POST", body),
+  updateHostingConnection: (id: number, body: HostingConnectionInput) =>
+    req<HostingConnection>(`/api/me/hosting-connections/${id}`, "PATCH", body),
+  deleteHostingConnection: (id: number) => req<void>(`/api/me/hosting-connections/${id}`, "DELETE"),
+  verifyHostingConnection: (id: number, code?: string) =>
+    req<HostingVerifyResult>(`/api/me/hosting-connections/${id}/verify`, "POST", { code: code || undefined }),
+  // Снимок баланса всегда 200 (даже при ошибке провайдера); возвращает Connection.
+  refreshHostingBalance: (id: number) =>
+    req<HostingConnection>(`/api/me/hosting-connections/${id}/balance/refresh`, "POST", {}),
+  hostingCatalog: (id: number, location?: string) =>
+    req<HostingCatalog>(`/api/me/hosting-connections/${id}/catalog${location ? `?location=${encodeURIComponent(location)}` : ""}`),
+  // ── облачные ресурсы (cabinet_cloud.go) ──
+  cloudResources: () => req<{ resources: CloudResource[] }>("/api/me/cloud-resources"),
+  cloudResource: (id: number) => req<CloudResource>(`/api/me/cloud-resources/${id}`),
+  createCloudResource: (body: CloudCreateBody, key: string) =>
+    req<CommandAck>("/api/me/cloud-resources", "POST", body, { headers: { "Idempotency-Key": key } }),
+  deleteCloudResource: (id: number, key: string) =>
+    req<CommandAck>(`/api/me/cloud-resources/${id}`, "DELETE", undefined,
+      { headers: { "Idempotency-Key": key, "X-Confirm-Action": "delete" } }),
+  // spec 202, impl 200 CloudResource — обрабатываем оба.
+  changeCloudIP: (id: number, key: string, subnetId?: number) =>
+    req<CloudResource | CommandAck>(`/api/me/cloud-resources/${id}/change-ip`, "POST",
+      { subnet_id: subnetId || 0 }, { headers: { "Idempotency-Key": key } }),
+  replaceCloudResource: (id: number, key: string, body: CloudReplaceBody) =>
+    req<CommandAck>(`/api/me/cloud-resources/${id}/replace`, "POST", body, { headers: { "Idempotency-Key": key } }),
+  // FROZEN: {profile_version_id, vars} — PK версии профиля, не profile_id.
+  installCloudResource: (id: number, key: string, body: { profile_version_id?: number; vars?: Record<string, unknown> }) =>
+    req<Operation>(`/api/me/cloud-resources/${id}/install`, "POST", body, { headers: { "Idempotency-Key": key } }),
+  // FROZEN: 200 {ssh_ok,error}; 409 not_ready/ssh_unavailable; 501 beget.
+  checkCloudResource: (id: number) =>
+    req<CloudCheckResult>(`/api/me/cloud-resources/${id}/check`, "POST"),
+  // FROZEN: сверка инвентаря провайдера при неясном платном исходе.
+  reconcileCloudResource: (id: number) =>
+    req<CloudReconcileResult>(`/api/me/cloud-resources/${id}/reconcile`, "POST", {}),
+  estimateCloudResource: (body: EstimateBody) => req<EstimateResult>("/api/me/cloud-resources/estimate", "POST", body),
+  cloudIPOptions: (id: number) => req<unknown>(`/api/me/cloud-resources/${id}/ip-options`),
+  // ── управление нодой (cabinet_cloud.go §5) ──
+  nodeManagement: (id: string) => req<ManagementPolicy>(`/api/me/nodes/${encodeURIComponent(id)}/management`),
+  putNodeManagement: (id: string, body: ManagementBody) =>
+    req<ManagementPolicy>(`/api/me/nodes/${encodeURIComponent(id)}/management`, "PUT", body),
+  // ── флот/Autopilot ──
+  createFleet: (body: FleetCreateBody, key: string) =>
+    req<FleetCreateAck>("/api/me/fleets", "POST", body, { headers: { "Idempotency-Key": key } }),
+  fleet: (id: number) => req<Fleet>(`/api/me/fleets/${id}`),
+  fleets: () => req<{ fleets: FleetSummary[] }>("/api/me/fleets"),
   logout: () => req<void>("/api/auth/logout", "POST"),
 };
 

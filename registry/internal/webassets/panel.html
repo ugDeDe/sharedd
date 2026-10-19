@@ -3114,7 +3114,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="97fb4d4919a160e8">
+  <meta name="sharedd-build" content="128d0381e6a352eb">
 </head>
 <body>
 
@@ -3449,20 +3449,27 @@
   function stableSelector(el) {
     if (!(el instanceof HTMLElement)) return "";
     if (el.id) return "#" + CSS.escape(el.id);
+    const node = el.closest("[data-canvas-node]");
+    if (node) {
+      const owner = `[data-canvas-node="${CSS.escape(node.dataset.canvasNode)}"]`;
+      if (el.hasAttribute("data-exec")) return `${owner} [data-exec]`;
+      if (el.hasAttribute("data-output")) return `${owner} [data-output="${CSS.escape(el.dataset.output)}"]`;
+    }
     for (const a of Array.from(el.attributes)) {
       if (a.name.startsWith("data-")) return `[${a.name}="${CSS.escape(a.value)}"]`;
     }
     return "";
   }
   function renderSection(section, poll, render8) {
-    var _a;
     if (poll && (modalOpen() || section != null && section.contains(document.activeElement))) return false;
     const scrollY = window.scrollY;
-    const focus = stableSelector(document.activeElement);
+    const focused = document.activeElement;
+    const focus = (section == null ? void 0 : section.contains(focused)) ? stableSelector(focused) : "";
     render8();
-    if (focus) {
+    if (focused && !focused.isConnected && focus && (section == null ? void 0 : section.isConnected)) {
       try {
-        (_a = document.querySelector(focus)) == null ? void 0 : _a.focus({ preventScroll: true });
+        const target = section.matches(focus) ? section : section.querySelector(focus);
+        target == null ? void 0 : target.focus({ preventScroll: true });
       } catch {
       }
     }

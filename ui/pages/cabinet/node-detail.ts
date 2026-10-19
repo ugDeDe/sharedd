@@ -13,7 +13,8 @@ import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
 import { barChart, chartTop, donutChart, liveLineChart } from "../../lib/chart";
 import type { LiveSeries } from "../../lib/chart";
 import { api } from "./api";
-import type { NodeDetail } from "./api";
+import type { CloudResource, ManagementPolicy, NodeDetail, Operation } from "./api";
+import { mountBlueprintManagement } from "./blueprint-management";
 
 const EMPTY_SVG =
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg>`;
@@ -65,6 +66,7 @@ const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Обзор" },
   { key: "metrics",  label: "Метрики" },
   { key: "checks",   label: "Проверки" },
+  { key: "management", label: "Управление" },
   { key: "journal",  label: "Журнал" },
   { key: "actions",  label: "Действия" },
 ];
@@ -74,6 +76,11 @@ let DETAIL_ID = "";
 let DETAIL: NodeDetail | null = null;
 let DETAIL_ERR: { msg: string; status?: number } | null = null;
 let DETAIL_RETRY = false;
+// Управление нодой (cabinet_cloud.go §5) + связь с облачным ресурсом (§18).
+let MGMT: ManagementPolicy | null = null;
+let MGMT_ERR: string | null = null;
+let NODE_RES: CloudResource | null = null;
+let NODE_OP: Operation | null = null;
 // Активный таб. Живёт между опросами (5 с); сбрасывается в openNodeDetail.
 let DETAIL_TAB = "overview";
 
@@ -85,6 +92,10 @@ export function openNodeDetail(id: string): void {
   DETAIL = null;
   DETAIL_ERR = null;
   DETAIL_RETRY = false;
+  MGMT = null;
+  MGMT_ERR = null;
+  NODE_RES = null;
+  NODE_OP = null;
   DETAIL_TAB = parseTabHash(); // дефолт «Обзор»; валидный #?tab= восстанавливаем
   const el = $("node-detail");
   if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
@@ -95,6 +106,9 @@ export function closeNodeDetail(): void {
   DETAIL_ID = "";
   DETAIL = null;
   DETAIL_ERR = null;
+  MGMT = null;
+  NODE_RES = null;
+  NODE_OP = null;
 }
 
 /* ── табы: hash-навигация и переключение панелей ──────────────────────
@@ -129,14 +143,20 @@ function activateTab(name: string, focusPanel: boolean): void {
     p.hidden = p.dataset.tabPanel !== name;
   });
   writeTabHash(name);
+  // Панели «Управление»/«Действия» опираются на политику и ресурс — тянем
+  // их, если ещё не загружены (ленивая загрузка не блокирует деталь).
+  if ((name === "management" || name === "actions") && !MGMT && !MGMT_ERR) refreshMgmt(false);
   if (focusPanel) document.getElementById("nd-panel-" + name)?.focus({ preventScroll: true });
 }
 
 // Клик и стрелки — делегированы на document: innerHTML-перерисовка опроса
 // (5 с) сносит слушатели, привязанные к nav.
 document.addEventListener("click", (e) => {
-  const tab = (e.target as HTMLElement)?.closest?.("#node-detail .nd-tabs [role='tab']") as HTMLElement | null;
-  if (!tab || !DETAIL_ID) return;
+  const el = e.target as HTMLElement;
+  if (!DETAIL_ID) return;
+  if (el.closest("[data-mgmt-retry]")) { refreshMgmt(false); return; }
+  const tab = el?.closest?.("#node-detail .nd-tabs [role='tab']") as HTMLElement | null;
+  if (!tab) return;
   activateTab(tab.dataset.tab || "overview", true);
 });
 document.addEventListener("keydown", (e) => {
@@ -157,6 +177,9 @@ document.addEventListener("keydown", (e) => {
 function load(poll: boolean): void {
   if (!DETAIL_ID) return;
   const id = DETAIL_ID;
+  // Политику/ресурс опрашиваем всегда при первом входе и далее — только на
+  // сегментах, которые их показывают (не множим запросы на каждом такте).
+  if (!poll || DETAIL_TAB === "management" || DETAIL_TAB === "actions") refreshMgmt(poll);
   api.nodeDetail(id)
     .then((d) => {
       if (id !== DETAIL_ID) return; // ушли на другую ноду
@@ -184,6 +207,30 @@ export function pollNodeDetail(): void {
   if (DETAIL_ID) load(true);
 }
 
+/* Управление нодой + связь с облачным ресурсом (§16/§18). Отдельный запрос,
+   не блокирует деталь; нода без строки policy получает виртуальный manual. */
+function refreshMgmt(poll: boolean): void {
+  const id = DETAIL_ID;
+  if (!id) return;
+  Promise.all([api.nodeManagement(id), api.cloudResources(), api.operations()])
+    .then(([m, res, ops]) => {
+      if (id !== DETAIL_ID) return;
+      MGMT = m; MGMT_ERR = null;
+      NODE_RES = (res.resources || []).find((r) => r.node_id === id) || null;
+      const active = new Set(["pending", "sent", "confirmed", "installing", "waiting_vps", "deleting"]);
+      NODE_OP = NODE_RES
+        ? (ops.operations || []).find((o) => o.node_id === id && active.has(o.state)) || null
+        : null;
+      render(poll);
+    })
+    .catch((e: Error & { status?: number }) => {
+      if (id !== DETAIL_ID) return;
+      if (e.message === "unauthorized") return;
+      MGMT_ERR = e.status === 404 ? "Нода не найдена." : e.message;
+      render(poll);
+    });
+}
+
 function render(poll: boolean): void {
   const el = $("node-detail");
   if (!el) return;
@@ -196,7 +243,12 @@ function render(poll: boolean): void {
       return;
     }
     if (!DETAIL) { el.innerHTML = `<div class="skeleton skel-block"></div>`; return; }
+    const management = document.getElementById("blueprint-management");
     el.innerHTML = detailHTML(DETAIL);
+    const target = document.getElementById("blueprint-management");
+    // Preserve the complete policy form/input snapshot across statistics polls.
+    if (target && management?.dataset.mounted === DETAIL_ID) target.replaceWith(management);
+    else if (target && MGMT) mountBlueprintManagement(target, DETAIL_ID, MGMT, NODE_RES, (m) => { MGMT = m; });
   });
 }
 
@@ -210,10 +262,6 @@ function fmtBytes(n: number | null | undefined): string {
 
 function fmtPct(n: number | null | undefined): string {
   return n === null || n === undefined ? "—" : `${n.toFixed(1)}%`;
-}
-
-function nd(label: string): string {
-  return `<div class="kv"><span class="kv-k">${esc(label)}</span><span class="kv-v dim">нет данных</span></div>`;
 }
 
 function chip(ok: boolean, okText: string, badText: string): string {
@@ -280,6 +328,7 @@ function panelHTML(key: string, d: NodeDetail): string {
   switch (key) {
     case "metrics": return chartCHTML(d) + hostingHTML(d) + telemtHTML(d) + controlApiHTML(d);
     case "checks":  return checksHTML(d);
+    case "management": return mgmtHTML() + resLinkageHTML();
     case "journal": return eventsHTML(d);
     case "actions": return actionsHTML(d);
     default:        return paramsHTML(d) + chartAHTML(d) + ipHistoryHTML(d);
@@ -349,10 +398,89 @@ function eventsHTML(d: NodeDetail): string {
   </section>`;
 }
 
-function actionsHTML(_d: NodeDetail): string {
+/* ── «Управление» и «Действия»: политика ноды и связь с ресурсом ────── */
+
+const CR_STATE_META: Record<string, { label: string; cls: string }> = {
+  planned:  { label: "запланирован", cls: "info" },
+  creating: { label: "создаётся…", cls: "info" },
+  ready:    { label: "готов", cls: "ok" },
+  deleting: { label: "удаляется…", cls: "warn" },
+  deleted:  { label: "удалён", cls: "" },
+  error:    { label: "ошибка", cls: "bad" },
+};
+function crState(state: string): { label: string; cls: string } {
+  return CR_STATE_META[state] || { label: state, cls: "info" };
+}
+
+const OP_STATE_META: Record<string, { label: string; cls: string }> = {
+  pending:    { label: "ожидает", cls: "info" },
+  sent:       { label: "отправлено провайдеру", cls: "info" },
+  confirmed:  { label: "подтверждено", cls: "ok" },
+  installing: { label: "установка профиля", cls: "info" },
+  waiting_vps:{ label: "ждём готовности VPS", cls: "warn" },
+  deleting:   { label: "удаляется", cls: "warn" },
+};
+
+/* Бан/диспозиция — информационно, без намёка на автопокупку (design doc §5). */
+function banNoteHTML(d: NodeDetail): string {
+  const banned = d.events.some((e) => e.type === "ip_blocked" || e.type === "node_terminated");
+  const quarantined = !!d.node?.quarantine || d.node?.status === "quarantined";
+  if (!banned && !quarantined) return "";
+  if (MGMT?.mode === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённой версии, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
+  return `<div class="banner info" role="note"><span>IP в блокировке (ip_ban) — это вердикт регистратора, показан информационно. Он <b>не</b> запускает покупку или замену сервера: автопокупка при бане не выполняется. Замену можно инициировать только вручную.</span></div>`;
+}
+
+function mgmtHTML(): string {
+  const head = `<div class="card-head"><h2>Управление</h2><span class="hint">режим обслуживания ноды</span></div>`;
+  if (MGMT_ERR) {
+    return `<section class="card">${head}<div class="banner bad" role="alert">${esc(MGMT_ERR)} · Последние полученные настройки не считаются обновлёнными. <button type="button" class="btn sm" data-mgmt-retry>Повторить GET</button></div>${MGMT ? '<div class="card-body" id="blueprint-management"></div>' : ""}</section>`;
+  }
+  if (!MGMT) {
+    return `<section class="card">${head}<div class="card-body"><div class="skeleton skel-block"></div></div></section>`;
+  }
+  return `<section class="card">${head}<div class="card-body" id="blueprint-management"></div></section>`;
+}
+
+/* §18: цепочка нода → ресурс → подключение и активная операция. */
+function resLinkageHTML(): string {
+  if (!NODE_RES) return "";
+  const m = crState(NODE_RES.state);
+  const op = NODE_OP;
+  const opMeta = op ? (OP_STATE_META[op.state] || { label: op.state, cls: "" }) : null;
   return `<section class="card">
-    <div class="card-head"><h2>Действия</h2><span class="hint">проверка · конфиг · переустановка</span></div>
-    <div class="nd-grid card-body">${nd("Действия ноды")}</div>
+    <div class="card-head"><h2>Облачный ресурс</h2><span class="hint">связь ноды и ресурса</span></div>
+    <div class="nd-grid card-body">
+      <div class="kv"><span class="kv-k">Ресурс</span><span class="kv-v"><a class="mono" href="#/resources/${NODE_RES.id}">#${NODE_RES.id}</a> · ${esc(NODE_RES.label)}</span></div>
+      <div class="kv"><span class="kv-k">Состояние</span><span class="kv-v"><span class="badge ${m.cls}"><i></i>${esc(m.label)}</span></span></div>
+      <div class="kv"><span class="kv-k">Подключение</span><span class="kv-v">${esc(NODE_RES.provider)} · #${NODE_RES.connection_id}</span></div>
+      ${op ? `<div class="kv"><span class="kv-k">Активная операция</span><span class="kv-v">#${op.id} <span class="badge ${opMeta!.cls}"><i></i>${esc(opMeta!.label)}</span> · <a href="#/operations">К операциям</a></span></div>` : ""}
+    </div>
+  </section>`;
+}
+
+function actionsHTML(d: NodeDetail): string {
+  const m = MGMT;
+  const res = NODE_RES;
+  const resLink = m?.current_resource_id
+    ? `<a class="node-open mono" href="#/resources/${m.current_resource_id}">#${m.current_resource_id}</a>`
+    : "—";
+  const conn = res ? `${esc(res.provider)} · #${res.connection_id}` : "—";
+  const ready = res?.state === "ready";
+  const canReplace = !res || res.state === "ready" || res.state === "error";
+  return `<section class="card">
+    <div class="card-head"><h2>Действия</h2><span class="hint">ручное управление ресурсом</span></div>
+    <div class="card-body nd-grid" style="padding-bottom:0">
+      <div class="kv"><span class="kv-k">Текущий ресурс</span><span class="kv-v">${resLink}</span></div>
+      <div class="kv"><span class="kv-k">Подключение</span><span class="kv-v">${conn}</span></div>
+    </div>
+    <div class="card-body srv-actions">
+      <a class="btn" href="#/beget?tab=resources">Создать сервер…</a>
+      <button type="button" class="btn" data-res-action="install"${ready ? "" : " disabled"}>Установить профиль</button>
+      <button type="button" class="btn" data-res-action="change-ip"${ready ? "" : " disabled"}>Сменить IP</button>
+      <button type="button" class="btn" data-res-action="replace"${canReplace ? "" : " disabled"}>Заменить</button>
+      <button type="button" class="btn danger" data-res-action="delete"${res ? "" : " disabled"}>Удалить ресурс</button>
+    </div>
+    ${banNoteHTML(d)}
   </section>`;
 }
 
@@ -470,11 +598,22 @@ function hostingHTML(d: NodeDetail): string {
   const head = `<div class="card-head"><h2>Хостинг: CPU / RAM / сеть</h2><span class="hint">текущие значения · 24 ч</span></div>`;
   if (!h) return `<section class="card">${head}<div class="table-empty">нет данных</div></section>`;
 
+  // Суммы за 24 ч нужны и плиткам, и пончику: живые *_total могут отсутствовать
+  // (свежий отчёт без счётчиков), поэтому плитки падают на историю.
+  const net = h.net_series ?? [];
+  const sum = (k: "ingress_bytes" | "egress_bytes"): number =>
+    net.length ? net.reduce((s, p) => s + (p[k] ?? 0), 0) : (h[k === "ingress_bytes" ? "net_ingress_bytes_total" : "net_egress_bytes_total"] ?? 0);
+  const ing = sum("ingress_bytes");
+  const egr = sum("egress_bytes");
+  const netTotal = ing + egr;
+  const ingShown = net.length ? ing : h.net_ingress_bytes_total;
+  const egrShown = net.length ? egr : h.net_egress_bytes_total;
+
   const tiles = `<div class="nd-grid" style="padding:0 0 2px">
       <div class="kv"><span class="kv-k">CPU</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.cpu") ? null : h.cpu_percent))}</span></div>
       <div class="kv"><span class="kv-k">ОЗУ (RAM)</span><span class="kv-v mono">${esc(fmtPct(d.absent.includes("hosting.ram") ? null : h.ram_percent))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes(h.net_ingress_bytes_total))}</span></div>
-      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes(h.net_egress_bytes_total))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — принято</span><span class="kv-v mono">${esc(fmtBytes(ingShown))}</span></div>
+      <div class="kv"><span class="kv-k">Сеть — отдано</span><span class="kv-v mono">${esc(fmtBytes(egrShown))}</span></div>
     </div>`;
 
   const cr = h.cpu_ram_series ?? [];
@@ -500,14 +639,8 @@ function hostingHTML(d: NodeDetail): string {
         cr.map((p) => [fmtClock(p.at), fmtPct(p.cpu_percent), fmtPct(p.ram_percent)]))}`;
   }
 
-  // §7 Сеть: пончик принято/отдано с долями. Данные — сумма net_series за 24 ч,
-  // иначе fallback на накопительные *_total. Сумма 0 → честное «нет данных».
-  const net = h.net_series ?? [];
-  const sum = (k: "ingress_bytes" | "egress_bytes"): number =>
-    net.length ? net.reduce((s, p) => s + (p[k] ?? 0), 0) : (h[k === "ingress_bytes" ? "net_ingress_bytes_total" : "net_egress_bytes_total"] ?? 0);
-  const ing = sum("ingress_bytes");
-  const egr = sum("egress_bytes");
-  const netTotal = ing + egr;
+  // §7 Сеть: пончик принято/отдано с долями. Данные — сумма net_series за 24 ч
+  // (см. выше), fallback на накопительные *_total уже учтён в ing/egr.
   let netHTML: string;
   if (netTotal <= 0) {
     netHTML = `<div class="chart-cap">Сеть <span class="hint">принято / отдано</span></div>

@@ -25,10 +25,16 @@ export function modalOpen(): boolean {
   return !!m && m.classList.contains("show");
 }
 
-/** Стабильный CSS-селектор элемента: id или первый data-* атрибут. */
+/** ID first; repeated graph ports also require their stable owning node. */
 function stableSelector(el: Element | null): string {
   if (!(el instanceof HTMLElement)) return "";
   if (el.id) return "#" + CSS.escape(el.id);
+  const node = el.closest<HTMLElement>("[data-canvas-node]");
+  if (node) {
+    const owner = `[data-canvas-node="${CSS.escape(node.dataset.canvasNode!)}"]`;
+    if (el.hasAttribute("data-exec")) return `${owner} [data-exec]`;
+    if (el.hasAttribute("data-output")) return `${owner} [data-output="${CSS.escape(el.dataset.output!)}"]`;
+  }
   for (const a of Array.from(el.attributes)) {
     if (a.name.startsWith("data-")) return `[${a.name}="${CSS.escape(a.value)}"]`;
   }
@@ -40,10 +46,15 @@ function stableSelector(el: Element | null): string {
 export function renderSection(section: HTMLElement | null, poll: boolean, render: () => void): boolean {
   if (poll && (modalOpen() || (section != null && section.contains(document.activeElement)))) return false;
   const scrollY = window.scrollY;
-  const focus = stableSelector(document.activeElement);
+  const focused = document.activeElement;
+  const focus = section?.contains(focused) ? stableSelector(focused) : "";
   render();
-  if (focus) {
-    try { document.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true }); } catch { /* detached */ }
+  // Unrelated refreshes must never refocus an element that survived the render.
+  if (focused && !focused.isConnected && focus && section?.isConnected) {
+    try {
+      const target = section.matches(focus) ? section : section.querySelector<HTMLElement>(focus);
+      target?.focus({ preventScroll: true });
+    } catch { /* detached */ }
   }
   if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
   return true;

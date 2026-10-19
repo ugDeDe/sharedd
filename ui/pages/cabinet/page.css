@@ -11,6 +11,7 @@
 @import "../../components/modal.css";
 @import "../../components/nodecard.css";
 @import "../../components/feed.css";
+@import "./blueprint.css";
 
 /* ═══ Кабинет: только раскладка ═══════════════════════════════════════
    Ни одной новой кнопки/поля/бейджа — всё из components/*. Ниже —
@@ -237,6 +238,50 @@
   white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; margin: 6px 0 0;
 }
 
+/* ═══ Хостинги: подключения и облачные ресурсы (hosting-blueprints §20) ═
+   Только раскладка поверх существующих .card/.node-card/.badge/.kv/.nd-tabs.
+   Ни одного нового цветового токена, кнопки, поля или бейджа. */
+.node-card.hc, .node-card.cr { cursor: default; }
+.hc .node-side, .cr .node-side { flex-wrap: wrap; justify-content: flex-end; }
+.hc-balance { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.cr-progress { margin: 8px 0 0; }
+.cr-check { margin: 8px 0 0; font-size: 12.5px; }
+.cr-check.ok { color: var(--ok); }
+.cr-check.bad { color: var(--bad); }
+.cr-spin {
+  display: inline-block; width: 12px; height: 12px; vertical-align: -2px;
+  border: 2px solid var(--line); border-top-color: var(--acc); border-radius: 50%;
+  animation: cr-spin .7s linear infinite;
+}
+@keyframes cr-spin { to { transform: rotate(360deg); } }
+.cr-batch { margin: 12px 0 0; }
+.cr-batch-head { font-size: 13px; color: var(--fg-2); margin-bottom: 6px; }
+.cr-batch-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.cr-batch-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cr-batch-list .nm { font-weight: 600; }
+.cr-batch-list .why { color: var(--bad); font-size: 12px; }
+#cr-beget-note .banner { margin: 12px 0 0; }
+/* Шаги/поле «Установка» внутри формы создания ресурса: card-body уже даёт
+   отступ, wizard-steps и fieldset его дублируют. */
+#cr-steps { padding: 0 0 2px; }
+.cr-inst { border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px 14px 14px; margin: 14px 0 0; }
+.cr-inst legend { padding: 0 6px; font-size: 13px; font-weight: 600; }
+
+/* ═══ Автопилот (fleet-autopilot) ═════════════════════════════════════
+   Только раскладка поверх .card/.srv-grid/.cr-inst/.node-list/.badge. */
+.ap-form .card-foot { margin: 14px calc(var(--pad) * -1) calc(var(--pad) * -1); }
+.ap-help { display: block; margin-top: 8px; }
+.ap-fleet-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.ap-fleet-sum { margin: 0 0 10px; }
+.ap-item { cursor: default; }
+.ap-item .node-top { flex-wrap: wrap; }
+.ap-item .node-sub { flex-wrap: wrap; }
+.ap-item .ap-reason { color: var(--bad); font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .hc .node-side, .cr .node-side { justify-content: flex-start; }
+}
+
 @media (max-width: 640px) {
   .wiz-foot { flex-direction: column-reverse; }
   .wiz-foot .btn { width: 100%; }
@@ -246,8 +291,83 @@
   .chart-x > span { font-size: 9px; }
 }
 
+/* ═══ «Дополнительно»: компактное меню вторичных разделов ═════════════
+   Первичная навигация — Пул · Хостинги · Журнал. Серверы и Профили живут
+   здесь, чтобы не расширять основной сценарий. Раскрытие — в main.ts. */
+.navwrap { overflow: visible; }
+.nav .more { position: relative; display: flex; }
+.more-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 13px; border: 0; border-radius: var(--r-sm); cursor: pointer;
+  background: transparent; color: var(--fg-2); font: inherit;
+  font-size: 12.5px; font-weight: 520; white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.more-btn:hover { color: var(--fg); background: var(--track); }
+.more-btn.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+.more-btn::after {
+  content: ""; width: 5px; height: 5px; flex: none;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+.more-btn[aria-expanded="true"]::after { transform: translateY(1px) rotate(-135deg); }
+.more-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 168px; padding: 5px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surf); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgba(16, 23, 37, .28);
+}
+.more-menu a {
+  padding: 8px 10px; border-radius: var(--r-sm); color: var(--fg-2);
+  font-size: 12.5px; font-weight: 520; text-decoration: none; white-space: nowrap;
+}
+.more-menu a:hover { color: var(--fg); background: var(--track); }
+.more-menu a.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+
+/* Мобильная панель: четвёртый пункт открывает то же меню вверх. */
+.more-mobile .more-btn {
+  width: 100%; height: 100%; flex-direction: column; gap: 3px;
+  padding: 7px 2px; border-radius: var(--r-md);
+  color: var(--fg-3); font-size: inherit;
+}
+.more-mobile .more-btn svg { width: 19px; height: 19px; flex: none; }
+.more-mobile .more-btn span {
+  font-size: 9.5px; font-weight: 560; letter-spacing: -.01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.more-mobile .more-btn::after { display: none; }
+.more-mobile .more-btn.active { color: var(--acc); background: var(--acc-soft); }
+.more-menu-up { top: auto; bottom: calc(100% + 8px); right: 0; }
+/* .mobile-nav a растягивает все ссылки в колонку; пункты выпадающего
+   меню — обычные строки, иначе иконка/подпись прыгают. */
+.mobile-nav .more-menu a {
+  display: block; padding: 8px 10px; color: var(--fg-2);
+  font-size: 12.5px; font-weight: 520; text-align: left;
+}
+.mobile-nav .more-menu a:hover { color: var(--fg); background: var(--track); }
+.mobile-nav .more-menu a.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+
 /* Глобальная гарантия [hidden]: .banner/.btn/.node-card и прочие задают
    display и перебивают UA-правило, поэтому «скрытое» (например пустой
-   красный #sv-err) рендерилось бы. Последнее правило файла: при равной
-   специфичности (0,1,0) перекрывает все display-объявления выше. */
-[hidden] { display: none; }
+   красный #sv-err) рендерилось бы. !important обязателен: при сборке
+   компонентные стили могут оказаться ПОСЛЕ этого правила, и меню
+   «Дополнительно» (.more-menu{display:flex}) иначе всегда раскрыто. */
+[hidden] { display: none !important; }
+
+/* Дропдаун «Дополнительно» живёт внутри .navwrap, у которого overflow-x:auto
+   создаёт scroll-контейнер и обрезает абсолютное меню. На десктопе навигация
+   помещается — разрешаем меню выйти за границы. */
+@media (min-width: 721px) {
+  .navwrap { overflow: visible; }
+}
+
+/* Нижняя навигация — .glass с overflow:hidden (нужен для бликов), но он же
+   обрезает выпадающее вверх меню «Дополнительно»: виден только первый пункт.
+   Для навигации обрезка не нужна — разрешаем меню выйти над панелью. */
+.mobile-nav.glass { overflow: visible; }
+
+/* Шапка — .glass (overflow:hidden для бликов). Это же правило обрезало
+   выпадающее меню «Дополнительно» и заставляло браузер «прокручивать»
+   контейнер при фокусе пункта (меню уезжало вверх). Навигации обрезка
+   не нужна: меню должно свободно выходить под шапкой. */
+.topbar-inner.glass { overflow: visible; }
