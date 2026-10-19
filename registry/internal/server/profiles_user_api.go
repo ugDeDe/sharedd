@@ -35,6 +35,7 @@ func (r *Registry) mountMeProfiles(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/me/profiles/{id}", r.requireSession(r.requireCSRF(r.handleMeUpdateProfile)))
 	mux.HandleFunc("DELETE /api/me/profiles/{id}", r.requireSession(r.requireCSRF(r.handleMeDeleteProfile)))
 	mux.HandleFunc("POST /api/me/profiles/{id}/copy", r.requireSession(r.requireCSRF(r.handleMeCopyProfile)))
+	r.mountBlueprintProfiles(mux)
 }
 
 func (r *Registry) handleMeCreateProfile(w http.ResponseWriter, req *http.Request) {
@@ -44,16 +45,30 @@ func (r *Registry) handleMeCreateProfile(w http.ResponseWriter, req *http.Reques
 	}
 	u := sessionFrom(req).user
 	var body profilePayload
-	if err := decodeCabinetJSON(w, req, &body); err != nil {
+	if err := decodeGraphJSONStrictLimit(w, req, &body, maxGraphBodyBytes); err != nil {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", "bad json")
 		return
 	}
-	if body.Name == nil || *body.Name == "" || body.Steps == nil {
-		controlAPIError(w, http.StatusBadRequest, "validation_failed", "name and steps are required")
+	if body.Name == nil || *body.Name == "" {
+		controlAPIError(w, http.StatusBadRequest, "validation_failed", "name is required")
 		return
 	}
-	if err := validateStepsInput(*body.Steps); err != nil {
-		controlAPIError(w, http.StatusBadRequest, "steps_rejected", err.Error())
+	if body.Steps != nil && len(body.Blueprint) > 0 {
+		controlAPIError(w, http.StatusBadRequest, "steps_and_blueprint_conflict", "steps and blueprint are mutually exclusive")
+		return
+	}
+	graph := body.Format != nil && *body.Format == control.FormatGraph
+	if !graph {
+		if body.Steps == nil {
+			controlAPIError(w, http.StatusBadRequest, "validation_failed", "name and steps are required")
+			return
+		}
+		if err := validateStepsInput(*body.Steps); err != nil {
+			controlAPIError(w, http.StatusBadRequest, "steps_rejected", err.Error())
+			return
+		}
+	} else if len(body.Blueprint) == 0 {
+		controlAPIError(w, http.StatusBadRequest, "validation_failed", "blueprint is required for format graph")
 		return
 	}
 	n, err := r.control.CountUserProfiles(u.ID)
@@ -69,9 +84,11 @@ func (r *Registry) handleMeCreateProfile(w http.ResponseWriter, req *http.Reques
 	if body.VarsSchema != nil {
 		varsSchema = *body.VarsSchema
 	}
-	if err := control.ValidateProfileVarsSchema(varsSchema); err != nil {
-		writeControlErr(w, err, "user.profiles.create.validate_vars")
-		return
+	if !graph {
+		if err := control.ValidateProfileVarsSchema(varsSchema); err != nil {
+			writeControlErr(w, err, "user.profiles.create.validate_vars")
+			return
+		}
 	}
 	description := ""
 	if body.Description != nil {
@@ -82,10 +99,18 @@ func (r *Registry) handleMeCreateProfile(w http.ResponseWriter, req *http.Reques
 		writeControlErr(w, err, "user.profiles.create.metadata")
 		return
 	}
-	if _, err := r.control.AddProfileVersion(p.ID, *body.Steps, varsSchema); err != nil {
+	cleanup := func() {
 		if cleanupErr := r.control.DeleteProfile(p.ID); cleanupErr != nil {
 			logProfileControlErr("user.profiles.create.cleanup", cleanupErr)
 		}
+	}
+	if graph {
+		if !r.addGraphVersion(w, p.ID, body.Blueprint, "user.profiles.create") {
+			cleanup()
+			return
+		}
+	} else if _, err := r.control.AddProfileVersion(p.ID, *body.Steps, varsSchema); err != nil {
+		cleanup()
 		writeControlErr(w, err, "user.profiles.create.version")
 		return
 	}
@@ -184,9 +209,38 @@ func (r *Registry) handleMeUpdateProfile(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	var body profilePayload
-	if err := decodeCabinetJSON(w, req, &body); err != nil {
+	if err := decodeGraphJSONStrictLimit(w, req, &body, maxGraphBodyBytes); err != nil {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", "bad json")
 		return
+	}
+	if body.Steps != nil && len(body.Blueprint) > 0 {
+		controlAPIError(w, http.StatusBadRequest, "steps_and_blueprint_conflict", "steps and blueprint are mutually exclusive")
+		return
+	}
+	graph := body.Format != nil && *body.Format == control.FormatGraph
+	// Validate the graph and enforce CAS BEFORE any mutation (rename/version
+	// append), so an invalid or stale edit leaves the profile untouched (F3/F1).
+	var draft graphVersionDraft
+	if graph {
+		if len(body.Blueprint) == 0 {
+			controlAPIError(w, http.StatusBadRequest, "validation_failed", "blueprint is required for format graph")
+			return
+		}
+		ok := false
+		if draft, ok = prepareGraphVersion(w, body.Blueprint, "user.profiles.update"); !ok {
+			return
+		}
+		if body.ExpectedVersion != nil {
+			cur, err := r.currentGraphVersion(id)
+			if err != nil {
+				writeControlErr(w, err, "user.profiles.update.cas")
+				return
+			}
+			if cur != *body.ExpectedVersion {
+				controlAPIError(w, http.StatusConflict, "revision_conflict", "profile was modified concurrently")
+				return
+			}
+		}
 	}
 	// Переименование СВОЕЙ копии — метаданные: версию НЕ создаёт, published не
 	// сбрасывает (в отличие от steps ниже). Имя тримится, непустое, уникально
@@ -197,7 +251,11 @@ func (r *Registry) handleMeUpdateProfile(w http.ResponseWriter, req *http.Reques
 			return
 		}
 	}
-	if body.Steps != nil {
+	if graph {
+		if !r.appendGraphVersion(w, id, draft, "user.profiles.update") {
+			return
+		}
+	} else if body.Steps != nil {
 		if err := validateStepsInput(*body.Steps); err != nil {
 			controlAPIError(w, http.StatusBadRequest, "steps_rejected", err.Error())
 			return

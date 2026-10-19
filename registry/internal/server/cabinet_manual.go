@@ -236,14 +236,8 @@ func (r *Registry) handleMeServerDelete(w http.ResponseWriter, req *http.Request
 		r.writeControlUnavailable(w)
 		return
 	}
-	// Незаявленная pending-бронь держит место в квоте — снимаем её. Claim'нутая
-	// операция pending-строки уже не имеет.
-	if host.OperationID != 0 {
-		if err := r.control.DeletePendingSecretByOperation(host.OperationID); err != nil {
-			r.writeControlUnavailable(w)
-			return
-		}
-	}
+	// Pending-бронь установки снимается в той же транзакции, что и запись
+	// (DeleteManualHost); claim'нутая операция pending-строки уже не имеет.
 	// Место освобождается, нода остаётся в пуле (владелец → legacy;
 	// физическое удаление ноды — существующим механизмом DELETE /api/me/nodes).
 	if host.NodeID != "" {

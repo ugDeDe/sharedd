@@ -21,6 +21,7 @@ type provisionWorker struct {
 	running map[int64]bool
 	ctx     context.Context
 	cancel  context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 func newProvisionWorker() *provisionWorker {
@@ -28,8 +29,16 @@ func newProvisionWorker() *provisionWorker {
 	return &provisionWorker{running: make(map[int64]bool), ctx: ctx, cancel: cancel}
 }
 
-// stop отменяет базовый ctx воркеров (graceful shutdown).
-func (w *provisionWorker) stop() { w.cancel() }
+// stop отменяет базовый ctx воркеров и ждёт завершения в полёте, чтобы
+// вызывающий не закрыл store под живым provider-вызовом (H5).
+func (w *provisionWorker) stop() {
+	w.cancel()
+	w.wg.Wait()
+}
+
+// context — base worker context (cancelled by stop). Fleet workers use it so
+// shutdown joins them without borrowing the operation-id namespace.
+func (w *provisionWorker) context() context.Context { return w.ctx }
 
 // runningOp — идёт ли уже установка этой операции. Нужно retry-install:
 // операцию в installing можно повторить, только если воркер её НЕ выполняет
@@ -50,9 +59,11 @@ func (w *provisionWorker) run(opID int64, timeout time.Duration, fn func(context
 		return false
 	}
 	w.running[opID] = true
+	w.wg.Add(1)
 	w.mu.Unlock()
 
 	go func() {
+		defer w.wg.Done()
 		defer func() {
 			w.mu.Lock()
 			delete(w.running, opID)

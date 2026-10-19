@@ -115,6 +115,12 @@ func (r *Registry) migrateLegacyOwners() {
 	if bound > 0 {
 		log.Printf("control: %d existing node(s) bound to legacy user", bound)
 	}
+	// Активные кандидаты должны занимать место в квоте: после смены семантики
+	// (used_nodes = reservations, не node_owners) до-апгрейдные регистрации
+	// иначе остались бы бесплатными до следующего /register.
+	if err := r.control.ReconcileQuota(nodeIDs); err != nil {
+		log.Printf("control: reconcile pool quota: %v", err)
+	}
 }
 
 // controlAPIError пишем контрактным форматом §5: {"error":"<code>"} + текст.
@@ -189,12 +195,23 @@ func (r *Registry) authorizeUserRegister(w http.ResponseWriter, body registerReq
 	// Перевыпуск по node_secret (contract §1): Bearer — персональный секрет
 	// ИМЕННО этой ноды → авторизация как владельца, authkey не требуется.
 	if auth.kind == machineAuthNode && auth.ownerNodeID == body.NodeID {
-		ownerID, _, ok, err := r.control.NodeOwner(body.NodeID)
+		ownerID, legacy, ok, err := r.control.NodeOwner(body.NodeID)
 		if err != nil {
 			r.writeControlUnavailable(w)
 			return 0, false
 		}
 		if ok {
+			if !legacy {
+				u, err := r.control.User(ownerID)
+				if err != nil {
+					r.writeControlUnavailable(w)
+					return 0, false
+				}
+				if err := r.control.AuthorizeNode(body.NodeID, u.User); err != nil {
+					writeClaimErr(w, err)
+					return 0, false
+				}
+			}
 			return ownerID, true
 		}
 	}

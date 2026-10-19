@@ -63,11 +63,17 @@ func (r *Registry) writeProfileView(w http.ResponseWriter, p control.Profile, st
 }
 
 type profilePayload struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Published   *bool   `json:"published"`
-	Steps       *string `json:"steps"`
-	VarsSchema  *string `json:"vars_schema"`
+	Name        *string         `json:"name"`
+	Description *string         `json:"description"`
+	Published   *bool           `json:"published"`
+	Steps       *string         `json:"steps"`
+	VarsSchema  *string         `json:"vars_schema"`
+	Format      *string         `json:"format"`
+	Blueprint   json.RawMessage `json:"blueprint"`
+	// ExpectedVersion — graph PUT CAS (03 §6): when set it must equal the
+	// current max version, else 409 revision_conflict. Absent → legacy text
+	// callers keep working unchanged.
+	ExpectedVersion *int `json:"expected_version"`
 }
 
 // validateStepsInput — размер (общая для admin и user). Собственного

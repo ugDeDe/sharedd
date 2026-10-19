@@ -53,6 +53,8 @@ func writeControlErr(w http.ResponseWriter, err error, operation ...string) {
 		controlAPIError(w, http.StatusConflict, "duplicate", "username already exists")
 	case errors.Is(err, control.ErrDuplicateName):
 		controlAPIError(w, http.StatusConflict, "duplicate_name", "Профиль с таким именем уже существует")
+	case errors.Is(err, control.ErrProfileInUse):
+		controlAPIError(w, http.StatusConflict, "profile_in_use", "Профиль используется активной политикой или запуском")
 	case errors.Is(err, control.ErrNotFound):
 		controlAPIError(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, control.ErrLastAdmin):

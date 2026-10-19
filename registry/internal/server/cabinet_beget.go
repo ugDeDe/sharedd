@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -365,16 +366,6 @@ func (r *Registry) handleMeVps(w http.ResponseWriter, req *http.Request) {
 		r.writeControlUnavailable(w)
 		return
 	}
-	// Предварительный (advisory) отказ по квоте: не тревожим Beget-связку и
-	// не ждём платного пути, если мест и так нет. Авторитетная атомарная
-	// проверка (Union ноды∪VPS∪заказы, лимит/cooldown, H3) — в provision.Create.
-	if used, err := r.control.UsedSlots(u.ID); err != nil {
-		r.writeControlUnavailable(w)
-		return
-	} else if used >= u.MaxNodes {
-		controlAPIError(w, http.StatusForbidden, "quota_exceeded", "max_nodes reached")
-		return
-	}
 	// Профиль установки: published ИЛИ собственный неопубликованный (§7.4);
 	// profile_id=0 → штатный профиль sharedd-node (addendum §4.4).
 	pv, err := r.selectableProfileVersion(u, body.ProfileID)
@@ -416,7 +407,7 @@ func (r *Registry) handleMeVps(w http.ResponseWriter, req *http.Request) {
 			_, _ = r.control.ReleaseNode(nodeID)
 		}
 	}()
-	if err := r.control.AuthorizeNode(nodeID, u); err != nil {
+	if err := r.control.BindNodeOwnership(nodeID, u); err != nil {
 		if errors.Is(err, control.ErrQuotaExceeded) {
 			controlAPIError(w, http.StatusForbidden, "quota_exceeded", "max_nodes reached")
 			return
@@ -573,13 +564,10 @@ func (r *Registry) provisionVars(u control.User, nodeID string, in map[string]an
 // provisionBaseVars validates supplied values and defaults without reserving
 // ownership or issuing a secret. Manual acceptance persists those atomically.
 func (r *Registry) provisionBaseVars(in map[string]any) (map[string]any, error) {
-	vars := map[string]any{}
-	for k, v := range in {
-		switch k {
-		case "node_id", "node_secret", "registry_url", "label":
-			return nil, fmt.Errorf("%w: variable %q is server controlled", control.ErrValidation, k)
-		}
-		vars[k] = v
+	// Normalize legacy names before defaults; never overwrite a supplied value.
+	vars, err := control.MergeProfileVars("", in)
+	if err != nil {
+		return nil, err
 	}
 	r.cfgMu.RLock()
 	regURL := r.cfg.Panel.PublicURL
@@ -597,8 +585,13 @@ func (r *Registry) provisionBaseVars(in map[string]any) (map[string]any, error) 
 	if _, ok := vars["proxy_secret"]; !ok {
 		vars["proxy_secret"] = proxySecret
 	}
+	vars["port"], vars["sni"], vars["secret"] = vars["proxy_port"], vars["proxy_sni"], vars["proxy_secret"]
 	if err := control.ValidateExtraVars(vars); err != nil {
 		return nil, err
+	}
+	port, err := strconv.Atoi(fmt.Sprint(vars["proxy_port"]))
+	if err != nil || port != proxyPort {
+		return nil, fmt.Errorf("%w: proxy_port/port must match shared_proxy.port", control.ErrValidation)
 	}
 	return vars, nil
 }

@@ -77,7 +77,11 @@ func (r *Registry) requireNodeAuth(next http.Handler) http.Handler {
 		case subtle.ConstantTimeCompare(wantHash[:], gotHash[:]) == 1:
 			// общий токен — самый частый случай, без обращений к БД.
 		default:
-			if owner, ok := r.nodeSecretOwner(provided); ok {
+			// Reinstall keeps the old owner/token live. Only /register may
+			// consume the same operation's pending claim (label + quota checked).
+			if req.Method == http.MethodPost && req.URL.Path == "/register" && r.pendingSecret(provided) {
+				info = machineAuthInfo{kind: machineAuthPending, pendingSecret: provided}
+			} else if owner, ok := r.nodeSecretOwner(provided); ok {
 				info = machineAuthInfo{kind: machineAuthNode, ownerNodeID: owner}
 			} else if r.pendingSecret(provided) {
 				info = machineAuthInfo{kind: machineAuthPending, pendingSecret: provided}

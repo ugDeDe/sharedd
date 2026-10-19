@@ -317,10 +317,20 @@ func (r *Registry) mountCabinet(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/me/operations/{id}/cancel", r.requireSession(r.requireCSRF(r.handleOperationCancel)))
 	mux.HandleFunc("POST /api/me/operations/{id}/retry-install", r.requireSession(r.requireCSRF(r.handleOperationRetryInstall)))
 	mux.HandleFunc("DELETE /api/me/nodes/{node_id}", r.requireSession(r.requireCSRF(r.handleDeleteNode)))
+	r.mountHostingConnections(mux)
+	r.mountCloudResources(mux)
+	r.mountFleets(mux)
+	r.mountBlueprintRuns(mux)
 }
 
 func decodeCabinetJSON(w http.ResponseWriter, req *http.Request, dst any) error {
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 64<<10)).Decode(dst); err != nil {
+	return decodeCabinetJSONLimit(w, req, dst, 64<<10)
+}
+
+// decodeCabinetJSONLimit decodes a JSON body with an explicit byte cap
+// (graph validate/CRUD bodies may be up to 256KiB, 03 §2).
+func decodeCabinetJSONLimit(w http.ResponseWriter, req *http.Request, dst any, max int64) error {
+	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, max)).Decode(dst); err != nil {
 		return err
 	}
 	return nil

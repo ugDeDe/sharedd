@@ -128,6 +128,8 @@ func newCabinetRegistry(t *testing.T) (*Registry, *fakeBeget) {
 	// отклонял установку как validation_failed. newTestRegistry собирает cfg
 	// напрямую, минуя applyRegistryDefaults, поэтому ставим явно.
 	r.cfg.SharedProxy.Port = 443
+	r.cfg.SharedProxy.Users = map[string]string{"test": "0123456789abcdef0123456789abcdef"}
+	r.cfg.Panel.PublicURL = "https://registry.example.com"
 	fake := &fakeBeget{regions: []beget.RegionInfo{{ID: "ru1", Name: "Russia", Available: true}}}
 	r.begetFactory = func(_, _ string) begetClient { return fake }
 	r.openControl()

@@ -91,6 +91,50 @@ type Registry struct {
 	loginLimiter   *ipRateLimiter
 	loginFailLimit *ipRateLimiter
 
+	// hostingFactory — фабрика hosting-провайдеров кабинета (stage-04,
+	// cabinet_hosting.go). nil → настоящие nodehost/beget клиенты; тесты
+	// подменяют моком с счётчиками внешних вызовов.
+	hostingFactory func(control.HostingConnection) (hostingProvider, error)
+	// balMu/balBusy — коалесинг баланс-refresh: один внешний вызов на
+	// подключение (in-process, singleflight). НЕ мульти-инстансный: несколько
+	// реплик registry коалесили бы независимо (приемлемо — лишний чтением
+	// баланс-запрос безвреден).
+	balMu   sync.Mutex
+	balBusy map[int64]*balCall
+	// balNow — инъекция часов для тестов min-interval (nil = time.Now).
+	balNow func() time.Time
+
+	// cloudFactory — фабрика провайдера облачных ресурсов (stage-05,
+	// cabinet_cloud.go). nil → настоящий nodehost-клиент; тесты подменяют
+	// моком со счётчиками внешних вызовов.
+	cloudFactory func(control.HostingConnection) (cloudProvider, error)
+	// cloudMu/cloudBusy — per-resource mutation guard (F1, stage-06):
+	// install/delete/change-ip взаимно исключены по resource id. In-process,
+	// не crash-durable (durable 'installing' на ресурсе — отдельный этап).
+	cloudMu   sync.Mutex
+	cloudBusy map[int64]bool
+
+	// fleetMu/fleetWorkers — fleet id guard, deliberately separate from the
+	// operation-id worker namespace. fleetWG joins fleet workers on shutdown.
+	fleetMu      sync.Mutex
+	fleetWorkers map[int64]bool
+	fleetWG      sync.WaitGroup
+	// fleetReconcileAt throttles provider inventory scans per resource id.
+	fleetReconcileMu sync.Mutex
+	fleetReconcileAt map[int64]time.Time
+
+	// blueprint engine (stage-08b-i). bpWorker is a run-id guard, separate
+	// from provision workers so a run can itself drive cloud operations.
+	bpWorker     *provisionWorker
+	bpWorkerOnce sync.Once
+	// bpAdmit is an additional admission veto/test hook. Resource-bound health
+	// verification is mandatory with or without this callback.
+	bpAdmit func(context.Context, control.ProfileRun, control.CloudResourceV2) (bool, error)
+	// bpNowFn/bpInterval/bpPollInterval are test seams.
+	bpNowFn        func() time.Time
+	bpInterval     time.Duration
+	bpPollInterval time.Duration
+
 	// cfgMu защищает "горячие" поля cfg (панель их правит на лету).
 	// ПОРЯДОК ЛОКОВ: сначала mu, потом cfgMu — никогда наоборот.
 	cfgMu sync.RWMutex
@@ -169,7 +213,11 @@ func Run() {
 	// user-режим: контрольная БД + привязка существующих нод к legacy-
 	// пользователю (контракт §4). Неудачный Open — не фатален: fail-closed.
 	reg.openControl()
+	reg.seedSystemGraphs()
 	reg.migrateLegacyOwners()
+	// Startup: снять pending-брони, чьи ресурс/хост уже удалены (leak из
+	// failed-установок). Cheap, idempotent; только счётчик в лог.
+	reg.reconcileOrphanPendingSecrets()
 
 	reg.mu.Lock()
 	reg.addEventLocked(Event{
@@ -190,12 +238,28 @@ func Run() {
 	go reg.resumeInstallingOps(context.Background())
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go reg.pendingSecretReconcileLoop(ctx)
+	// Resume cloud creates whose in-process worker died with a restart/deploy.
+	// Read-only provider reconcile (never a second Create).
+	go reg.cloudResumeLoop(ctx)
+	// Fleet autopilot: uncertain paid outcomes are reconciled against provider
+	// inventory once a minute (no button, no second Create).
+	go reg.fleetReconcileLoop(ctx)
+	bpDone := make(chan struct{})
+	go func() {
+		defer close(bpDone)
+		reg.blueprintLoop(ctx)
+	}()
 	if err := reg.serveHTTP(ctx); err != nil {
 		log.Printf("registry HTTP stopped: %v", err)
 	}
 	// Останавливаем фоновые воркеры установки: отменяем их базовый ctx, чтобы
 	// после shutdown не инициировались новые платные вызовы (H1).
+	stop()   // also cancels the blueprint loop when serveHTTP failed without shutdown
+	<-bpDone // H5: join the scheduler before closing stores and before stopping its workers
 	reg.provisionWorkers().stop()
+	reg.fleetWG.Wait() // fleet workers share the cancelled base ctx
+	reg.blueprintWorkers().stop()
 	reg.mu.Lock()
 	reg.persistStateLocked()
 	reg.mu.Unlock()
@@ -206,6 +270,40 @@ func Run() {
 }
 
 const shutdownTimeout = 10 * time.Second
+
+// pendingSecretReconcileInterval — период фоновой уборки осиротевших
+// pending-броней. Редко: DELETE дешёвый, а брони живут минутами/сутками.
+const pendingSecretReconcileInterval = 10 * time.Minute
+
+// reconcileOrphanPendingSecrets — startup/periodic уборка: удаляет брони
+// терминальных install-операций, чьи ресурс/хост уже удалены. Секреты не
+// логируются, только счётчик.
+func (r *Registry) reconcileOrphanPendingSecrets() {
+	if r.control == nil {
+		return
+	}
+	n, err := r.control.ReconcileOrphanPendingSecrets()
+	if err != nil {
+		log.Printf("control: reconcile pending node secrets: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("control: released %d orphan pending node secret(s)", n)
+	}
+}
+
+func (r *Registry) pendingSecretReconcileLoop(ctx context.Context) {
+	t := time.NewTicker(pendingSecretReconcileInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.reconcileOrphanPendingSecrets()
+		}
+	}
+}
 
 func (r *Registry) httpServer() *http.Server {
 	return &http.Server{
@@ -614,6 +712,13 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 	if existing, ok := r.state.Candidates[body.NodeID]; ok {
 		detail := "re-registered"
 		if existing.IP != body.IP {
+			// Health proof belongs to an endpoint, not just a reusable node ID.
+			existing.GlobalpingOK, existing.MetricsOK, existing.MetricsHealthy, existing.Healthy = false, false, false, false
+			existing.GlobalpingMeasurementID = ""
+			existing.GlobalpingMeasurementAt = time.Time{}
+			existing.EndpointRegisteredAt = now
+			existing.LastGlobalpingAt, existing.LastReportAt, existing.LastMetricsCheckedAt = time.Time{}, time.Time{}, time.Time{}
+			existing.TCPHist = nil
 			// Смена ip В КАРАНТИНЕ — старый ip фиксируем как
 			// блокировку (bans row + stale-запись), нода живёт на новом.
 			if existing.Quarantine != nil && existing.Quarantine.Attempts > 0 {
@@ -688,6 +793,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 				Detail: fmt.Sprintf("same IP as new node %s — old entry removed, domains carried over", body.NodeID),
 			})
 			delete(r.state.Candidates, oldID)
+			r.releaseQuota(oldID)
 		}
 	}
 
@@ -757,7 +863,7 @@ func (r *Registry) probeLoop() {
 				}
 				ok := tcpProbe(ip, port, r.cfg.ProbeTimeout)
 				r.mu.Lock()
-				if current := r.state.Candidates[c.NodeID]; current != c || c.Generation != generation || c.IP != ip {
+				if current := r.state.Candidates[c.NodeID]; current != c || c.Generation != generation || c.IP != ip || c.Port != port {
 					r.mu.Unlock()
 					return
 				}

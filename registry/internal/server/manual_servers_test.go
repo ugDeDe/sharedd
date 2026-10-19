@@ -345,8 +345,8 @@ func TestManualInstallOneSlotAndRetryNoProviderCalls(t *testing.T) {
 	if final.State != control.OpFailed {
 		t.Fatalf("first install must fail, got %s", final.State)
 	}
-	if used, _ := r.control.UsedNodes(id); used != 1 {
-		t.Fatalf("one slot per server expected, got %d", used)
+	if used, _ := r.control.UsedNodes(id); used != 0 {
+		t.Fatalf("failed install before registration must not occupy a slot, got %d", used)
 	}
 
 	// retry (same endpoint): та же операция, та же нода, ноль провайдерских вызовов
