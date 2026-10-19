@@ -159,15 +159,13 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if expectedPort == 0 { // tests and legacy in-memory configs created before shared_proxy.port
 		expectedPort = 443
 	}
-	if candidate.Port != payload.Port {
+	if candidate.Port != 0 && candidate.Port != payload.Port {
 		// Neither a GP measurement nor a TCP probe of the old port proves
 		// this endpoint ready. A verified GP result below can restore GP.
 		candidate.GlobalpingOK, candidate.Healthy = false, false
 		candidate.GlobalpingMeasurementID, candidate.LastGlobalpingAt = "", time.Time{}
 		candidate.GlobalpingMeasurementAt = time.Time{}
-		if candidate.Port != 0 { // the first port report still belongs to the registration epoch
-			candidate.EndpointRegisteredAt = time.Now()
-		}
+		candidate.EndpointRegisteredAt = time.Now()
 		candidate.TCPHist = nil
 	}
 	candidate.Port = payload.Port

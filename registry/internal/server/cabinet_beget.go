@@ -366,6 +366,13 @@ func (r *Registry) handleMeVps(w http.ResponseWriter, req *http.Request) {
 		r.writeControlUnavailable(w)
 		return
 	}
+	// Advisory-квота ДО любых обращений к Beget: max_nodes=0 (дефолт новых
+	// пользователей) обязан отказывать сразу, не требуя привязки аккаунта.
+	// Авторитетная проверка остаётся в ReserveCreateOperation.
+	if used, uerr := r.control.UsedSlots(u.ID); uerr == nil && used >= u.MaxNodes {
+		controlAPIError(w, http.StatusForbidden, "quota_exceeded", "max_nodes reached")
+		return
+	}
 	// Профиль установки: published ИЛИ собственный неопубликованный (§7.4);
 	// profile_id=0 → штатный профиль sharedd-node (addendum §4.4).
 	pv, err := r.selectableProfileVersion(u, body.ProfileID)

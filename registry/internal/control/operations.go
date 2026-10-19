@@ -153,8 +153,23 @@ func (s *Store) ReserveCreateOperation(op Operation, lim CreateLimits) (Operatio
 	op.ID, _ = res.LastInsertId()
 	op.CreatedAt, op.UpdatedAt = now.Unix(), now.Unix()
 
-	// Pool quota applies only at registration, never to a paid order. Monetary
-	// idempotency, daily limits, cooldown and unknown-outcome guards remain.
+	// C1/H1 (деньги): платный заказ Beget ограничен отдельным счётчиком
+	// провиженных мест (ноды ∪ активные cloud_resources ∪ незавершённые
+	// заказы). Это НЕ пул-квота регистрации (UsedNodes/reservations): VPS,
+	// созданный и ещё не зарегистрированный, всё равно занимает денежное
+	// место, иначе max_nodes обходится серийными заказами.
+	var used int
+	if err := tx.QueryRow(
+		`SELECT COUNT(DISTINCT node_id) FROM (
+		   SELECT node_id FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> ''
+		   UNION SELECT node_id FROM cloud_resources WHERE user_id = ? AND state <> 'deleted' AND node_id <> ''
+		   UNION SELECT node_id FROM operations WHERE user_id = ? AND kind = ? AND state NOT IN ('failed','deleted') AND node_id <> ''
+		 )`, op.UserID, op.UserID, op.UserID, OpKindCreate).Scan(&used); err != nil {
+		return Operation{}, false, err
+	}
+	if used > lim.MaxNodes {
+		return Operation{}, false, ErrQuotaExceeded
+	}
 
 	// Дневной лимит: фактически начатые заказы (pending/sent/confirmed/unknown).
 	if lim.MaxCreatesPerDay > 0 {
@@ -277,7 +292,14 @@ func (s *Store) CancelPendingOperation(id int64) (bool, error) {
 // ещё не созданную операцию — для предварительного (advisory) отказа в
 // кабинете; авторитетная проверка — в ReserveCreateOperation.
 func (s *Store) UsedSlots(userID int64) (int, error) {
-	return s.UsedNodes(userID)
+	var n int
+	err := s.sql.QueryRow(
+		`SELECT COUNT(DISTINCT node_id) FROM (
+		   SELECT node_id FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> ''
+		   UNION SELECT node_id FROM cloud_resources WHERE user_id = ? AND state <> 'deleted' AND node_id <> ''
+		   UNION SELECT node_id FROM operations WHERE user_id = ? AND kind = ? AND state NOT IN ('failed','deleted') AND node_id <> ''
+		 )`, userID, userID, userID, OpKindCreate).Scan(&n)
+	return n, err
 }
 
 func (s *Store) OperationByIdemKey(idemKey string) (Operation, error) {

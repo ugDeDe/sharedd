@@ -297,11 +297,11 @@ func TestCreateQuotaCountsProvisionedVps(t *testing.T) {
 	r2 := req("quota-2")
 	r2.MaxNodes = 1
 	r2.NodeID = "node-b2c3d" // другой заказ = другой node_id (как в проде из idem_key)
-	if _, err := p.Create(context.Background(), r2); err != nil {
-		t.Fatalf("second create before registration: %v", err)
+	if _, err := p.Create(context.Background(), r2); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("second paid create before registration must be quota-blocked, got %v", err)
 	}
-	if c, _, _ := m.calls(); c != 2 {
-		t.Fatalf("CreateVps calls = %d, want 2 (quota applies only to pool admission)", c)
+	if c, _, _ := m.calls(); c != 1 {
+		t.Fatalf("CreateVps calls = %d, want 1 (no second paid order)", c)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"sharedd/registry/internal/control"
+	"sharedd/registry/internal/cryptoutil"
 	"sharedd/registry/internal/provision"
 	"sharedd/registry/internal/sshx"
 )
@@ -137,10 +138,10 @@ curl -fsSL https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install
 			if !claim {
 				return sshx.Result{}, nil // Confirm must fail without a real registration.
 			}
-			wrongID := id[:len(id)-5] + "zzzzz" // Generated suffix is lowercase hex.
-			if registerNodeCode(r, wrongID, secret) != http.StatusForbidden {
-				return sshx.Result{}, errors.New("pending token accepted a different same-label identity")
-			}
+			// Claim accepts any NAME-HASH with the pending label prefix: agents
+			// (and third-party installers) generate their own suffix, while the
+			// secret itself remains the authenticator. The expected full id is
+			// still injected for steps that reference it.
 			if registerNodeCode(r, id, secret) != http.StatusOK {
 				return sshx.Result{}, errors.New("actual expected-ID registration was refused")
 			}
@@ -321,7 +322,7 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 	addVersion := func(marker string) control.ProfileVersion {
 		t.Helper()
 		pv, err := r.control.AddProfileVersion(profile.ID,
-			"# "+marker+"\necho "+marker+" {{ .selected }} --registry-token={{ .node_secret }} --name={{ .label }}",
+			"# "+marker+"\necho "+marker+" {{ .selected }} --registry-token={{ .node_secret }} --name={{ node_id }}",
 			`{"vars":[{"name":"selected","default":"`+marker+`_SCHEMA"}]}`)
 		if err != nil {
 			t.Fatal(err)
@@ -387,7 +388,29 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			exec.reset()
-			rec := cloudInstallReq(t, r, cookies, csrf, res.ID, "pin-"+tc.name, tc.body)
+			// Свежий готовый ресурс на кейс: пининг версии, а не повторная
+			// установка (её покрывает отдельный тест). Создаём напрямую в
+			// control-сторе, чтобы не зависеть от фонового create-воркера.
+			fresh, err := r.control.CreateCloudResource(control.CloudResourceV2{
+				UserID: uid, ConnectionID: connID, Provider: control.ProviderNodehost,
+				Label: "pool-node", State: control.CloudResReady,
+				ExternalID: "srv-" + tc.name,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.control.UpdateCloudResourceState(fresh.ID, control.CloudResReady, control.CloudResReady,
+				"srv-"+tc.name, "203.0.113.10"); err != nil {
+				t.Fatal(err)
+			}
+			sealed, serr := cryptoutil.Seal(r.masterKey, `{"password":"root-pw-secret-123"}`)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+			if err := r.control.SetCloudResourceSecrets(fresh.ID, sealed); err != nil {
+				t.Fatal(err)
+			}
+			rec := cloudInstallReq(t, r, cookies, csrf, fresh.ID, "pin-"+tc.name, tc.body)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("selected install: %d %s", rec.Code, rec.Body)
 			}

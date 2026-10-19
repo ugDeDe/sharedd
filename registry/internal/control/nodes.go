@@ -39,20 +39,45 @@ func (s *Store) UsedNodes(userID int64) (int, error) {
 }
 
 // BindNodeOwnership prepares a provisioned identity, not a pool admission.
-// Its personal secret can authenticate /register, where quota is enforced.
+// Its personal secret can authenticate /register, where POOL quota is enforced.
+// Здесь проверяется ДЕНЕЖНЫЙ счётчик провиженных мест (ноды ∪ активные
+// cloud_resources ∪ незавершённые заказы): иначе max_nodes обходится серией
+// платных заказов до регистрации. Транзакция та же, что у AuthorizeNode.
 func (s *Store) BindNodeOwnership(nodeID string, u User) error {
-	if _, err := s.sql.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy) VALUES (?,?,?,0)
-		ON CONFLICT(node_id) DO NOTHING`, nodeID, u.ID, time.Now().Unix()); err != nil {
-		return err
-	}
-	owner, _, ok, err := s.NodeOwner(nodeID)
+	tx, err := s.sql.Begin()
 	if err != nil {
 		return err
 	}
-	if !ok || owner != u.ID {
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy) VALUES (?,?,?,0)
+		ON CONFLICT(node_id) DO NOTHING`, nodeID, u.ID, time.Now().Unix()); err != nil {
+		return err
+	}
+	var owner int64
+	var legacy int
+	err = tx.QueryRow(`SELECT user_id, legacy FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrOwnerMismatch
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	if owner != u.ID || legacy != 0 {
+		return ErrOwnerMismatch
+	}
+	var used int
+	if err := tx.QueryRow(
+		`SELECT COUNT(DISTINCT node_id) FROM (
+		   SELECT node_id FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> ''
+		   UNION SELECT node_id FROM cloud_resources WHERE user_id = ? AND state <> 'deleted' AND node_id <> ''
+		   UNION SELECT node_id FROM operations WHERE user_id = ? AND kind = ? AND state NOT IN ('failed','deleted') AND node_id <> ''
+		 )`, u.ID, u.ID, u.ID, OpKindCreate).Scan(&used); err != nil {
+		return err
+	}
+	if used > u.MaxNodes {
+		return ErrQuotaExceeded
+	}
+	return tx.Commit()
 }
 
 // AuthorizeNode — атомарная привязка ноды к пользователю с проверкой квоты:
