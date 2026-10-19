@@ -1,0 +1,43 @@
+{
+  "schema_version":1,"name":"Nodehost: замена при новом ip_ban","provider":"nodehost",
+  "inputs":{"connection_id":{"type":"number","required":true},"configuration_ref":{"type":"config","required":true},"installation_profile_version_id":{"type":"number","required":true}},
+  "entries":{"initial":"create_initial","observe":"ban"},
+  "nodes":[
+    {"id":"create_initial","type":"server.create","params":{"purpose":"initial"},"in":{"connection":{"ref":"input.connection_id"},"configuration":{"ref":"input.configuration_ref"}}},
+    {"id":"ready_initial","type":"server.ready","params":{"timeout_seconds":600},"in":{"operation":{"ref":"create_initial.operation"}}},
+    {"id":"install_initial","type":"install.text","params":{"timeout_seconds":1200},"in":{"server":{"ref":"ready_initial.server"},"version":{"ref":"input.installation_profile_version_id"}}},
+    {"id":"admit_initial","type":"pool.admit","params":{"timeout_seconds":600},"in":{"server":{"ref":"install_initial.server"}}},
+    {"id":"arm_initial","type":"observe.arm","params":{},"in":{"server":{"ref":"admit_initial.server"}}},
+    {"id":"ban","type":"event.ip_ban","params":{},"in":{"server":{"ref":"run.current_server"}}},
+    {"id":"guard","type":"policy.guard","params":{},"in":{"server":{"ref":"ban.server"},"episode":{"ref":"ban.episode"}}},
+    {"id":"stop","type":"terminal.stop","params":{"reason":"policy_inactive"},"in":{}},
+    {"id":"create_new","type":"server.create","params":{"purpose":"replacement"},"in":{"connection":{"ref":"input.connection_id"},"configuration":{"ref":"input.configuration_ref"}}},
+    {"id":"ready_new","type":"server.ready","params":{"timeout_seconds":600},"in":{"operation":{"ref":"create_new.operation"}}},
+    {"id":"distinct","type":"server.distinct_ip","params":{},"in":{"old":{"ref":"guard.server"},"new":{"ref":"ready_new.server"}}},
+    {"id":"install_new","type":"install.text","params":{"timeout_seconds":1200},"in":{"server":{"ref":"distinct.server"},"version":{"ref":"input.installation_profile_version_id"}}},
+    {"id":"admit_new","type":"pool.admit","params":{"timeout_seconds":600},"in":{"server":{"ref":"install_new.server"}}},
+    {"id":"fence","type":"resource.fence","params":{},"in":{"old":{"ref":"guard.server"},"new":{"ref":"admit_new.server"}}},
+    {"id":"switch","type":"resource.switch","params":{},"in":{"old":{"ref":"guard.server"},"new":{"ref":"fence.server"}}},
+    {"id":"delete_old","type":"server.delete","params":{},"in":{"server":{"ref":"guard.server"}}},
+    {"id":"absent","type":"server.absent","params":{"timeout_seconds":600},"in":{"server":{"ref":"delete_old.server"}}},
+    {"id":"arm_new","type":"observe.arm","params":{},"in":{"server":{"ref":"switch.server"}}}
+  ],
+  "edges":[
+    {"from":"create_initial","port":"ok","to":"ready_initial"},
+    {"from":"ready_initial","port":"ok","to":"install_initial"},
+    {"from":"install_initial","port":"ok","to":"admit_initial"},
+    {"from":"admit_initial","port":"ok","to":"arm_initial"},
+    {"from":"ban","port":"ok","to":"guard"},
+    {"from":"guard","port":"stop","to":"stop"},
+    {"from":"guard","port":"active","to":"create_new"},
+    {"from":"create_new","port":"ok","to":"ready_new"},
+    {"from":"ready_new","port":"ok","to":"distinct"},
+    {"from":"distinct","port":"ok","to":"install_new"},
+    {"from":"install_new","port":"ok","to":"admit_new"},
+    {"from":"admit_new","port":"ok","to":"fence"},
+    {"from":"fence","port":"ok","to":"switch"},
+    {"from":"switch","port":"ok","to":"delete_old"},
+    {"from":"delete_old","port":"ok","to":"absent"},
+    {"from":"absent","port":"ok","to":"arm_new"}
+  ]
+}
