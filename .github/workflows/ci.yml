@@ -131,7 +131,8 @@ jobs:
       - name: Переместить dev-тег на текущий коммит
         run: |
           git tag -f dev
-          git push -f origin dev
+          # Явный refspec: короткое `dev` неоднозначно (есть ветка dev).
+          git push -f origin refs/tags/dev:refs/tags/dev
       - name: Сборка dev
         run: VERSION="dev-${GITHUB_SHA::8}" bash scripts/build_all.sh
       - uses: softprops/action-gh-release@v2
@@ -168,7 +169,7 @@ jobs:
       - name: Переместить stable-тег на текущий коммит
         run: |
           git tag -f stable
-          git push -f origin stable
+          git push -f origin refs/tags/stable:refs/tags/stable
       - name: Сборка stable
         run: VERSION="stable-${GITHUB_SHA::8}" bash scripts/build_all.sh
       - uses: softprops/action-gh-release@v2
