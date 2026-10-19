@@ -33,6 +33,7 @@ var (
 	ErrCooldown         = errors.New("cooldown active")
 	ErrCreateInProgress = errors.New("create already in progress")
 	ErrOwnerMismatch    = errors.New("owner mismatch")
+	ErrProfileInUse     = errors.New("profile in use")
 	ErrLastAdmin        = errors.New("cannot disable last active admin")
 	ErrLegacyProtected  = errors.New("legacy user is protected")
 	// Приглашения (contract §2): различимые коды отказа регистрации.
@@ -140,6 +141,7 @@ CREATE TABLE IF NOT EXISTS operations (
  state TEXT NOT NULL,
  idem_key TEXT UNIQUE NOT NULL,
  provider_vps_id TEXT NOT NULL DEFAULT '',
+ provider_op_id TEXT NOT NULL DEFAULT '',
  region TEXT NOT NULL DEFAULT '',
  config_id TEXT NOT NULL DEFAULT '',
  profile_id INTEGER NOT NULL DEFAULT 0,
@@ -215,10 +217,178 @@ CREATE TABLE IF NOT EXISTS pending_node_secrets (
  secret_enc TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_pending_node_secrets_created ON pending_node_secrets(created_at);`
+CREATE INDEX IF NOT EXISTS idx_pending_node_secrets_created ON pending_node_secrets(created_at);
+-- ── hosting-blueprints stage-04 (03-cabinet-api.md §3, 04 §2): подключения
+-- провайдеров хостинга + снимки баланса (CAS по credential_revision) ──
+CREATE TABLE IF NOT EXISTS hosting_connections (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ provider TEXT NOT NULL CHECK(provider IN ('nodehost','beget')),
+ label TEXT NOT NULL,
+ credentials_enc TEXT NOT NULL,
+ credential_revision INTEGER NOT NULL DEFAULT 1,
+ revision INTEGER NOT NULL DEFAULT 1,
+ verified_at INTEGER NOT NULL DEFAULT 0,
+ capabilities_json TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hosting_connections_user ON hosting_connections(user_id);
+CREATE TABLE IF NOT EXISTS connection_balances (
+ connection_id INTEGER PRIMARY KEY REFERENCES hosting_connections(id),
+ user_id INTEGER NOT NULL,
+ credential_revision INTEGER NOT NULL,
+ amount TEXT,
+ currency TEXT NOT NULL DEFAULT '',
+ scope TEXT NOT NULL DEFAULT '',
+ checked_at INTEGER NOT NULL DEFAULT 0,
+ last_attempt_at INTEGER NOT NULL DEFAULT 0,
+ safe_error TEXT NOT NULL DEFAULT ''
+);
+-- ── hosting-blueprints stage-05 (03-cabinet-api.md §4-§5, 04 §2): управляемые
+-- облачные ресурсы + политика управления нодой.
+-- Имя cloud_resources2 (НЕ legacy cloud_resources): legacy-таблица
+-- (vps_id TEXT PK) — часть денежного квотного контура
+-- ReserveCreateOperation/UsedSlots и её on-disk формат менять нельзя;
+-- новая форма (surrogate PK, связь с hosting_connections) живёт параллельно.
+CREATE TABLE IF NOT EXISTS cloud_resources2 (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ connection_id INTEGER NOT NULL REFERENCES hosting_connections(id),
+ provider TEXT NOT NULL,
+ external_id TEXT NOT NULL DEFAULT '',
+ node_id TEXT NOT NULL DEFAULT '',
+ label TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1,
+ ip TEXT NOT NULL DEFAULT '',
+ secrets_enc TEXT NOT NULL DEFAULT '',
+ replaces_resource_id INTEGER,
+ replaced_by_resource_id INTEGER,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_resources2_user ON cloud_resources2(user_id);
+-- H7/H8 guard scans by (user, node, state); keep it index-backed.
+CREATE INDEX IF NOT EXISTS idx_cloud_resources2_user_node ON cloud_resources2(user_id, node_id, state);
+-- Внешний ID уникален в рамках подключения; пустой (= ещё не выделен
+-- провайдером) не участвует — частичный UNIQUE-индекс.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cloud_resources2_conn_ext
+ ON cloud_resources2(connection_id, external_id) WHERE external_id <> '';
+CREATE TABLE IF NOT EXISTS node_management (
+ node_id TEXT PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ mode TEXT NOT NULL DEFAULT 'manual' CHECK(mode IN ('manual','profile')),
+ profile_version_id INTEGER,
+ inputs_json TEXT NOT NULL DEFAULT '',
+ process_current_ban INTEGER NOT NULL DEFAULT 0,
+ revision INTEGER NOT NULL DEFAULT 1,
+ current_resource_id INTEGER,
+ updated_at INTEGER NOT NULL
+);
+-- ── hosting-blueprints stage-08b-i (04 §2/§4-§5): durable run engine ──
+-- ── fleet autopilot: batch of managed cloud resources + install/policy ──
+CREATE TABLE IF NOT EXISTS fleets (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ connection_id INTEGER NOT NULL REFERENCES hosting_connections(id),
+ count INTEGER NOT NULL,
+ auto_replace INTEGER NOT NULL DEFAULT 0,
+ profile_version_id INTEGER NOT NULL,
+ configuration_json TEXT NOT NULL DEFAULT '',
+ fleet_key TEXT NOT NULL,
+ state TEXT NOT NULL,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL,
+ UNIQUE(user_id, fleet_key)
+);
+CREATE INDEX IF NOT EXISTS idx_fleets_user ON fleets(user_id, id);
+CREATE TABLE IF NOT EXISTS fleet_items (
+ id INTEGER PRIMARY KEY,
+ fleet_id INTEGER NOT NULL REFERENCES fleets(id),
+ idx INTEGER NOT NULL,
+ label TEXT NOT NULL,
+ resource_id INTEGER,
+ node_id TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL,
+ last_error TEXT NOT NULL DEFAULT '',
+ updated_at INTEGER NOT NULL,
+ UNIQUE(fleet_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_fleet_items_fleet ON fleet_items(fleet_id, idx);
+CREATE TABLE IF NOT EXISTS profile_runs (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ profile_version_id INTEGER NOT NULL,
+ profile_id INTEGER NOT NULL,
+ node_id TEXT NOT NULL DEFAULT '',
+ entry TEXT NOT NULL CHECK(entry IN ('initial','observe')),
+ state TEXT NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1,
+ inputs_json TEXT NOT NULL DEFAULT '{}',
+ vars_json TEXT NOT NULL DEFAULT '{}',
+ current_resource_id INTEGER,
+ operation_id INTEGER NOT NULL DEFAULT 0,
+ policy_id INTEGER NOT NULL DEFAULT 0,
+ policy_revision INTEGER NOT NULL DEFAULT 0,
+ next_wake_at INTEGER NOT NULL DEFAULT 0,
+ cancel_requested INTEGER NOT NULL DEFAULT 0,
+ last_error TEXT NOT NULL DEFAULT '',
+ lease_generation INTEGER NOT NULL DEFAULT 0,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_profile_runs_user ON profile_runs(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_profile_runs_claim ON profile_runs(state, next_wake_at);
+CREATE TABLE IF NOT EXISTS block_checkpoints (
+ id INTEGER PRIMARY KEY,
+ run_id INTEGER NOT NULL REFERENCES profile_runs(id),
+ node_id TEXT NOT NULL,
+ invocation INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL,
+ attempt INTEGER NOT NULL DEFAULT 0,
+ output_json TEXT NOT NULL DEFAULT '',
+ error TEXT NOT NULL DEFAULT '',
+ lease_generation INTEGER NOT NULL DEFAULT 0,
+ next_attempt_at INTEGER NOT NULL DEFAULT 0,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL,
+ UNIQUE(run_id, node_id, invocation)
+);
+CREATE INDEX IF NOT EXISTS idx_block_checkpoints_run ON block_checkpoints(run_id, id);
+CREATE TABLE IF NOT EXISTS ban_episodes (
+ id INTEGER PRIMARY KEY,
+ node_id TEXT NOT NULL,
+ ip TEXT NOT NULL,
+ episode_id TEXT UNIQUE NOT NULL,
+ created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ban_episodes_node ON ban_episodes(node_id, created_at);
+CREATE TABLE IF NOT EXISTS ban_deliveries (
+ id INTEGER PRIMARY KEY,
+ policy_node_id TEXT NOT NULL,
+ episode_id TEXT NOT NULL,
+ run_id INTEGER,
+ state TEXT NOT NULL,
+ created_at INTEGER NOT NULL,
+ UNIQUE(policy_node_id, episode_id)
+);`
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("control: schema %s: %w", path, err)
+	}
+	// stage-08b-i L1: ack operation id for run DTO replay.
+	if err := ensureColumn(db, "profile_runs", "operation_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate profile_runs.operation_id: %w", err)
+	}
+	// H7: at most one non-terminal run per policy. policy_id=0 (initial runs
+	// without a management policy) is excluded.
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_profile_runs_policy_active
+		ON profile_runs(policy_id) WHERE policy_id > 0 AND state IN
+		('pending','running','waiting_retry','reconciling','needs_attention','paused')`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: index profile_runs policy: %w", err)
 	}
 	// Миграция существующих БД: CREATE TABLE IF NOT EXISTS не добавит колонку
 	// в уже созданную node_owners (M1 закладка delete-маркера).
@@ -262,6 +432,12 @@ CREATE INDEX IF NOT EXISTS idx_pending_node_secrets_created ON pending_node_secr
 		_ = db.Close()
 		return nil, fmt.Errorf("control: migrate operations.profile_id: %w", err)
 	}
+	// Provider-side operation id облачного create: персистится ДО поллинга,
+	// чтобы рестарт мог возобновить сверку без повторного платного Create.
+	if err := ensureColumn(db, "operations", "provider_op_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate operations.provider_op_id: %w", err)
+	}
 	// Свои серверы (addendum-manual-servers.md §2): предсозданная нода и
 	// операция установки привязываются к записи после accept.
 	if err := ensureColumn(db, "manual_hosts", "node_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -288,6 +464,34 @@ CREATE INDEX IF NOT EXISTS idx_pending_node_secrets_created ON pending_node_secr
 	if err := migrateManualHostUniqueness(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("control: migrate manual_hosts uniqueness: %w", err)
+	}
+	// hosting-blueprints stage-08a (05 §2/§3, 04 §2): graph profile versions.
+	// Additive, idempotent; existing text rows keep format='text' and empty graph.
+	for _, col := range []struct{ name, ddl string }{
+		{"format", "TEXT NOT NULL DEFAULT 'text'"},
+		{"blueprint_json", "TEXT NOT NULL DEFAULT ''"},
+		{"schema_version", "INTEGER NOT NULL DEFAULT 0"},
+		{"content_hash", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := ensureColumn(db, "profile_versions", col.name, col.ddl); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("control: migrate profile_versions.%s: %w", col.name, err)
+		}
+	}
+	// stage-08b-i: enable-profile watermark (ban episodes older than this are
+	// historical and not processed by default).
+	if err := ensureColumn(db, "node_management", "activated_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate node_management.activated_at: %w", err)
+	}
+	// cloud truthfulness: last safe failure code + last create/install operation.
+	if err := ensureColumn(db, "cloud_resources2", "last_error", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate cloud_resources2.last_error: %w", err)
+	}
+	if err := ensureColumn(db, "cloud_resources2", "last_operation_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate cloud_resources2.last_operation_id: %w", err)
 	}
 	s := &Store{sql: db}
 	if err := s.ensureLegacyUser(legacyMaxNodes); err != nil {

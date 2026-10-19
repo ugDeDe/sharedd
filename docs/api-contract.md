@@ -1,5 +1,98 @@
 # api-contract.md — Пул sharedd: пользователи, authkey, квоты, DC2 health
 
+## Lifecycle live fixes (2026-10-19; supersedes historical quota wording below)
+
+- `used_nodes` counts **only** `quota_reservations` for nodes in the pool.
+  Pending secrets, creates, installs and durable `node_owners` do not consume
+  slots. Manual/cloud install and legacy Beget purchase acceptance do not check
+  pool quota; paid-operation idempotency, cooldown and daily limits remain.
+- `/register` atomically acquires a reservation and checks the current DB limit,
+  including pending claims and recovery with an existing owner's personal
+  secret/authkey. Already-reserved nodes do not take a second slot. Ownership,
+  disabled-user, bearer and label checks still apply. Reinstall acceptance does
+  not erase the old owner or release a working candidate's reservation.
+- Startup atomically reconciles reservations to the persisted candidate set,
+  removing stale reservations as well as seeding live ones. Orphan/deleted
+  failed-install pending secrets are revoked; retryable live targets retain theirs.
+- Cloud create persists `operations.provider_op_id` before polling; startup
+  migration adds that column with an empty default to old databases. Restart
+  resume issues only `Operation`/`Server` reads, never another paid Create.
+  Missing handles produce resource `error`, operation `failed`, and safe
+  `last_error: "provider_reconcile_required"`, not endless `creating`.
+- Provider operation errors accept string/object/null. Only fixed local codes
+  survive decoding, including known insufficient-funds messages; raw provider
+  messages and credential-like error codes are discarded. Definitive JSON/schema
+  failures stop polling immediately. A successful operation alone is not ready:
+  an ACTIVE/RUNNING server, a valid IP and a durably sealed password are required.
+- `DELETE /api/me/cloud-resources/{id}` returns **409
+  `provider_reconcile_required`** for an uncertain paid outcome even without a
+  worker or external ID. Local deletion requires an unsubmitted plan or a
+  definitive purchase refusal; existing-instance deletion remains provider-backed.
+- `POST /api/me/cloud-resources/{id}/reconcile` (session + CSRF, no body, no
+  `Idempotency-Key`) resolves the above dead end read-only against the
+  nodehost inventory (all pages). Responses:
+  `200 {"resolved":"absent"}` — no provider instance exists; the resource is
+  CAS-moved to `state=deleted` and its pending install reservation is released
+  (deletion becomes possible/implicit);
+  `200 {"resolved":"found","external_id":"srv_x"}` — the instance exists and
+  is this resource's own `external_id`; stuck `planned/creating/error` states
+  are CAS-promoted to `ready` with the inventory IP;
+  `409 {"error":"provider_reconcile_required","message":"N unaccounted servers
+  in provider inventory"}` — ambiguous (empty `external_id` but unclaimed
+  servers exist); nothing is mutated and no server is silently claimed;
+  `409 resource_busy` — `ready`/`deleting` state or a live worker;
+  `501 not_implemented` — beget; `404` — foreign or already-deleted resource.
+
+Exact current text-profile install request (not a blueprint run):
+
+```http
+POST /api/me/cloud-resources/{resource_id}/install
+Content-Type: application/json
+Idempotency-Key: <one fixed key for this install attempt>
+X-CSRF-Token: <session CSRF token>
+Cookie: <ddugul session and matching CSRF cookie>
+
+{"profile_version_id":26,"vars":{}}
+```
+
+`26` is the **profile_versions primary key** belonging to profile `6`.
+The earlier statement that this endpoint cannot pin a version was incorrect
+and is superseded by this fix: the frontend already sends `profile_version_id`,
+which must not be discarded and replaced by the default profile.
+
+| Install body | Selection |
+|---|---|
+| `{"profile_version_id":26,"vars":{}}` | Exact visible text-version PK 26, including an older version |
+| `{"profile_id":6,"profile_version_id":26,"vars":{}}` | Exact PK 26; profile ID must match, otherwise 400 `profile_mismatch` |
+| `{"profile_id":6,"vars":{}}` | Latest visible version of profile 6 at acceptance, then pinned for that cloud worker |
+| `{"vars":{}}` / `{}` | Existing operation's profile, or the legacy default if none; only when no explicit version is supplied |
+
+An explicit zero/negative/null/non-integer version is 422 `profile_invalid`;
+unknown or foreign unpublished versions are 404 `not_found`. A graph/non-text
+version is 422 `profile_incompatible` before secret preparation/decryption or
+SSH. Own-unpublished/published visibility and user-profile feature gates still
+apply. No invalid explicit version falls back to another profile/version.
+`vars` uses the selected version's schema/defaults; `{}` inherits them and
+registry defaults. Success remains HTTP 200 with the installation operation
+DTO (`profile_id` identifies the parent); `done` requires registration.
+Provisioning receives `InstallRequest.ProfileVersionID` and reloads that exact
+immutable row, not latest. Manual/Beget callers with that internal field zero
+retain their previous latest-version behavior.
+
+Cloud installation also atomically persists a server-generated full NAME-HASH
+in `operations.request_json.expected_node_id` before SSH (valid resource label
+1..10 characters plus five lowercase alphanumeric characters). Templates get
+that ID through protected `node_id` and `label`; resource display label is
+unchanged. This is an **expected identity**, not registration: no owner/quota
+row is created, `operations.node_id` stays empty, and `Confirm` still requires
+a real `/register` using the pending token and the exact expected ID. A different
+same-label ID is refused. Retries reuse the persisted expected ID and credential;
+already-claimed installs reuse the actual owned ID/token, preserve the live
+reservation, and reset the attempt's `operations.node_id` until a fresh claim.
+Expected-ID metadata, pending credential, attempt state and resource operation
+link commit together. No new client-editable identity field is accepted.
+See `specs/hosting-blueprints/lifecycle-live-fixes.md` for verification and gaps.
+
 Manual-install identity update: `POST /api/me/servers/{id}/install` uses a
 persisted, internal `manual_hosts.install_key` plus host ID for new operation
 idempotency. The key is not accepted or exposed in host JSON. Repeated installs
@@ -84,12 +177,25 @@ authkeys/сессии/профили (с версиями)/свои сервер
 `POST /panel/api/admin/users` без явного `max_nodes` (0) выдаёт новому
 пользователю `[users] default_max_nodes` (0 = прежнее поведение, квота 0).
 
-Использование мест: `used_nodes = COUNT(node_owners WHERE user_id=? AND legacy=0)`.
+Использование мест: `used_nodes = COUNT(quota_reservations WHERE user_id=?)` —
+только ноды, находящиеся в пуле (активные резервы). Pending-секреты установок
+места не занимают. `node_owners` —
+отдельная вечная карта владения (`node_id → user_id`), в квоту НЕ входит и не
+показывается в `used_nodes`: prune/expiry/terminate/замена по IP снимают резерв
+(`ReleaseQuota`), поэтому «0 активных нод, но N/N» исключён.
+Pending-бронь освобождается вместе с объектом: удаление cloud-ресурса (phantom
+local или подтверждённое провайдером) снимает pending его `cloud_install`
+операции, удаление manual-хоста — pending его `manual_install` операции.
+Startup + периодический reconcile удаляет брони только тех failed/cancelled/
+deleted установок, чьи ресурс/хост уже отсутствуют; pending retryable-установки
+на живом ресурсе/хосте сохраняется.
 Транзакционный захват места при регистрации (см. §3) идёт через
 `quota_reservations` с `UNIQUE(node_id)`: сначала INSERT reservation, затем
 SELECT count; если count > max_nodes → ROLLBACK + 403 `quota_exceeded`.
-Повторная регистрация своей ноды (node_id уже в node_owners) — 200,
-новое место не занимает.
+Повторная регистрация своей ноды (node_id уже в node_owners) — 200, резерв
+восстанавливается идемпотентно, второе место не занимается; если нода была вне
+пула, возврат разрешён только при свободном месте. Бан/terminate освобождает
+место, и повторный `/register` после восстановления снова занимает его.
 
 ### 2.1 Кабинет пользователя (session-cookie, не panel.token)
 
@@ -497,6 +603,13 @@ nil = true). Выключение флага (`=false`) отвергает и с
 `node_token` в vars НЕ инъектируется.
 Обычные прокси-переменные — `proxy_port`, `proxy_sni`, `proxy_secret`:
 **явный install override > непустой объявленный profile default > registry default**.
+Совместимые имена `port`, `sni`, `secret` теперь нормализуются к этим трём
+ключам ПЕРЕД merge: приоритет сохраняется даже между разными именами одной
+переменной. Конфликтующие явно переданные alias/canonical значения отклоняются,
+а не молча перезаписываются. Общий `provisionBaseVars` выдаёт оба имени с одним
+проверенным значением для cloud/manual/Beget; сохранённые профили не меняются.
+`port`/`proxy_port` обязаны совпадать с текущим `[shared_proxy].port`; несовпадение
+override/default — ошибка, не скрытая замена и не изменение порта регистратора.
 Источник registry defaults — `[shared_proxy]`:
 `proxy_port` = `port` (default 443), `proxy_sni` = `tls_domain`, `proxy_secret` =
 client secret из `users` (ровно один entry — его секрет; несколько — секрет
@@ -504,6 +617,13 @@ client secret из `users` (ровно один entry — его секрет; �
 СЕКРЕТ: маскируется (`***`) как `node_secret`. Отсутствующий request key наследует
 непустой declared default; отсутствующий/пустой declared default наследует
 registry default. Явный `proxy_secret:""` сохраняется и подавляет оба дефолта.
+Но если шаги используют `secret`/`proxy_secret`, пустое/нестроковое значение
+отклоняется ДО SSH. Маскируются оба имени, включая shell-quoted форму значения.
+Упомянутый в шагах `registry_url` также обязан быть непустым. Для cloud-install
+`node_id` — полный ожидаемый NAME-HASH, атомарно сохранённый сервером до SSH;
+он не подменяется неполным label и не считается регистрацией. В других путях,
+где полный ID не подготовлен, отсутствующий обязательный `node_id` по-прежнему
+отклоняется до SSH; защиты от пустого значения не отключаются.
 Явный пустой `proxy_port` или `proxy_sni` — ошибка, не fallback. Reset означает
 удаление ключа из request `vars`, не отправку `""`/`null`/показанного placeholder.
 `proxy_port` — десятичные цифры (строка или целое JSON-число), 1..65535;
@@ -517,7 +637,7 @@ declarations/invalid defaults дают диагностику, хранимые 
 Пользователь переопределяет объявленные и добавляет свои сверх. Валидация имени
 `^[a-zA-Z_][a-zA-Z0-9_]*$`, значение ≤ 4096, число переменных ≤ 64, суммарный блоб
 ≤ 32 KiB. Значения `secret:true` (а также `node_secret`/`authkey`/`password`/
-`proxy_secret`) маскируются (`***`) в `last_error`/выводе операции; маскирование
+`proxy_secret`/`secret`) маскируются (`***`) в `last_error`/выводе операции; маскирование
 выполняется ДО обрезки вывода, так что длинный секрет не оставляет префикс.
 
 #### Installation defaults metadata / UI handoff (dev)

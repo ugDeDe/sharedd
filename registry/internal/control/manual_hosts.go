@@ -137,9 +137,27 @@ func (s *Store) ManualHostsByUser(userID int64) ([]ManualHost, error) {
 	return out, rows.Err()
 }
 
+// DeleteManualHost removes the host and releases its pending install
+// reservation in the same transaction. Without the release a failed/deleted
+// install with no retry target would hold a quota slot forever.
 func (s *Store) DeleteManualHost(id int64) error {
-	_, err := s.sql.Exec(`DELETE FROM manual_hosts WHERE id = ?`, id)
-	return err
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Host row still exists: match the install operation by its durable link
+	// (operation_id) or by ManualInstallIdem. Release before the host delete.
+	if _, err := tx.Exec(`DELETE FROM pending_node_secrets WHERE operation_id IN (
+		SELECT o.id FROM operations o JOIN manual_hosts h ON h.id = ?
+		WHERE o.id = h.operation_id
+		   OR o.idem_key = 'manual-' || h.id || '-' || h.install_key)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM manual_hosts WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetManualHostCheck — результат проверки SSH-доступа/версии ОС.

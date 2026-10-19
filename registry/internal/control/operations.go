@@ -53,8 +53,11 @@ type Operation struct {
 	State         string `json:"state"`
 	IdemKey       string `json:"idem_key"`
 	ProviderVPSID string `json:"provider_vps_id,omitempty"`
-	Region        string `json:"region,omitempty"`
-	ConfigID      string `json:"config_id,omitempty"`
+	// ProviderOpID — id асинхронной операции провайдера (create 202). Нужен
+	// для read-only resume после рестарта: Create повторно не вызывается.
+	ProviderOpID string `json:"provider_op_id,omitempty"`
+	Region       string `json:"region,omitempty"`
+	ConfigID     string `json:"config_id,omitempty"`
 	// ProfileID — профиль установки, выбранный оператором при создании.
 	// retry-install использует его, чтобы не подменить профиль; 0 = не задан.
 	ProfileID   int64  `json:"profile_id"`
@@ -64,12 +67,12 @@ type Operation struct {
 	UpdatedAt   int64  `json:"updated_at"`
 }
 
-const opCols = `id, user_id, node_id, kind, state, idem_key, provider_vps_id, region, config_id, profile_id, request_json, last_error, created_at, updated_at`
+const opCols = `id, user_id, node_id, kind, state, idem_key, provider_vps_id, provider_op_id, region, config_id, profile_id, request_json, last_error, created_at, updated_at`
 
 func scanOp(row interface{ Scan(...any) error }) (Operation, error) {
 	var o Operation
 	err := row.Scan(&o.ID, &o.UserID, &o.NodeID, &o.Kind, &o.State, &o.IdemKey, &o.ProviderVPSID,
-		&o.Region, &o.ConfigID, &o.ProfileID, &o.RequestJSON, &o.LastError, &o.CreatedAt, &o.UpdatedAt)
+		&o.ProviderOpID, &o.Region, &o.ConfigID, &o.ProfileID, &o.RequestJSON, &o.LastError, &o.CreatedAt, &o.UpdatedAt)
 	return o, err
 }
 
@@ -79,9 +82,9 @@ func scanOp(row interface{ Scan(...any) error }) (Operation, error) {
 func (s *Store) CreateOperation(op Operation) (Operation, bool, error) {
 	now := time.Now().Unix()
 	res, err := s.sql.Exec(
-		`INSERT INTO operations (user_id, node_id, kind, state, idem_key, provider_vps_id, region, config_id, profile_id, request_json, last_error, created_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(idem_key) DO NOTHING`,
-		op.UserID, op.NodeID, op.Kind, op.State, op.IdemKey, op.ProviderVPSID, op.Region, op.ConfigID, op.ProfileID, op.RequestJSON, op.LastError, now, now)
+		`INSERT INTO operations (user_id, node_id, kind, state, idem_key, provider_vps_id, provider_op_id, region, config_id, profile_id, request_json, last_error, created_at, updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(idem_key) DO NOTHING`,
+		op.UserID, op.NodeID, op.Kind, op.State, op.IdemKey, op.ProviderVPSID, op.ProviderOpID, op.Region, op.ConfigID, op.ProfileID, op.RequestJSON, op.LastError, now, now)
 	if err != nil {
 		return Operation{}, false, err
 	}
@@ -150,23 +153,8 @@ func (s *Store) ReserveCreateOperation(op Operation, lim CreateLimits) (Operatio
 	op.ID, _ = res.LastInsertId()
 	op.CreatedAt, op.UpdatedAt = now.Unix(), now.Unix()
 
-	// C1/H1: место = distinct node_id по нодам, активным облачным ресурсам и
-	// всем заказам, которые ещё держат ресурс (pending/sent/confirmed/unknown/
-	// deleting; failed/deleted места не занимают). Включая только что
-	// вставленную pending-строку. Confirmed-строка учтена даже в окне между
-	// state=confirmed и записью cloud_resources.
-	var used int
-	if err := tx.QueryRow(
-		`SELECT COUNT(DISTINCT node_id) FROM (
-		   SELECT node_id FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> ''
-		   UNION SELECT node_id FROM cloud_resources WHERE user_id = ? AND state <> 'deleted' AND node_id <> ''
-		   UNION SELECT node_id FROM operations WHERE user_id = ? AND kind = ? AND state NOT IN ('failed','deleted') AND node_id <> ''
-		 )`, op.UserID, op.UserID, op.UserID, OpKindCreate).Scan(&used); err != nil {
-		return Operation{}, false, err
-	}
-	if used > lim.MaxNodes {
-		return Operation{}, false, ErrQuotaExceeded
-	}
+	// Pool quota applies only at registration, never to a paid order. Monetary
+	// idempotency, daily limits, cooldown and unknown-outcome guards remain.
 
 	// Дневной лимит: фактически начатые заказы (pending/sent/confirmed/unknown).
 	if lim.MaxCreatesPerDay > 0 {
@@ -289,14 +277,7 @@ func (s *Store) CancelPendingOperation(id int64) (bool, error) {
 // ещё не созданную операцию — для предварительного (advisory) отказа в
 // кабинете; авторитетная проверка — в ReserveCreateOperation.
 func (s *Store) UsedSlots(userID int64) (int, error) {
-	var n int
-	err := s.sql.QueryRow(
-		`SELECT COUNT(DISTINCT node_id) FROM (
-		   SELECT node_id FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> ''
-		   UNION SELECT node_id FROM cloud_resources WHERE user_id = ? AND state <> 'deleted' AND node_id <> ''
-		   UNION SELECT node_id FROM operations WHERE user_id = ? AND kind = ? AND state NOT IN ('failed','deleted') AND node_id <> ''
-		 )`, userID, userID, userID, OpKindCreate).Scan(&n)
-	return n, err
+	return s.UsedNodes(userID)
 }
 
 func (s *Store) OperationByIdemKey(idemKey string) (Operation, error) {
@@ -323,6 +304,27 @@ func (s *Store) UpdateOperationState(id int64, state, vpsID, lastErr string) err
 		    last_error = ?, updated_at = ? WHERE id = ?`,
 		state, vpsID, vpsID, lastErr, time.Now().Unix(), id)
 	return err
+}
+
+// SetOperationProviderOpID сохраняет id операции провайдера до первого poll:
+// после рестарта reconcile возобновляет только Operation/Server-чтения.
+func (s *Store) SetOperationProviderOpID(id int64, providerOpID string) error {
+	if providerOpID == "" {
+		return ErrValidation
+	}
+	res, err := s.sql.Exec(`UPDATE operations SET provider_op_id = ?, updated_at = ? WHERE id = ? AND (provider_op_id = '' OR provider_op_id = ?)`,
+		providerOpID, time.Now().Unix(), id, providerOpID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrRevisionConflict
+	}
+	return nil
 }
 
 // CreatesInLast24h — число фактически отправленных платных заказов за сутки.
@@ -463,4 +465,18 @@ func orNow(ts int64) int64 {
 		return time.Now().Unix()
 	}
 	return ts
+}
+
+// UpdateOperationRequestJSON rewrites the non-secret ack metadata after the
+// referenced run/resource id is known (idempotent replay).
+func (s *Store) UpdateOperationRequestJSON(id int64, requestJSON string) error {
+	res, err := s.sql.Exec(`UPDATE operations SET request_json = ?, updated_at = ? WHERE id = ?`,
+		requestJSON, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

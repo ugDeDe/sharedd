@@ -432,6 +432,221 @@ func TestAuthorizeNodeConcurrentOneSlot(t *testing.T) {
 	}
 }
 
+func TestUsedNodesCountsActiveReservationsOnly(t *testing.T) {
+	s := openTest(t)
+	u := mustUser(t, s, "alice", 3)
+	for _, id := range []string{"node-a1b2c", "node-b1b2c", "node-c1b2c"} {
+		if err := s.AuthorizeNode(id, u); err != nil {
+			t.Fatalf("bind %s: %v", id, err)
+		}
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 3 {
+		t.Fatalf("used = %d, want 3", used)
+	}
+	// 4-я нода сверх лимита: отказ и никаких следов (rollback).
+	if err := s.AuthorizeNode("node-d1b2c", u); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 3 {
+		t.Fatalf("rejected node must not occupy quota, used = %d", used)
+	}
+	if _, _, ok, _ := s.NodeOwner("node-d1b2c"); ok {
+		t.Fatal("rejected node must not be bound")
+	}
+
+	// Нода покинула пул (prune/terminate): место освобождается, владение — нет.
+	if err := s.ReleaseQuota("node-a1b2c"); err != nil {
+		t.Fatalf("release quota: %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 2 {
+		t.Fatalf("after leaving pool used = %d, want 2", used)
+	}
+	if _, _, ok, _ := s.NodeOwner("node-a1b2c"); !ok {
+		t.Fatal("ownership must survive quota release")
+	}
+	if err := s.AuthorizeNode("node-d1b2c", u); err != nil {
+		t.Fatalf("register into freed slot: %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 3 {
+		t.Fatalf("used = %d, want 3", used)
+	}
+}
+
+func TestBannedNodeReregisterQuota(t *testing.T) {
+	s := openTest(t)
+	u := mustUser(t, s, "alice", 1)
+	if err := s.AuthorizeNode("node-a1b2c", u); err != nil {
+		t.Fatal(err)
+	}
+	// Бан/terminate: нода ушла из пула, владение сохранилось.
+	if err := s.ReleaseQuota("node-a1b2c"); err != nil {
+		t.Fatal(err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 0 {
+		t.Fatalf("banned node must not hold quota, used = %d", used)
+	}
+	// Возврат при свободном месте — разрешён.
+	if err := s.AuthorizeNode("node-a1b2c", u); err != nil {
+		t.Fatalf("re-register after ban with free slot: %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 1 {
+		t.Fatalf("used = %d, want 1", used)
+	}
+	// Полный слот: новая нода отклоняется без утечки reservation.
+	if err := s.AuthorizeNode("node-b1b2c", u); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
+	var n int
+	if err := s.sql.QueryRow(`SELECT COUNT(*) FROM quota_reservations WHERE node_id = 'node-b1b2c'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("rejected node leaked %d reservation(s)", n)
+	}
+	// Повторный register своей ноды при полном слоте — идемпотентно.
+	if err := s.AuthorizeNode("node-a1b2c", u); err != nil {
+		t.Fatalf("re-register own node: %v", err)
+	}
+}
+
+func TestUsedNodesCountsManualPending(t *testing.T) {
+	s := openTest(t)
+	u := mustUser(t, s, "alice", 1)
+	h, err := s.CreateManualHost(ManualHost{
+		UserID: u.ID, Label: "box", Host: "8.8.8.8", Port: 22, SSHUser: "root",
+		AuthType: "password", SecretEnc: "enc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := s.AuthorizeManualOperation(h, Operation{}, u, 0, "secret-1", "enc-1")
+	if err != nil {
+		t.Fatalf("authorize manual: %v", err)
+	}
+	if used, err := s.UsedNodes(u.ID); err != nil || used != 0 {
+		t.Fatalf("pending must not occupy quota, used = %d err=%v", used, err)
+	}
+	h2, err := s.CreateManualHost(ManualHost{
+		UserID: u.ID, Label: "box2", Host: "8.8.8.8", Port: 2222, SSHUser: "root",
+		AuthType: "password", SecretEnc: "enc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AuthorizeManualOperation(h2, Operation{}, u, 0, "secret-2", "enc-2"); err != nil {
+		t.Fatalf("pending installs do not consume pool slots: %v", err)
+	}
+	// Claim переводит pending в reservation — место не удваивается.
+	if _, err := s.ClaimPendingNodeSecret("secret-1", "box-abcde"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 1 {
+		t.Fatalf("after claim used = %d, want 1", used)
+	}
+	if _, err := s.ClaimPendingNodeSecret("secret-2", "box2-abcde"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("second admission must hit quota: %v", err)
+	}
+	if _, ok, err := s.PendingSecret("secret-2"); err != nil || !ok {
+		t.Fatalf("quota denial must retain pending: ok=%t err=%v", ok, err)
+	}
+	if err := s.ReleaseQuota("box-abcde"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AuthorizeNode("live-abcde", u); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertPendingSecret(u.ID, op.ID, "box", "secret-recovery", "enc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimPendingNodeSecret("secret-recovery", "box-abcde"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("existing owner recovery must reacquire a slot: %v", err)
+	}
+	if err := s.AuthorizeNode("box-abcde", u); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("authkey recovery must reacquire a slot: %v", err)
+	}
+	if err := s.ReconcileQuota([]string{"live-abcde"}); err != nil {
+		t.Fatal(err)
+	}
+	if used, err := s.UsedNodes(u.ID); err != nil || used != 1 {
+		t.Fatalf("startup must preserve working candidates: used=%d err=%v", used, err)
+	}
+	if err := s.ReconcileQuota(nil); err != nil {
+		t.Fatal(err)
+	}
+	if used, err := s.UsedNodes(u.ID); err != nil || used != 0 {
+		t.Fatalf("startup must remove stale reservations: used=%d err=%v", used, err)
+	}
+	if _, err := s.ClaimPendingNodeSecret("secret-recovery", "box-abcde"); err != nil {
+		t.Fatalf("recovery after pool slot freed: %v", err)
+	}
+	if owner, _, ok, err := s.NodeOwner("live-abcde"); err != nil || !ok || owner != u.ID {
+		t.Fatalf("startup must preserve durable owner: owner=%d ok=%t err=%v", owner, ok, err)
+	}
+	if err := s.ReleaseQuota("box-abcde"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertPendingSecret(u.ID, op.ID, "box", "secret-1", "enc-1"); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 2)
+	for _, claim := range [][2]string{{"secret-1", "box-fghij"}, {"secret-2", "box2-fghij"}} {
+		go func() {
+			_, err := s.ClaimPendingNodeSecret(claim[0], claim[1])
+			results <- err
+		}()
+	}
+	successes, refusals := 0, 0
+	for range 2 {
+		switch err := <-results; {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrQuotaExceeded):
+			refusals++
+		default:
+			t.Fatalf("concurrent claim: %v", err)
+		}
+	}
+	if successes != 1 || refusals != 1 {
+		t.Fatalf("one live slot: success=%d refused=%d", successes, refusals)
+	}
+	t.Run("provider-handle-migration", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "control.db")
+		old, err := Open(path, 100000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer old.Close()
+		op, _, err := old.CreateOperation(Operation{UserID: 1, Kind: OpKindCloudCreate, State: OpPending, IdemKey: "old-create"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := old.sql.Exec(`ALTER TABLE operations DROP COLUMN provider_op_id`); err != nil {
+			t.Fatal(err)
+		}
+		old.Close()
+		migrated, err := Open(path, 100000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer migrated.Close()
+		if got, err := migrated.Operation(op.ID); err != nil || got.ProviderOpID != "" {
+			t.Fatalf("old row migration: op=%+v err=%v", got, err)
+		}
+		if err := migrated.SetOperationProviderOpID(op.ID, "op-durable"); err != nil {
+			t.Fatal(err)
+		}
+		migrated.Close()
+		reopened, err := Open(path, 100000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		if got, err := reopened.Operation(op.ID); err != nil || got.ProviderOpID != "op-durable" {
+			t.Fatalf("provider handle lost on reopen: op=%+v err=%v", got, err)
+		}
+	})
+}
+
 func TestReleaseNodeFreesSlot(t *testing.T) {
 	s := openTest(t)
 	u := mustUser(t, s, "alice", 1)
@@ -529,3 +744,37 @@ func TestSessions(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Startup-reconcile: EnsureQuota возвращает место только активной ноде
+// (кандидату), не legacy-владению, и идемпотентен.
+func TestEnsureQuotaReservesActiveOwnerOnly(t *testing.T) {
+	s := openTest(t)
+	u := mustUser(t, s, "alice", 1)
+	if err := s.AuthorizeNode("node-a1b2c", u); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReleaseQuota("node-a1b2c"); err != nil {
+		t.Fatal(err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 0 {
+		t.Fatalf("used = %d, want 0", used)
+	}
+	if err := s.EnsureQuota("node-a1b2c"); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if err := s.EnsureQuota("node-a1b2c"); err != nil {
+		t.Fatalf("ensure twice: %v", err)
+	}
+	if used, _ := s.UsedNodes(u.ID); used != 1 {
+		t.Fatalf("used = %d, want 1", used)
+	}
+	if err := s.BindLegacyNode("node-leg1a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureQuota("node-leg1a"); err != nil {
+		t.Fatal(err)
+	}
+	if used, _ := s.UsedNodes(s.LegacyUserID()); used != 0 {
+		t.Fatalf("legacy must not reserve quota, used = %d", used)
+	}
+}

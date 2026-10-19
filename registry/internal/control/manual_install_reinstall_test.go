@@ -57,20 +57,27 @@ func TestReinstallRetiresOldNodeBindingAndKeepsQuota(t *testing.T) {
 	if op2.ID != op.ID || op2.ProfileID != 7 {
 		t.Fatalf("reinstall must keep id and take new profile: %+v", op2)
 	}
-	// Старая привязка снята сразу при accept — нет окна с двумя местами.
-	if _, _, ok, _ := s.NodeOwner("box-abcde"); ok {
-		t.Fatal("old node binding must be retired on reinstall")
+	// Ownership and the live reservation survive accepting a reinstall.
+	if owner, _, ok, _ := s.NodeOwner("box-abcde"); !ok || owner != u.ID {
+		t.Fatal("old ownership must survive reinstall")
 	}
 	if used, _ := s.UsedNodes(u.ID); used != 1 {
 		t.Fatalf("reinstall must still hold exactly one slot, used=%d", used)
 	}
 
-	// Новая нода claim'ит pending — привязка ровно одна.
+	// A new identity cannot evict a working candidate at acceptance/claim.
+	if _, err := s.ClaimPendingNodeSecret("secret-1", "box-zzzzz"); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("working candidate still consumes its slot: %v", err)
+	}
+	if err := s.ReleaseQuota("box-abcde"); err != nil {
+		t.Fatal(err)
+	}
+	// Once the old candidate actually leaves the pool, the new one can claim.
 	if uid, err := s.ClaimPendingNodeSecret("secret-1", "box-zzzzz"); err != nil || uid != u.ID {
 		t.Fatalf("reinstall claim: uid=%d err=%v", uid, err)
 	}
-	if _, _, ok, _ := s.NodeOwner("box-abcde"); ok {
-		t.Fatal("old binding must stay retired after re-claim")
+	if owner, _, ok, _ := s.NodeOwner("box-abcde"); !ok || owner != u.ID {
+		t.Fatal("old ownership must remain durable after re-claim")
 	}
 	if owner, _, ok, _ := s.NodeOwner("box-zzzzz"); !ok || owner != u.ID {
 		t.Fatalf("new binding missing: owner=%d ok=%t", owner, ok)

@@ -35,15 +35,29 @@ type Profile struct {
 	UpdatedAt   int64  `json:"updated_at"`
 }
 
-// ProfileVersion — конкретная версия шагов + таблица переменных.
+// ProfileVersion — конкретная версия шагов + таблица переменных. Format
+// пуст/"text" для legacy и текст-версий, "graph" для blueprint-версий
+// (hosting-blueprints stage-08a); Blueprint хранит канонический JSON графа.
 type ProfileVersion struct {
-	ID         int64  `json:"id"`
-	ProfileID  int64  `json:"profile_id"`
-	Version    int    `json:"version"`
-	Steps      string `json:"steps"`
-	VarsSchema string `json:"vars_schema"`
-	CreatedAt  int64  `json:"created_at"`
+	ID            int64  `json:"id"`
+	ProfileID     int64  `json:"profile_id"`
+	Version       int    `json:"version"`
+	Steps         string `json:"steps"`
+	VarsSchema    string `json:"vars_schema"`
+	Format        string `json:"format,omitempty"`
+	Blueprint     string `json:"blueprint,omitempty"`
+	SchemaVersion int    `json:"schema_version,omitempty"`
+	ContentHash   string `json:"content_hash,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
 }
+
+// FormatText / FormatGraph — значения profile_versions.format.
+const (
+	FormatText  = "text"
+	FormatGraph = "graph"
+)
+
+const profileVersionCols = `id, profile_id, version, playbook, vars_schema, created_at, format, blueprint_json, schema_version, content_hash`
 
 const profileCols = `id, name, description, published, created_by, created_at, updated_at`
 
@@ -160,6 +174,27 @@ func (s *Store) DeleteProfile(id int64) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// H4: a pinned non-terminal run or an active management policy keeps the
+	// profile (and its versions) alive. Terminal runs may still reference the
+	// historical version after deletion (read returns 404 by design).
+	var inUse int
+	if err := tx.QueryRow(
+		`SELECT COUNT(*) FROM profile_runs r JOIN profile_versions pv ON pv.id = r.profile_version_id
+		 WHERE pv.profile_id = ? AND r.state IN ('pending','running','waiting_retry','waiting_event','reconciling','needs_attention','paused')`,
+		id).Scan(&inUse); err != nil {
+		return err
+	}
+	if inUse > 0 {
+		return ErrProfileInUse
+	}
+	if err := tx.QueryRow(
+		`SELECT COUNT(*) FROM node_management m JOIN profile_versions pv ON pv.id = m.profile_version_id
+		 WHERE pv.profile_id = ?`, id).Scan(&inUse); err != nil {
+		return err
+	}
+	if inUse > 0 {
+		return ErrProfileInUse
+	}
 	// Версии удаляем первыми: FK profile_versions.profile_id → profiles(id).
 	if _, err := tx.Exec(`DELETE FROM profile_versions WHERE profile_id = ?`, id); err != nil {
 		return err
@@ -352,7 +387,7 @@ func (s *Store) AddProfileVersion(profileID int64, steps, varsSchema string) (Pr
 		return ProfileVersion{}, err
 	}
 	id, _ := res.LastInsertId()
-	return ProfileVersion{ID: id, ProfileID: profileID, Version: next, Steps: steps, VarsSchema: varsSchema, CreatedAt: now}, nil
+	return ProfileVersion{ID: id, ProfileID: profileID, Version: next, Steps: steps, VarsSchema: varsSchema, Format: FormatText, CreatedAt: now}, nil
 }
 
 // PublishProfile — делает профиль доступным пользователям. Требует ≥1 версии.
@@ -368,7 +403,7 @@ func (s *Store) PublishProfile(id int64) (Profile, error) {
 
 // ProfileVersion — версия профиля; version <= 0 → последняя.
 func (s *Store) ProfileVersion(profileID int64, version int) (ProfileVersion, error) {
-	q := `SELECT id, profile_id, version, playbook, vars_schema, created_at FROM profile_versions WHERE profile_id = ?`
+	q := `SELECT ` + profileVersionCols + ` FROM profile_versions WHERE profile_id = ?`
 	args := []any{profileID}
 	if version <= 0 {
 		q += ` ORDER BY version DESC LIMIT 1`
@@ -377,11 +412,66 @@ func (s *Store) ProfileVersion(profileID int64, version int) (ProfileVersion, er
 		args = append(args, version)
 	}
 	var v ProfileVersion
-	err := s.sql.QueryRow(q, args...).Scan(&v.ID, &v.ProfileID, &v.Version, &v.Steps, &v.VarsSchema, &v.CreatedAt)
+	err := s.sql.QueryRow(q, args...).Scan(&v.ID, &v.ProfileID, &v.Version, &v.Steps, &v.VarsSchema, &v.CreatedAt,
+		&v.Format, &v.Blueprint, &v.SchemaVersion, &v.ContentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ProfileVersion{}, ErrNotFound
 	}
 	return v, err
+}
+
+// ProfileVersionByID / AuthoredVersionFor return an immutable version by its
+// numeric version (never latest); version <= 0 is ErrNotFound. Both names are
+// the same lookup for the stage-08a versions route.
+func (s *Store) ProfileVersionByID(profileID int64, version int) (ProfileVersion, error) {
+	if version <= 0 {
+		return ProfileVersion{}, ErrNotFound
+	}
+	return s.ProfileVersion(profileID, version)
+}
+
+func (s *Store) AuthoredVersionFor(profileID int64, version int) (ProfileVersion, error) {
+	return s.ProfileVersionByID(profileID, version)
+}
+
+// CreateProfileVersionGraph appends an immutable graph version (format="graph")
+// with number = max+1 and resets published, mirroring AddProfileVersion. The
+// playbook column is NOT NULL, so an empty string is stored for graph versions.
+func (s *Store) CreateProfileVersionGraph(profileID int64, blueprintJSON string, schemaVersion int, contentHash string) (ProfileVersion, error) {
+	if strings.TrimSpace(blueprintJSON) == "" || schemaVersion <= 0 || contentHash == "" {
+		return ProfileVersion{}, fmt.Errorf("%w: blueprint, schema_version and content_hash required", ErrValidation)
+	}
+	if _, err := s.Profile(profileID); err != nil {
+		return ProfileVersion{}, err
+	}
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return ProfileVersion{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var next int
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(version),0)+1 FROM profile_versions WHERE profile_id = ?`, profileID).Scan(&next); err != nil {
+		return ProfileVersion{}, err
+	}
+	now := time.Now().Unix()
+	res, err := tx.Exec(`INSERT INTO profile_versions
+		(profile_id, version, playbook, vars_schema, created_at, format, blueprint_json, schema_version, content_hash)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		profileID, next, "", "", now, FormatGraph, blueprintJSON, schemaVersion, contentHash)
+	if err != nil {
+		return ProfileVersion{}, err
+	}
+	if _, err := tx.Exec(`UPDATE profiles SET published = 0, updated_at = ? WHERE id = ?`, now, profileID); err != nil {
+		return ProfileVersion{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ProfileVersion{}, err
+	}
+	id, _ := res.LastInsertId()
+	return ProfileVersion{
+		ID: id, ProfileID: profileID, Version: next, Format: FormatGraph,
+		Blueprint: blueprintJSON, SchemaVersion: schemaVersion, ContentHash: contentHash, CreatedAt: now,
+	}, nil
 }
 
 // LatestPublishedVersion — текущая опубликованная версия профиля.
@@ -394,6 +484,50 @@ func (s *Store) LatestPublishedVersion(profileID int64) (ProfileVersion, error) 
 		return ProfileVersion{}, ErrNotFound
 	}
 	return s.ProfileVersion(profileID, 0)
+}
+
+// EnsureSystemGraphProfile seeds an embedded system graph profile
+// (created_by=0, published=1, format=graph). Idempotent: an existing profile
+// is returned untouched, never overwritten. The first version carries the
+// caller-computed canonical content hash.
+func (s *Store) EnsureSystemGraphProfile(name, description, blueprintJSON string, schemaVersion int, contentHash string) (Profile, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || blueprintJSON == "" || schemaVersion <= 0 || contentHash == "" {
+		return Profile{}, fmt.Errorf("%w: system graph fields required", ErrValidation)
+	}
+	if p, err := s.ProfileByName(name); err == nil {
+		return p, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return Profile{}, err
+	}
+	p, err := s.CreateProfile(name, description, 0)
+	if err != nil {
+		if errors.Is(err, ErrDuplicateName) { // startup race between replicas
+			return s.ProfileByName(name)
+		}
+		return Profile{}, err
+	}
+	if _, err := s.CreateProfileVersionGraph(p.ID, blueprintJSON, schemaVersion, contentHash); err != nil {
+		return Profile{}, err
+	}
+	return s.PublishProfile(p.ID)
+}
+
+// SystemGraphVersionID — numeric profile_versions.id of the latest version of
+// a seeded system graph. Missing/unseeded profile → ErrNotFound.
+func (s *Store) SystemGraphVersionID(name string) (int64, error) {
+	p, err := s.ProfileByName(name)
+	if err != nil {
+		return 0, err
+	}
+	v, err := s.ProfileVersion(p.ID, 0)
+	if err != nil {
+		return 0, err
+	}
+	if v.Format != FormatGraph || v.ContentHash == "" {
+		return 0, ErrValidation
+	}
+	return v.ID, nil
 }
 
 // ── Переменные профиля (addendum §6) ──────────────────────────────
@@ -479,11 +613,16 @@ func MergeProfileVars(varsSchema string, userVars map[string]any) (map[string]an
 		if err := validateEditableVarName(k); err != nil {
 			return nil, err
 		}
+		k = canonicalProxyVar(k)
+		if existing, ok := merged[k]; ok && fmt.Sprint(existing) != fmt.Sprint(v) {
+			return nil, fmt.Errorf("%w: conflicting aliases for %q", ErrValidation, k)
+		}
 		merged[k] = v
 	}
 	for _, d := range decls {
-		if _, ok := merged[d.Name]; !ok && d.Default != "" {
-			merged[d.Name] = d.Default
+		name := canonicalProxyVar(d.Name)
+		if _, ok := merged[name]; !ok && d.Default != "" {
+			merged[name] = d.Default
 		}
 	}
 	if err := ValidateExtraVars(merged); err != nil {
@@ -503,7 +642,17 @@ func validateEditableVarName(name string) error {
 	return nil
 }
 
+func canonicalProxyVar(name string) string {
+	switch name {
+	case "port", "sni", "secret":
+		return "proxy_" + name
+	default:
+		return name
+	}
+}
+
 func validateProxyVar(name string, value any) error {
+	name = canonicalProxyVar(name)
 	switch name {
 	case "proxy_port":
 		text := fmt.Sprint(value)
@@ -563,4 +712,22 @@ func SecretVarNames(varsSchema string) []string {
 		}
 	}
 	return out
+}
+
+// ProfileVersionByNumericID returns an immutable version by its surrogate PK
+// (profile_versions.id), which graph run inputs reference as
+// installation_profile_version_id. Numeric *version* lookups stay in
+// ProfileVersionByID.
+func (s *Store) ProfileVersionByNumericID(id int64) (ProfileVersion, error) {
+	if id <= 0 {
+		return ProfileVersion{}, ErrNotFound
+	}
+	var v ProfileVersion
+	err := s.sql.QueryRow(`SELECT `+profileVersionCols+` FROM profile_versions WHERE id = ?`, id).
+		Scan(&v.ID, &v.ProfileID, &v.Version, &v.Steps, &v.VarsSchema, &v.CreatedAt,
+			&v.Format, &v.Blueprint, &v.SchemaVersion, &v.ContentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ProfileVersion{}, ErrNotFound
+	}
+	return v, err
 }

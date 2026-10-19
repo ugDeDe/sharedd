@@ -112,45 +112,21 @@ func (s *Store) AuthorizeManualOperation(host ManualHost, expected Operation, u 
 		if op.State != expected.State || (op.State != OpFailed && op.State != OpInstalling && op.State != OpDone) {
 			return Operation{}, ErrCreateInProgress
 		}
-		// Переустановка завершённой операции: прежняя привязка ноды снимается,
-		// нода перезаявляется через claim-on-first-register под ТЕМ ЖЕ владельцем.
-		// Место квоты не теряется — оно переносится в pending ниже (op.NodeID=="").
-		// Иначе новая node_id (агент переустановлен с чистого листа) осталась бы
-		// неподтверждённой, а старая строка — сиротой в node_owners.
+		// Reinstall reclaims identity without erasing durable ownership or
+		// releasing a candidate still in the pool. Admission enforces quota.
 		if op.State == OpDone && op.NodeID != "" {
-			if _, err := tx.Exec(`DELETE FROM quota_reservations WHERE node_id = ?`, op.NodeID); err != nil {
-				return Operation{}, err
-			}
-			if _, err := tx.Exec(`DELETE FROM node_owners WHERE node_id = ?`, op.NodeID); err != nil {
-				return Operation{}, err
-			}
 			if _, err := tx.Exec(`UPDATE manual_hosts SET node_id = '' WHERE id = ?`, host.ID); err != nil {
 				return Operation{}, err
 			}
 			op.NodeID = ""
 		}
 	}
-	var maxNodes, disabled int
-	if err := tx.QueryRow(`SELECT max_nodes, disabled FROM users WHERE id = ?`, u.ID).Scan(&maxNodes, &disabled); err != nil {
+	var disabled int
+	if err := tx.QueryRow(`SELECT disabled FROM users WHERE id = ?`, u.ID).Scan(&disabled); err != nil {
 		return Operation{}, err
 	}
 	if disabled != 0 {
 		return Operation{}, ErrUserDisabled
-	}
-	// Уже claim'нутая нода держит место в node_owners — повторного расхода
-	// квоты нет. Незаявленная (pending) бронь считает место: привязанные ноды +
-	// прочие незаявленные pending. Текущий op исключаем на retry.
-	if op.NodeID == "" {
-		var used int
-		if err := tx.QueryRow(`SELECT
-			(SELECT COUNT(*) FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> '') +
-			(SELECT COUNT(*) FROM pending_node_secrets WHERE user_id = ? AND operation_id <> ?)`,
-			u.ID, u.ID, op.ID).Scan(&used); err != nil {
-			return Operation{}, err
-		}
-		if used+1 > maxNodes {
-			return Operation{}, ErrQuotaExceeded
-		}
 	}
 	now := time.Now().Unix()
 	if op.ID == 0 {
@@ -205,6 +181,9 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`UPDATE pending_node_secrets SET created_at = created_at WHERE secret_hash = ?`, hashAuthkey(secret)); err != nil {
+		return 0, err
+	}
 	var uid, opID int64
 	var label, enc string
 	err = tx.QueryRow(
@@ -221,6 +200,23 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 	if label == "" || !strings.HasPrefix(nodeID, label+"-") {
 		return 0, ErrValidation
 	}
+	op, err := scanOp(tx.QueryRow(`SELECT `+opCols+` FROM operations WHERE id = ?`, opID))
+	if err != nil {
+		return 0, err
+	}
+	if op.UserID != uid {
+		return 0, ErrOwnerMismatch
+	}
+	if op.Kind == OpKindCloudInstall {
+		// Ожидаемый ID — только рендер-подсказка для установки (шаги ссылаются
+		// на {{ node_id }}). Агент мог сгенерировать собственный суффикс
+		// (сторонний установщик принимает короткое имя) — принимаем любой
+		// node_id с корректным префиксом label- (проверка выше): подлинность
+		// гарантирует сам pending-секрет, а не совпадение суффикса.
+		if _, err := CloudInstallExpectedNodeID(op); err != nil {
+			return 0, err
+		}
+	}
 	var maxNodes, disabled int
 	if err := tx.QueryRow(`SELECT max_nodes, disabled FROM users WHERE id = ?`, uid).Scan(&maxNodes, &disabled); err != nil {
 		return 0, err
@@ -230,32 +226,22 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 	}
 	var owner int64
 	var legacy int
-	err = tx.QueryRow(`SELECT user_id, legacy FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy)
+	var ownerHash string
+	err = tx.QueryRow(`SELECT user_id, legacy, node_secret_hash FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy, &ownerHash)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		var used int
-		if err := tx.QueryRow(`SELECT
-			(SELECT COUNT(*) FROM node_owners WHERE user_id = ? AND legacy = 0 AND node_id <> '') +
-			(SELECT COUNT(*) FROM pending_node_secrets WHERE user_id = ? AND operation_id <> ?)`,
-			uid, uid, opID).Scan(&used); err != nil {
-			return 0, err
-		}
-		if used+1 > maxNodes {
-			return 0, ErrQuotaExceeded // pending НЕ трогаем: можно повторить после освобождения места
-		}
 		now := time.Now().Unix()
 		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy, node_secret_hash, node_secret_prefix, node_secret_enc)
 			VALUES (?,?,?,0,?,?,?)`, nodeID, uid, now, hashAuthkey(secret), nodeSecretPrefix(secret), enc); err != nil {
-			return 0, err
-		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO quota_reservations (node_id, user_id, created_at) VALUES (?,?,?)`,
-			nodeID, uid, now); err != nil {
 			return 0, err
 		}
 	case err != nil:
 		return 0, err
 	default:
 		if owner != uid || legacy != 0 {
+			return 0, ErrOwnerMismatch
+		}
+		if op.Kind == OpKindCloudInstall && ownerHash != hashAuthkey(secret) {
 			return 0, ErrOwnerMismatch
 		}
 		// Уже привязана этим пользователем — идемпотентно, секрет не ротируем
@@ -266,6 +252,29 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 		}
 	}
 	now := time.Now().Unix()
+	res, err := tx.Exec(`INSERT OR IGNORE INTO quota_reservations (node_id, user_id, created_at) VALUES (?,?,?)`, nodeID, uid, now)
+	if err != nil {
+		return 0, err
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if inserted > 0 {
+		var used int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM quota_reservations WHERE user_id = ?`, uid).Scan(&used); err != nil {
+			return 0, err
+		}
+		if used > maxNodes {
+			return 0, ErrQuotaExceeded // rollback preserves pending and ownership
+		}
+	}
+	// A reinstalled identity may change; retire only the old secret, not its
+	// durable owner or pool reservation. Two identities cannot share a token.
+	if _, err := tx.Exec(`UPDATE node_owners SET node_secret_hash = '', node_secret_prefix = '', node_secret_enc = ''
+		WHERE node_secret_hash = ? AND node_id <> ? AND user_id = ?`, hashAuthkey(secret), nodeID, uid); err != nil {
+		return 0, err
+	}
 	if _, err := tx.Exec(`UPDATE operations SET node_id = ?, updated_at = ? WHERE id = ?`, nodeID, now, opID); err != nil {
 		return 0, err
 	}
