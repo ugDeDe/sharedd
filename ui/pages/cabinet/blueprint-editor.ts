@@ -1,6 +1,6 @@
 import { esc } from "../../lib/dom";
 import { api } from "./api";
-import type { APIError, BlueprintBlock, BlueprintDiagnostic, GraphProfilePayload, ProfileVersion } from "./api";
+import type { APIError, BlueprintBlock, BlueprintDiagnostic, GraphProfilePayload, OwnProfile } from "./api";
 import {
   blockFor,
   bytes,
@@ -11,7 +11,6 @@ import {
   layout,
   localDiagnostics,
   positiveID,
-  readVersion,
   runtimeGate,
   stableJSON,
   template,
@@ -50,7 +49,7 @@ export async function canLeaveBlueprint(nextHash: string): Promise<boolean> {
     const dialog = document.createElement("dialog");
     dialog.className = "blueprint-dialog";
     dialog.setAttribute("aria-label", "Несохранённые изменения графа");
-    dialog.innerHTML = `<h2>Есть несохранённые изменения</h2><p>Сохранить новую версию перед уходом? Сохранение не запускает граф.</p><div class="blueprint-toolbar"><button class="btn" data-stay autofocus>Остаться</button><button class="btn" data-discard>Не сохранять</button><button class="btn primary" data-save>Сохранить версию</button></div>`;
+    dialog.innerHTML = `<h2>Есть несохранённые изменения</h2><p>Сохранить изменения перед уходом? Сохранение не запускает граф.</p><div class="blueprint-toolbar"><button class="btn" data-stay autofocus>Остаться</button><button class="btn" data-discard>Не сохранять</button><button class="btn primary" data-save>Сохранить</button></div>`;
     const finish = (ok: boolean): void => {
       dialog.close();
       dialog.remove();
@@ -92,8 +91,7 @@ class Editor {
   private busy = false;
   private disposed = false;
   private profileID = 0;
-  private loaded: ProfileVersion | null = null;
-  private conflict = false;
+  private loaded: OwnProfile | null = null;
   private uncertain = false;
   private enabled = false;
   private limitReached = false;
@@ -130,7 +128,7 @@ class Editor {
     }
   }
   async load(): Promise<void> {
-    this.root.innerHTML = `<p aria-busy="true">Загрузка блоков и версии…</p><div class="skeleton skel-block"></div>`;
+    this.root.innerHTML = `<p aria-busy="true">Загрузка блоков и профиля…</p><div class="skeleton skel-block"></div>`;
     try {
       const path = location.hash.slice(2).split("?")[0].split("/"),
         query = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -145,19 +143,18 @@ class Editor {
         description = "",
         graph = template(query.get("starter") || "empty");
       if (id) {
-        const version = positiveID(query.get("version") || "");
-        const v = await readVersion(id, version);
-        if (this.disposed) return;
-        if (v.format !== "graph" || !v.blueprint)
-          throw new Error("Эта версия — текстовый профиль. Откройте его из списка профилей.");
-        const p = [...m.profiles, ...m.published].find((p) => p.id === id);
-        graph = clone(v.blueprint);
-        name = p?.name || graph.name;
-        description = p?.description || "";
-        if (query.get("copy") === "1" || !m.profiles.some((p) => p.id === id)) name = `${name} (копия)`.slice(0, 100);
+        const p = [...m.profiles, ...m.published].find((x) => x.id === id);
+        if (!p) throw new Error("Профиль не найден.");
+        if (p.format !== "graph" || !p.blueprint)
+          throw new Error("Это текстовый профиль. Откройте его из списка профилей.");
+        graph = clone(p.blueprint);
+        name = p.name || graph.name;
+        description = p.description || "";
+        const own = m.profiles.find((x) => x.id === id);
+        if (query.get("copy") === "1" || !own) name = `${name} (копия)`.slice(0, 100);
         else {
           this.profileID = id;
-          this.loaded = v;
+          this.loaded = own;
         }
       }
       this.draft = { graph, name: name || graph.name, description, positions: layout(graph) };
@@ -169,16 +166,15 @@ class Editor {
       this.el("h2").focus({ preventScroll: true });
     } catch (error) {
       if (this.disposed) return;
-      this.root.innerHTML = `<div class="banner bad" role="alert">Версия или блоки недоступны: ${esc((error as Error).message)}</div><a class="btn" href="#/profiles">К профилям</a> <button class="btn" type="button" data-load>Повторить GET</button>`;
+      this.root.innerHTML = `<div class="banner bad" role="alert">Профиль или блоки недоступны: ${esc((error as Error).message)}</div><a class="btn" href="#/profiles">К профилям</a> <button class="btn" type="button" data-load>Повторить GET</button>`;
       this.el("[data-load]").onclick = () => {
         void this.load();
       };
     }
   }
   private shell(): void {
-    this.root.innerHTML = `<div class="blueprint-toolbar"><a class="btn ghost" href="#/profiles">← Мои профили</a><h2 tabindex="-1">Редактор графа</h2><span id="bp-state" role="status"></span><button class="btn" data-validate>Проверить</button><button class="btn primary" data-save>Сохранить версию</button><button class="btn" data-run aria-describedby="bp-gate">Запустить…</button></div>
-      <p id="bp-gate" class="banner info"></p><div id="bp-message" class="banner info" role="status" aria-live="polite">Сохранение создаёт неизменяемую версию. Оно не запускает граф и не включает политику.</div>
-      <div id="bp-conflict" hidden class="banner warn"><span>Профиль изменён в другом окне. Черновик сохранён в памяти.</span><button class="btn" data-latest>Загрузить актуальную</button><button class="btn" data-copy>Сохранить отдельной копией</button></div>
+    this.root.innerHTML = `<div class="blueprint-toolbar"><a class="btn ghost" href="#/profiles">← Мои профили</a><h2 tabindex="-1">Редактор графа</h2><span id="bp-state" role="status"></span><button class="btn" data-validate>Проверить</button><button class="btn primary" data-save>Сохранить</button><button class="btn" data-run aria-describedby="bp-gate">Запустить…</button></div>
+      <p id="bp-gate" class="banner info"></p><div id="bp-message" class="banner info" role="status" aria-live="polite">Сохранение обновляет профиль на месте. Оно не запускает граф и не включает политику.</div>
       <div id="bp-uncertain" hidden class="banner warn"><span>Результат сохранения неизвестен. Повторная запись запрещена до сверки.</span><button class="btn" data-reconcile>Сверить GET</button></div>
       <div class="blueprint-toolbar"><label for="bp-starter">Шаблоны</label><select id="bp-starter"><option value="">Выберите…</option><option value="nodehost">Nodehost · замена VPS</option><option value="beget">Beget · IPv4 или замена VPS · только проектирование</option><option value="empty">Пустая схема</option></select><button class="btn" data-template>Применить как черновик</button><button class="btn" data-undo>Отменить</button><button class="btn" data-redo>Повторить</button><button class="btn" data-fit>Показать всё</button><button class="btn" data-zoom="0.8" aria-label="Уменьшить схему">−</button><span id="bp-zoom">100%</span><button class="btn" data-zoom="1.25" aria-label="Увеличить схему">+</button><span id="bp-counts"></span></div>
       <nav class="nd-tabs blueprint-tabs" role="tablist" aria-label="Панели редактора">${[
@@ -242,7 +238,7 @@ class Editor {
       "Nodehost. Проверка схемы не гарантирует выполнение. Ошибка здоровья или установки не создаёт новый сервер. observe.arm не включает новую политику автоматически.";
     this.el("#bp-gate").className = `banner ${gate ? "warn" : "info"}`;
     this.el("#bp-state").textContent =
-      `${this.draft.name} · ${this.draft.graph.provider} · ${this.loaded ? `версия ${this.loaded.version} · PK ${this.loaded.profile_version_id}` : "локальный черновик"} · ${this.dirty ? "Есть изменения" : this.loaded ? "Сохранено" : "Не сохранён"}`;
+      `${this.draft.name} · ${this.draft.graph.provider} · ${this.loaded ? "сохранённый профиль" : "локальный черновик"} · ${this.dirty ? "Есть изменения" : this.loaded ? "Сохранено" : "Не сохранён"}`;
     this.el<HTMLButtonElement>("[data-save]").disabled =
       this.busy || this.uncertain || !this.enabled || (!this.profileID && this.limitReached);
     this.el<HTMLButtonElement>("[data-validate]").disabled = this.busy;
@@ -252,8 +248,7 @@ class Editor {
     this.el<HTMLButtonElement>("[data-redo]").disabled = this.busy || !this.redo.length;
     this.el("#bp-counts").textContent =
       `${this.draft.graph.nodes.length}/128 блоков · ${edgeCount(this.draft.graph)}/256 связей · ${bytes(this.draft.graph)} байт`;
-    this.el("#bp-conflict").hidden = !this.conflict;
-    this.el("#bp-uncertain").hidden = !this.uncertain;
+        this.el("#bp-uncertain").hidden = !this.uncertain;
     this.el(".blueprint-workspace").toggleAttribute("inert", this.busy);
     if (!this.enabled || (!this.profileID && this.limitReached))
       this.say(
@@ -416,7 +411,7 @@ class Editor {
     if (!this.valid) this.el<HTMLElement>("[data-diagnostic]")?.focus();
     return this.valid;
   }
-  async save(copy = false): Promise<boolean> {
+  async save(): Promise<boolean> {
     const focused = document.activeElement;
     if (focused instanceof HTMLElement && this.root.contains(focused)) focused.blur();
     if (this.busy || this.uncertain || !this.enabled || (!this.profileID && this.limitReached)) return false;
@@ -439,21 +434,18 @@ class Editor {
         format: "graph",
         blueprint: this.draft.graph,
       };
-      const body = !copy && this.profileID ? { ...payload, expected_version: this.loaded!.version } : payload;
-      if (bytes(body) > 256 * 1024) throw new Error("Полное тело запроса превышает 256 КиБ UTF-8.");
+      if (bytes(payload) > 256 * 1024) throw new Error("Полное тело запроса превышает 256 КиБ UTF-8.");
       writing = true;
       this.pendingWrite = clone(payload);
-      const p =
-        !copy && this.profileID
-          ? await api.saveGraphProfile(this.profileID, { ...payload, expected_version: this.loaded!.version })
-          : await api.createGraphProfile(payload);
+      const p = this.profileID
+        ? await api.saveGraphProfile(this.profileID, payload)
+        : await api.createGraphProfile(payload);
       acknowledged = true;
       this.profileID = p.id;
-      const v = await readVersion(p.id, p.versions!);
-      if (stableJSON(v.blueprint) !== stableJSON(payload.blueprint))
-        throw new Error("Прочитанная версия отличается от отправленной. Нужна сверка; черновик не потерян.");
-      this.accept(v);
-      this.say("Новая версия сохранена. Запуск и политика не включены.");
+      if (p.blueprint && stableJSON(p.blueprint) !== stableJSON(payload.blueprint))
+        throw new Error("Прочитанный профиль отличается от отправленного. Нужна сверка; черновик не потерян.");
+      this.accept(p, payload);
+      this.say("Профиль сохранён. Запуск и политика не включены.");
       return true;
     } catch (error) {
       const e = error as APIError;
@@ -463,26 +455,29 @@ class Editor {
         this.findings();
         this.el<HTMLElement>("[data-diagnostic]")?.focus();
       }
-      this.conflict = e.code === "revision_conflict";
       this.uncertain = acknowledged || (writing && (!e.status || e.status >= 500));
       if (!this.uncertain) this.pendingWrite = null;
-      this.say(this.conflict ? "Профиль изменён в другом окне; черновик и история сохранены." : e.message, true);
+      if (e.status === 409) {
+        this.say("Профиль изменён в другом окне. Загружено актуальное содержимое.", true);
+        await this.load();
+        return false;
+      }
+      this.say(e.message, true);
       return false;
     } finally {
       this.busy = false;
       if (!this.disposed) this.status();
     }
   }
-  private accept(v: ProfileVersion, saved?: GraphProfilePayload): void {
-    this.loaded = v;
+  private accept(p: OwnProfile, saved?: GraphProfilePayload): void {
+    this.loaded = p;
     this.pendingInput = false;
     this.baseline = saved
       ? JSON.stringify({ graph: saved.blueprint, name: saved.name, description: saved.description })
       : this.content();
-    this.conflict = false;
     this.uncertain = false;
     this.pendingWrite = null;
-    const hash = `#/profiles/editor/${v.profile_id}?version=${v.version}`;
+    const hash = `#/profiles/editor/${p.id}`;
     history.replaceState(null, "", hash);
     editorHash = hash;
   }
@@ -492,23 +487,22 @@ class Editor {
       p = m.profiles.find((p) =>
         this.profileID ? p.id === this.profileID : p.name === (sent?.name || this.draft.name.trim()),
       );
-    if (!p?.versions) {
+    if (!p) {
       this.say("Сохранение не подтверждено. Черновик оставлен; автоматического повтора нет.", true);
       return;
     }
-    const v = await readVersion(p.id, p.versions);
     if (
-      stableJSON(v.blueprint) === stableJSON(sent?.blueprint || this.draft.graph) &&
+      stableJSON(p.blueprint) === stableJSON(sent?.blueprint || this.draft.graph) &&
       p.name === (sent?.name || this.draft.name.trim()) &&
       p.description === (sent?.description ?? this.draft.description)
     ) {
       this.profileID = p.id;
-      this.accept(v, sent || undefined);
+      this.accept(p, sent || undefined);
       this.status();
-      this.say("Сохранение подтверждено чтением версии.");
+      this.say("Сохранение подтверждено чтением профиля.");
     } else
       this.say(
-        "Актуальное содержимое отличается. Не повторяйте запись вслепую; откройте актуальную версию отдельно и сравните.",
+        "Актуальное содержимое отличается. Не повторяйте запись вслепую; откройте профиль отдельно и сравните.",
         true,
       );
   }
@@ -549,35 +543,6 @@ class Editor {
       return;
     }
     if (this.busy) return;
-    if (t.closest("[data-latest]")) {
-      if (window.confirm("Загрузить актуальную версию? Локальный черновик будет удалён.")) {
-        const m = await api.myProfiles(),
-          p = m.profiles.find((p) => p.id === this.profileID);
-        if (p?.versions) {
-          const v = await readVersion(p.id, p.versions);
-          if (v.blueprint) {
-            this.draft = {
-              graph: clone(v.blueprint),
-              name: p.name,
-              description: p.description,
-              positions: layout(v.blueprint),
-            };
-            this.undo = [];
-            this.redo = [];
-            this.accept(v);
-            this.paint();
-          }
-        }
-      }
-      return;
-    }
-    if (t.closest("[data-copy]")) {
-      this.select("");
-      this.say("Укажите новое имя профиля, затем сохраните отдельную копию.");
-      if (window.confirm("Сохранить отдельный профиль под текущим именем? При совпадении имён сервер вернёт ошибку."))
-        await this.save(true);
-      return;
-    }
     if (this.busy) return;
     const select = t.closest<HTMLElement>("[data-select]");
     if (select) {

@@ -310,7 +310,7 @@ func TestProvisionStandardAliasesRenderMaskAndSharedPort(t *testing.T) {
 	}
 }
 
-func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
+func TestCloudInstallAcceptsProfileID(t *testing.T) {
 	r, _ := newCloudRegistry(t)
 	r.cfg.Security.NodeToken = testNodeToken
 	uid, connID, cookies, csrf := cloudSession(t, r, "pin-owner")
@@ -319,19 +319,12 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	addVersion := func(marker string) control.ProfileVersion {
-		t.Helper()
-		pv, err := r.control.AddProfileVersion(profile.ID,
-			"# "+marker+"\necho "+marker+" {{ .selected }} --registry-token={{ .node_secret }} --name={{ node_id }}",
-			`{"vars":[{"name":"selected","default":"`+marker+`_SCHEMA"}]}`)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return pv
+	pinned, err := r.control.AddProfileVersion(profile.ID,
+		"# CURRENT_MTPROXYL\necho CURRENT_MTPROXYL {{ .selected }} --registry-token={{ .node_secret }} --name={{ node_id }}",
+		`{"vars":[{"name":"selected","default":"CURRENT_MTPROXYL_SCHEMA"}]}`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	addVersion("UNSELECTED_FIRST") // Keep version-row PK distinct from profile ID.
-	pinned := addVersion("PINNED_MTPROXYL")
-	addVersion("LATEST_NOT_PINNED")
 	foreign, err := r.control.CreateProfile("foreign-private", "", cabinetUser(t, r, "pin-foreign", 3))
 	if err != nil {
 		t.Fatal(err)
@@ -340,8 +333,11 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	graph, err := r.control.CreateProfileVersionGraph(profile.ID, `{}`, 1, "test-graph")
+	graphProfile, err := r.control.CreateProfile("graph-only", "", uid)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.control.CreateProfileVersionGraph(graphProfile.ID, `{}`, 1, "test-graph"); err != nil {
 		t.Fatal(err)
 	}
 	// Invalid selections must fail before even decrypting SSH credentials.
@@ -358,8 +354,7 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 		{"wrong-type", `{"profile_version_id":"26"}`, "profile_invalid", 422},
 		{"missing-row", `{"profile_version_id":999999999}`, "not_found", 404},
 		{"foreign", fmt.Sprintf(`{"profile_version_id":%d}`, foreignVersion.ID), "not_found", 404},
-		{"mismatch", fmt.Sprintf(`{"profile_id":%d,"profile_version_id":%d}`, foreign.ID, pinned.ID), "profile_mismatch", 400},
-		{"graph", fmt.Sprintf(`{"profile_version_id":%d}`, graph.ID), "profile_incompatible", 422},
+		{"graph", fmt.Sprintf(`{"profile_id":%d}`, graphProfile.ID), "profile_incompatible", 422},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := cloudInstallReq(t, r, cookies, csrf, res.ID, "pin-invalid", tc.body)
@@ -374,23 +369,16 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 			}
 		})
 	}
-	// A newer text version exists when the older version is selected. Loading
-	// latest in applyProfile would execute this marker instead of the pinned one.
-	addVersion("LATEST_NOT_PINNED")
 	if err := r.control.SetCloudResourceSecrets(res.ID, res.SecretsEnc); err != nil {
 		t.Fatal(err)
 	}
 	exec.runFn = verifyExecFn(r, true)
-	for _, tc := range []struct{ name, body, marker string }{
-		{"version-only", fmt.Sprintf(`{"profile_version_id":%d,"vars":{}}`, pinned.ID), "PINNED_MTPROXYL"},
-		{"matching-profile", fmt.Sprintf(`{"profile_id":%d,"profile_version_id":%d,"vars":{}}`, profile.ID, pinned.ID), "PINNED_MTPROXYL"},
-		{"legacy-latest", fmt.Sprintf(`{"profile_id":%d,"vars":{}}`, profile.ID), "LATEST_NOT_PINNED"},
+	for _, tc := range []struct{ name, body string }{
+		{"profile-id", fmt.Sprintf(`{"profile_id":%d,"vars":{}}`, profile.ID)},
+		{"legacy-version-alias", fmt.Sprintf(`{"profile_version_id":%d,"vars":{}}`, pinned.ID)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			exec.reset()
-			// Свежий готовый ресурс на кейс: пининг версии, а не повторная
-			// установка (её покрывает отдельный тест). Создаём напрямую в
-			// control-сторе, чтобы не зависеть от фонового create-воркера.
 			fresh, err := r.control.CreateCloudResource(control.CloudResourceV2{
 				UserID: uid, ConnectionID: connID, Provider: control.ProviderNodehost,
 				Label: "pool-node", State: control.CloudResReady,
@@ -421,8 +409,8 @@ func TestCloudInstallPinsExplicitProfileVersion(t *testing.T) {
 				t.Fatalf("wrong profile/outcome: %+v", final)
 			}
 			commands := exec.allCommands()
-			if !strings.Contains(commands, tc.marker+" '") || !strings.Contains(commands, tc.marker+"_SCHEMA") {
-				t.Fatalf("selected steps/schema not executed: %s", commands)
+			if !strings.Contains(commands, "CURRENT_MTPROXYL '") || !strings.Contains(commands, "CURRENT_MTPROXYL_SCHEMA") {
+				t.Fatalf("current steps/schema not executed: %s", commands)
 			}
 			exec.mu.Lock()
 			calls := exec.calls

@@ -49,7 +49,7 @@ export function mountInspector(
     (!n
       ? `
     ${field("bp-profile-name", "Имя профиля", input("bp-profile-name", draft.name, 'maxlength="100" required'))}
-    ${field("bp-name", "Имя схемы (содержимое версии)", input("bp-name", g.name, 'maxlength="100" required'))}
+    ${field("bp-name", "Имя схемы", input("bp-name", g.name, 'maxlength="100" required'))}
     ${field("bp-description", "Описание профиля", `<textarea id="bp-description" rows="3" aria-describedby="bp-message">${esc(draft.description)}</textarea>`)}
     ${field("bp-provider", "Провайдер", `<select id="bp-provider">${["nodehost", "beget"].map((v) => option(v, v, g.provider)).join("")}</select>`)}
     ${field("bp-entry-initial", "Первичное создание · initial", `<select id="bp-entry-initial">${nodes(g.entries.initial)}</select>`)}

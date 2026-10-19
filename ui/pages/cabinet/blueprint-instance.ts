@@ -2,12 +2,12 @@ import { esc } from "../../lib/dom";
 import { isSecretVar, parseVarsSchema } from "../../lib/vars";
 import type { InstallDefaults } from "../../lib/vars";
 import { api } from "./api";
-import type { Blueprint, HostingConnection, ProfileVersion } from "./api";
-import { positiveID, readVersion, runtimeGate } from "./blueprint-model";
+import type { Blueprint, HostingConnection, Profile } from "./api";
+import { runtimeGate } from "./blueprint-model";
 
 export interface InstanceForm {
   collect: () => { inputs: Record<string, unknown>; vars: Record<string, string> };
-  installedTextVersion: () => ProfileVersion | null; // для чек-листа политики снаружи формы
+  installedTextProfile: () => Profile | null; // для чек-листа политики снаружи формы
 }
 let formID = 0;
 const field = (id: string, label: string, control: string): string =>
@@ -17,11 +17,11 @@ const record = (v: unknown): Record<string, unknown> =>
 const sensitiveVar = (v: ReturnType<typeof parseVarsSchema>[number]): boolean =>
   isSecretVar(v) || /secret|password|token|key|credential/i.test(v.name);
 
-/** Explicit numeric opener: published lists contain neither format nor ordinal. */
-export function mountVersionPicker(
+/** Профиль — единое содержимое: формат и steps/blueprint приходят в GET. */
+export function mountProfilePicker(
   root: HTMLElement,
   format: "text" | "graph",
-  onPick: (v: ProfileVersion | null) => void,
+  onPick: (p: Profile | null) => void,
 ): void {
   const prefix = `bp-picker-${++formID}`;
   root.innerHTML = `<div class="help">Загрузка профилей…</div>`;
@@ -29,51 +29,18 @@ export function mountVersionPicker(
     try {
       const m = await api.myProfiles();
       if (!root.isConnected) return;
-      const all = [...m.profiles, ...m.published.filter((p) => !m.profiles.some((x) => x.id === p.id))];
-      root.innerHTML = `${field(prefix + "-profile", format === "graph" ? "Сохранённый граф-профиль" : "Текстовый профиль установки", `<select id="${prefix}-profile"><option value="">Выберите профиль</option>${all.map((p) => `<option value="${p.id}">${esc(p.name)} · #${p.id}</option>`).join("")}</select>`)}
-        ${field(prefix + "-number", "Номер версии (не PK)", `<input id="${prefix}-number" type="number" min="1" step="1" aria-describedby="${prefix}-status">`)}
-        <button class="btn" type="button" data-read-version>Загрузить версию</button>
-        <p class="help" id="${prefix}-status" role="status">Опубликованный профиль: введите известный номер. API не возвращает latest или список версий.</p>`;
+      const all = [...m.profiles, ...m.published]
+        .filter((p, i, list) => list.findIndex((x) => x.id === p.id) === i)
+        .filter((p) => p.format === format);
+      root.innerHTML = `
+        <div class="field"><label for="${prefix}-profile">${format === "graph" ? "Сохранённый граф-профиль" : "Текстовый профиль установки"}</label><select id="${prefix}-profile"><option value="">Выберите профиль</option>${all.map((p) => `<option value="${p.id}">${esc(p.name)} · #${p.id}</option>`).join("")}</select></div>
+        <p class="help" id="${prefix}-status" role="status">${all.length ? `Доступно профилей: ${all.length}.` : `Профилей формата ${format} нет — создайте их в «Мои профили».`}</p>`;
       const profile = root.querySelector<HTMLSelectElement>("select")!,
-        number = root.querySelector<HTMLInputElement>("input")!,
         status = root.querySelector<HTMLElement>("[role=status]")!;
-      let generation = 0;
-      const invalidate = (): void => {
-        generation++;
-        onPick(null);
-        status.textContent = "Загрузите выбранную версию перед подтверждением.";
-      };
       profile.onchange = () => {
-        invalidate();
-        number.value = String(m.profiles.find((p) => p.id === Number(profile.value))?.versions || "");
-      };
-      number.oninput = invalidate;
-      root.querySelector<HTMLButtonElement>("button")!.onclick = async (e) => {
-        const id = positiveID(profile.value),
-          ordinal = positiveID(number.value),
-          seq = ++generation;
-        if (!id || !ordinal) {
-          status.textContent = "Выберите профиль и положительный номер версии.";
-          number.focus();
-          return;
-        }
-        const btn = e.currentTarget as HTMLButtonElement;
-        btn.disabled = true;
-        try {
-          const v = await readVersion(id, ordinal);
-          if (seq !== generation || !root.isConnected) return;
-          if (v.format !== format || (format === "graph" && !v.blueprint))
-            throw new Error(`Нужна версия формата ${format}; получен ${v.format}.`);
-          status.textContent = `Версия ${v.version} · ${v.format} · PK ${v.profile_version_id}`;
-          onPick(v);
-        } catch (error) {
-          if (seq === generation) {
-            status.textContent = (error as Error).message;
-            onPick(null);
-          }
-        } finally {
-          btn.disabled = false;
-        }
+        const p = all.find((x) => x.id === Number(profile.value)) || null;
+        status.textContent = p ? `${p.name} · ${p.format}` : "Профиль не выбран.";
+        onPick(p);
       };
     } catch (error) {
       root.innerHTML = `<div class="banner bad" role="alert">${esc((error as Error).message)} <button type="button" class="btn sm">Повторить GET</button></div>`;
@@ -95,7 +62,7 @@ export function mountInstance(
   const prefix = `bp-instance-${++formID}`;
   let connections: HostingConnection[] | null = null,
     defaults: InstallDefaults | null = null,
-    textVersion: ProfileVersion | null = null;
+    textProfile: Profile | null = null;
   let connectionError = "",
     defaultsError = "";
   const value = (name: string): string =>
@@ -185,12 +152,12 @@ export function mountInstance(
     });
   const picker = root.querySelector<HTMLElement>("[data-text-picker]");
   if (picker)
-    mountVersionPicker(picker, "text", (v) => {
-      textVersion = v;
+    mountProfilePicker(picker, "text", (p) => {
+      textProfile = p;
       const vars = root.querySelector<HTMLElement>("[data-install-vars]")!;
-      vars.innerHTML = v
+      vars.innerHTML = p
         ? `<h3>Переменные установки</h3><p class="help">Секреты не вводятся. Пустое поле наследует серверное значение.${policy ? " Политика не принимает vars: только значения профиля/регистратора." : ""}</p>` +
-          parseVarsSchema(v.vars_schema)
+          parseVarsSchema(p.vars_schema)
             .filter(
               (d) =>
                 !sensitiveVar(d) && !["node_id", "node_secret", "registry_url", "port", "proxy_port"].includes(d.name),
@@ -242,9 +209,9 @@ export function mountInstance(
           continue;
         }
         if (name === "installation_profile_version_id" && decl.type === "number") {
-          if (!textVersion)
-            return fail("Загрузите числовую версию текстового профиля; profile ID не является PK версии.", picker);
-          inputs[name] = textVersion.profile_version_id;
+          if (!textProfile) return fail("Выберите текстовый профиль установки.", picker);
+          // ponytail: профиль — одно содержимое; вход графа несёт его id.
+          inputs[name] = textProfile.id;
           continue;
         }
         const el = get(name);
@@ -263,9 +230,9 @@ export function mountInstance(
         inputs[name] = v;
       }
       const vars: Record<string, string> = {};
-      if (textVersion) {
+      if (textProfile) {
         if (!defaults) return fail("Дождитесь порта регистратора. " + defaultsError);
-        const decls = parseVarsSchema(textVersion.vars_schema);
+        const decls = parseVarsSchema(textProfile.vars_schema);
         for (const d of decls) {
           if (["port", "proxy_port"].includes(d.name)) {
             if (policy && d.default && Number(d.default) !== defaults.proxy_port)
@@ -289,7 +256,7 @@ export function mountInstance(
       }
       return { inputs, vars };
     },
-    installedTextVersion: () => textVersion,
+    installedTextProfile: () => textProfile,
   };
 }
 function configFields(prefix: string, initial: Record<string, unknown>): string {

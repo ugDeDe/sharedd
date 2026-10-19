@@ -1,7 +1,7 @@
 import nodehostTemplate from "../../../registry/internal/blueprint/testdata/nodehost_replacement.json";
 import begetTemplate from "../../../registry/internal/blueprint/testdata/beget_ip_or_replacement.json";
 import { api } from "./api";
-import type { Blueprint, BlueprintBlock, BlueprintDiagnostic, BlueprintEdge, MyProfiles, ProfileVersion } from "./api";
+import type { Blueprint, BlueprintBlock, BlueprintDiagnostic, BlueprintEdge, MyProfiles } from "./api";
 
 export const BEGET_GATE =
   "Только проектирование. Смена IP Beget не выполняется: блоки ip.* не реализованы; проверка primary IP не закрыта. Создание VPS через граф Beget также недоступно.";
@@ -109,7 +109,7 @@ export function runtimeGate(g: Blueprint): string {
       (n.in.version?.ref !== "input.installation_profile_version_id" ||
         g.inputs.installation_profile_version_id?.type !== "number")
     )
-      return "Для запуска install.text привяжите version к input.installation_profile_version_id: только так можно проверить текстовую версию по числовому номеру и передать её PK до платных действий.";
+      return "Для запуска install.text привяжите version к input.installation_profile_version_id: вход передаёт id текстового профиля до платных действий.";
     if (
       n.type === "server.create" &&
       (n.in.connection?.ref !== "input.connection_id" || n.in.configuration?.ref !== "input.configuration_ref")
@@ -162,43 +162,9 @@ export function layout(g: Blueprint): Record<string, Point> {
   );
 }
 
-// Numeric immutable versions only. No graph/input persistence in browser storage.
-const versions = new Map<string, ProfileVersion>();
-export function rememberVersion(v: ProfileVersion): ProfileVersion {
-  versions.set(`${v.profile_id}:${v.version}`, v);
-  return v;
-}
-export async function readVersion(id: number, version: number): Promise<ProfileVersion> {
-  if (!positiveID(String(id)) || !positiveID(String(version)))
-    throw new Error("Укажите положительный номер версии, не PK.");
-  return rememberVersion(await api.profileVersion(id, version));
-}
-export function knownVersion(id: number, version: number): ProfileVersion | undefined {
-  return versions.get(`${id}:${version}`);
-}
-export function versionByPK(pk: number): ProfileVersion | undefined {
-  return [...versions.values()].find((v) => v.profile_version_id === pk);
-}
-export async function hydrateOwn(m: MyProfiles): Promise<MyProfiles> {
-  await Promise.all(
-    m.profiles.map(async (p) => {
-      if (p.versions) {
-        try {
-          await readVersion(p.id, p.versions);
-        } catch {
-          /* unresolved is never assumed text */
-        }
-      }
-    }),
-  );
-  return m;
-}
+// Профиль — единое содержимое: blueprint/steps приходят в GET /api/me/profiles.
 export async function textProfiles(): Promise<MyProfiles> {
-  const m = await hydrateOwn(await api.myProfiles());
-  const isText = (id: number): boolean => {
-    const own = m.profiles.find((p) => p.id === id);
-    return !!own?.versions && knownVersion(id, own.versions)?.format === "text";
-  };
-  // Published metadata has no latest ordinal. Never guess it for legacy installers.
-  return { ...m, profiles: m.profiles.filter((p) => isText(p.id)), published: m.published.filter((p) => isText(p.id)) };
+  const m = await api.myProfiles();
+  const isText = (p: { format?: string }): boolean => p.format === "text";
+  return { ...m, profiles: m.profiles.filter(isText), published: m.published.filter(isText) };
 }

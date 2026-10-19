@@ -52,32 +52,27 @@ Idempotency-Key: <one fixed key for this install attempt>
 X-CSRF-Token: <session CSRF token>
 Cookie: <ddugul session and matching CSRF cookie>
 
-{"profile_version_id":26,"vars":{}}
+{"profile_id":6,"vars":{}}
 ```
 
-`26` is the **profile_versions primary key** belonging to profile `6`.
-The earlier statement that this endpoint cannot pin a version was incorrect
-and is superseded by this fix: the frontend already sends `profile_version_id`,
-which must not be discarded and replaced by the default profile.
+Profile versioning is gone: a profile has exactly one content row, edited in
+place. The install API selects the **profile ID**.
 
 | Install body | Selection |
 |---|---|
-| `{"profile_version_id":26,"vars":{}}` | Exact visible text-version PK 26, including an older version |
-| `{"profile_id":6,"profile_version_id":26,"vars":{}}` | Exact PK 26; profile ID must match, otherwise 400 `profile_mismatch` |
-| `{"profile_id":6,"vars":{}}` | Latest visible version of profile 6 at acceptance, then pinned for that cloud worker |
-| `{"vars":{}}` / `{}` | Existing operation's profile, or the legacy default if none; only when no explicit version is supplied |
+| `{"profile_id":6,"vars":{}}` | Single content row of profile 6 |
+| `{"profile_version_id":26,"vars":{}}` | Legacy alias: only used when `profile_id` is absent; resolves to its profile and then uses that profile's current content |
+| `{"vars":{}}` / `{}` | Existing operation's profile, or the legacy default if none |
 
-An explicit zero/negative/null/non-integer version is 422 `profile_invalid`;
-unknown or foreign unpublished versions are 404 `not_found`. A graph/non-text
-version is 422 `profile_incompatible` before secret preparation/decryption or
-SSH. Own-unpublished/published visibility and user-profile feature gates still
-apply. No invalid explicit version falls back to another profile/version.
-`vars` uses the selected version's schema/defaults; `{}` inherits them and
-registry defaults. Success remains HTTP 200 with the installation operation
-DTO (`profile_id` identifies the parent); `done` requires registration.
-Provisioning receives `InstallRequest.ProfileVersionID` and reloads that exact
-immutable row, not latest. Manual/Beget callers with that internal field zero
-retain their previous latest-version behavior.
+An explicit zero/negative/null/non-integer `profile_version_id` is 422
+`profile_invalid`; unknown or foreign unpublished profiles are 404 `not_found`.
+A graph/non-text profile is 422 `profile_incompatible` before secret
+preparation/decryption or SSH. Own-unpublished/published visibility and
+user-profile feature gates still apply. `vars` uses the current row's
+schema/defaults; `{}` inherits them and registry defaults. Success remains HTTP
+200 with the installation operation DTO (`profile_id` identifies the profile);
+`done` requires registration. Provisioning reloads the profile's current row at
+acceptance and pins it for that worker.
 
 Cloud installation also atomically persists a server-generated full NAME-HASH
 in `operations.request_json.expected_node_id` before SSH (valid resource label
@@ -494,6 +489,7 @@ HTTP-эндпоинты Beget/профилей **смонтированы** в �
 beget_links(user_id UNIQUE, login_enc, password_enc, ssh_key_id, ssh_pub, ssh_priv_enc, ...)
 profiles(name UNIQUE, ..., published)
 profile_versions(profile_id, version, playbook, vars_schema, UNIQUE(profile_id,version))
+-- одна строка на профиль: правки UPDATE in place; version остаётся 1
 -- колонка playbook хранит ТЕКСТ ШАГОВ (shell-команды); имя историческое
 operations(user_id, node_id, kind, state, idem_key UNIQUE, provider_vps_id, profile_id, ...)
 cloud_resources(vps_id PK, user_id, node_id, region, config_id, state, ...)
@@ -551,14 +547,16 @@ VPS пользователя. Формат текста шагов (как в mt
 
 | Метод/путь | Тело | Ответ |
 |---|---|---|
-| `GET /panel/api/admin/profiles` | — | `{profiles:[{id,name,description,published,created_at,updated_at,versions,steps,vars_schema}]}` — только системные/опубликованные (`created_by=0`); личные копии пользователей в админке не перечисляются (видны владельцу через `/api/me/profiles`) |
+| `GET /panel/api/admin/profiles` | — | `{profiles:[{id,name,description,published,created_at,updated_at,steps,vars_schema,format,blueprint}]}` — только системные/опубликованные (`created_by=0`); личные копии пользователей в админке не перечисляются (видны владельцу через `/api/me/profiles`) |
 | `POST /panel/api/admin/profiles` | `{name, description?, steps, vars_schema?, published?}` | 201 профиль (создаёт версию 1) |
-| `PUT /panel/api/admin/profiles/{id}` | `{name?, description?, steps?, vars_schema?, published?}` | 200; `steps` → НОВАЯ версия (история не перезаписывается), сбрасывает published. `name` — метаданные: новые версии НЕ создаёт и published не сбрасывает; имя тримится, пустое → 400, коллизия без учёта регистра → 409 `duplicate_name`, неизменное имя — no-op |
+| `PUT /panel/api/admin/profiles/{id}` | `{name?, description?, steps?, vars_schema?, published?}` | 200; `steps`/`vars_schema` перезаписывают единственную строку контента in place (версий больше нет, published не сбрасывается). `name` — метаданные; имя тримится, пустое → 400, коллизия без учёта регистра → 409 `duplicate_name`, неизменное имя — no-op |
 | `DELETE /panel/api/admin/profiles/{id}` | — | 204 |
 
 Admin PUT: `description` omitted keeps its value; `description:""` clears it.
-Either `steps` or `vars_schema` appends a version, preserving the omitted field
-from the latest version. Metadata-only saves do not append or unpublish.
+Either `steps` or `vars_schema` overwrites that one row, preserving the omitted
+field from the current row. Metadata-only saves do not change content or
+publication. DTO includes `format` and (for graphs) `blueprint`; there is no
+`versions` field.
 Profile DB failures are logged with operation and redacted error/SQLite code:
 unknown errors → `500 internal`, other SQLite constraints →
 `409 constraint_conflict`, duplicate name → `409 duplicate_name`;
@@ -572,7 +570,7 @@ silently returned as empty steps. See `docs/specs/fix-profile-control-errors.md`
 | `GET /api/me/profiles` | `{profiles:[свои], published:[опубликованные], enabled, max}` |
 | `POST /api/me/profiles` | создать локальный профиль (published=false), лимит `[provisioning] max_user_profiles` (дефолт 5) |
 | `POST /api/me/profiles/{id}/copy` | копия видимого профиля (опубликованного ИЛИ своего; чужой неопубликованный/несуществующий → 404 `not_found`) в свой черновик: `published=false`, `created_by=пользователь`, имя «`<оригинал> (моя копия)`», при коллизии «…(моя копия) -2», -3…; шаги и `vars_schema` — дословно из последней видимой версии (секретных ЗНАЧЕНИЙ в копии нет — `vars_schema` хранит только объявления, как их видит зритель профиля). Лимит → 403 `profile_limit_reached`; флаг выключен → 403 `user_profiles_disabled`; коллизия не разрешилась → 409 `duplicate_name`. Успех → 201 с JSON нового профиля |
-| `PUT /api/me/profiles/{id}` | правка своего (чужой → 404). `steps`/`vars_schema` → новая версия; `name` (опция) — метаданные: непустое, тримится, уникально без учёта регистра среди видимых профилей, коллизия → 409 `duplicate_name` (русское сообщение), новую версию НЕ создаёт |
+| `PUT /api/me/profiles/{id}` | правка своего (чужой → 404). `steps`/`vars_schema` перезаписывают единственную строку контента (`expected_version` принимается и игнорируется, 409 из-за него не бывает); `name` (опция) — метаданные: непустое, тримится, уникально без учёта регистра среди видимых профилей, коллизия → 409 `duplicate_name` |
 | `DELETE /api/me/profiles/{id}` | удалить свой (чужой → 404) |
 
 YAML/песочницы больше нет. Потолок текста шагов — 64 KiB → 400 `steps_rejected`.

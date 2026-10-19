@@ -3225,7 +3225,7 @@
     overflow: visible;
   }
 </style>
-  <meta name="sharedd-build" content="52e5bcf7663d1603">
+  <meta name="sharedd-build" content="fcf6550488141dd9">
 </head>
 <body>
 
@@ -3352,11 +3352,6 @@
                 <label for="ap-prof">Профиль установки</label>
                 <select id="ap-prof"><option value="">Загрузка профилей…</option></select>
                 <span class="help" id="ap-prof-help">Только текстовые профили: опубликованные и ваши.</span>
-              </div>
-              <div class="field">
-                <label for="ap-ver">Версия профиля</label>
-                <input id="ap-ver" type="number" inputmode="numeric" min="1" step="1" placeholder="Номер версии" disabled>
-                <span class="help">Для своего профиля подставляется последняя версия; для опубликованного укажите номер.</span>
               </div>
             </div>
             <label class="check" style="margin-top:10px">
@@ -3504,7 +3499,7 @@
         <div class="node-list" id="profiles-published" hidden></div>
         <div class="card-body blueprint-toolbar"><a class="btn" href="#/profiles/editor/new?starter=nodehost">Nodehost · замена VPS</a><a class="btn" href="#/profiles/editor/new?starter=beget">Beget · только проектирование</a></div>
         <form id="profiles-open-run" class="card-body blueprint-toolbar"><label for="profiles-run-id">Открыть запуск по известному ID</label><input id="profiles-run-id" type="number" min="1" step="1" required class="blueprint-version-number"><button class="btn" type="submit">Открыть запуск</button><span class="help">Откройте по ID или после явного запуска профиля. Общего списка запусков API не предоставляет.</span></form>
-        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Правка шагов создаёт новую версию — история не перезаписывается. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
+        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Сохранение обновляет профиль на месте. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
       </section>
     </section>
 
@@ -3658,10 +3653,6 @@
                   <label for="cr-prof">Профиль</label>
                   <select id="cr-prof"><option value="">— без профиля —</option></select>
                   <span class="help" id="cr-prof-help" aria-live="polite">Можно настроить и позже — на карточке ресурса.</span>
-                </div>
-                <div class="field">
-                  <label for="cr-ver">Версия</label>
-                  <select id="cr-ver" disabled><option value="">Сначала профиль</option></select>
                 </div>
               </div>
               <label class="check" style="margin-top:10px"><input type="checkbox" id="cr-instant" checked disabled><span class="box"></span> Установить сразу после создания</label>
@@ -4223,7 +4214,6 @@
     updateProfile: (id, body) => req(`/api/me/profiles/${id}`, "PUT", body),
     deleteProfile: (id) => req(`/api/me/profiles/${id}`, "DELETE"),
     blueprintBlocks: () => req("/api/me/blueprint-blocks"),
-    profileVersion: (id, version) => req(`/api/me/profiles/${id}/versions/${version}`),
     validateBlueprint: (blueprint, inputs) => req("/api/me/profiles/validate", "POST", { format: "graph", blueprint, ...inputs === void 0 ? {} : { inputs } }),
     createGraphProfile: (body) => req("/api/me/profiles", "POST", body),
     saveGraphProfile: (id, body) => req(`/api/me/profiles/${id}`, "PUT", body),
@@ -4268,7 +4258,7 @@
       { headers: { "Idempotency-Key": key } }
     ),
     replaceCloudResource: (id, key, body) => req(`/api/me/cloud-resources/${id}/replace`, "POST", body, { headers: { "Idempotency-Key": key } }),
-    // FROZEN: {profile_version_id, vars} — PK версии профиля, не profile_id.
+    // FROZEN: {profile_id, vars} — профиль адресуется id, содержимое одно.
     installCloudResource: (id, key, body) => req(`/api/me/cloud-resources/${id}/install`, "POST", body, { headers: { "Idempotency-Key": key } }),
     // FROZEN: 200 {ssh_ok,error}; 409 not_ready/ssh_unavailable; 501 beget.
     checkCloudResource: (id) => req(`/api/me/cloud-resources/${id}/check`, "POST"),
@@ -4586,7 +4576,7 @@
       if (n.retry && !["server.ready", "pool.admit", "server.distinct_ip", "server.absent"].includes(n.type))
         return "В загруженной схеме задан retry для блока без safe-read. Удалите эту настройку в свойствах блока перед запуском.";
       if (n.type === "install.text" && (((_a = n.in.version) == null ? void 0 : _a.ref) !== "input.installation_profile_version_id" || ((_b = g.inputs.installation_profile_version_id) == null ? void 0 : _b.type) !== "number"))
-        return "Для запуска install.text привяжите version к input.installation_profile_version_id: только так можно проверить текстовую версию по числовому номеру и передать её PK до платных действий.";
+        return "Для запуска install.text привяжите version к input.installation_profile_version_id: вход передаёт id текстового профиля до платных действий.";
       if (n.type === "server.create" && (((_c = n.in.connection) == null ? void 0 : _c.ref) !== "input.connection_id" || ((_d = n.in.configuration) == null ? void 0 : _d.ref) !== "input.configuration_ref"))
         return "Для запуска server.create используйте input.connection_id и input.configuration_ref: подключение выбирается из своих, конфигурация задаётся структурированной формой. Проектирование и сохранение доступны.";
     }
@@ -4632,43 +4622,10 @@
       })
     );
   }
-  var versions = /* @__PURE__ */ new Map();
-  function rememberVersion(v) {
-    versions.set(`${v.profile_id}:${v.version}`, v);
-    return v;
-  }
-  async function readVersion(id, version) {
-    if (!positiveID(String(id)) || !positiveID(String(version)))
-      throw new Error("Укажите положительный номер версии, не PK.");
-    return rememberVersion(await api.profileVersion(id, version));
-  }
-  function knownVersion(id, version) {
-    return versions.get(`${id}:${version}`);
-  }
-  function versionByPK(pk) {
-    return [...versions.values()].find((v) => v.profile_version_id === pk);
-  }
-  async function hydrateOwn(m) {
-    await Promise.all(
-      m.profiles.map(async (p) => {
-        if (p.versions) {
-          try {
-            await readVersion(p.id, p.versions);
-          } catch {
-          }
-        }
-      })
-    );
-    return m;
-  }
   async function textProfiles() {
-    const m = await hydrateOwn(await api.myProfiles());
-    const isText = (id) => {
-      var _a;
-      const own = m.profiles.find((p) => p.id === id);
-      return !!(own == null ? void 0 : own.versions) && ((_a = knownVersion(id, own.versions)) == null ? void 0 : _a.format) === "text";
-    };
-    return { ...m, profiles: m.profiles.filter((p) => isText(p.id)), published: m.published.filter((p) => isText(p.id)) };
+    const m = await api.myProfiles();
+    const isText = (p) => p.format === "text";
+    return { ...m, profiles: m.profiles.filter(isText), published: m.published.filter(isText) };
   }
 
   // ui/pages/cabinet/blueprint-instance.ts
@@ -4676,55 +4633,22 @@
   var field = (id, label, control) => `<div class="field"><label for="${id}">${esc(label)}</label>${control}</div>`;
   var record = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
   var sensitiveVar = (v) => isSecretVar(v) || /secret|password|token|key|credential/i.test(v.name);
-  function mountVersionPicker(root, format, onPick) {
+  function mountProfilePicker(root, format, onPick) {
     const prefix = `bp-picker-${++formID}`;
     root.innerHTML = `<div class="help">Загрузка профилей…</div>`;
     const load2 = async () => {
       try {
         const m = await api.myProfiles();
         if (!root.isConnected) return;
-        const all = [...m.profiles, ...m.published.filter((p) => !m.profiles.some((x) => x.id === p.id))];
-        root.innerHTML = `${field(prefix + "-profile", format === "graph" ? "Сохранённый граф-профиль" : "Текстовый профиль установки", `<select id="${prefix}-profile"><option value="">Выберите профиль</option>${all.map((p) => `<option value="${p.id}">${esc(p.name)} · #${p.id}</option>`).join("")}</select>`)}
-        ${field(prefix + "-number", "Номер версии (не PK)", `<input id="${prefix}-number" type="number" min="1" step="1" aria-describedby="${prefix}-status">`)}
-        <button class="btn" type="button" data-read-version>Загрузить версию</button>
-        <p class="help" id="${prefix}-status" role="status">Опубликованный профиль: введите известный номер. API не возвращает latest или список версий.</p>`;
-        const profile = root.querySelector("select"), number = root.querySelector("input"), status = root.querySelector("[role=status]");
-        let generation = 0;
-        const invalidate = () => {
-          generation++;
-          onPick(null);
-          status.textContent = "Загрузите выбранную версию перед подтверждением.";
-        };
+        const all = [...m.profiles, ...m.published].filter((p, i, list) => list.findIndex((x) => x.id === p.id) === i).filter((p) => p.format === format);
+        root.innerHTML = `
+        <div class="field"><label for="${prefix}-profile">${format === "graph" ? "Сохранённый граф-профиль" : "Текстовый профиль установки"}</label><select id="${prefix}-profile"><option value="">Выберите профиль</option>${all.map((p) => `<option value="${p.id}">${esc(p.name)} · #${p.id}</option>`).join("")}</select></div>
+        <p class="help" id="${prefix}-status" role="status">${all.length ? `Доступно профилей: ${all.length}.` : `Профилей формата ${format} нет — создайте их в «Мои профили».`}</p>`;
+        const profile = root.querySelector("select"), status = root.querySelector("[role=status]");
         profile.onchange = () => {
-          var _a;
-          invalidate();
-          number.value = String(((_a = m.profiles.find((p) => p.id === Number(profile.value))) == null ? void 0 : _a.versions) || "");
-        };
-        number.oninput = invalidate;
-        root.querySelector("button").onclick = async (e) => {
-          const id = positiveID(profile.value), ordinal = positiveID(number.value), seq = ++generation;
-          if (!id || !ordinal) {
-            status.textContent = "Выберите профиль и положительный номер версии.";
-            number.focus();
-            return;
-          }
-          const btn = e.currentTarget;
-          btn.disabled = true;
-          try {
-            const v = await readVersion(id, ordinal);
-            if (seq !== generation || !root.isConnected) return;
-            if (v.format !== format || format === "graph" && !v.blueprint)
-              throw new Error(`Нужна версия формата ${format}; получен ${v.format}.`);
-            status.textContent = `Версия ${v.version} · ${v.format} · PK ${v.profile_version_id}`;
-            onPick(v);
-          } catch (error) {
-            if (seq === generation) {
-              status.textContent = error.message;
-              onPick(null);
-            }
-          } finally {
-            btn.disabled = false;
-          }
+          const p = all.find((x) => x.id === Number(profile.value)) || null;
+          status.textContent = p ? `${p.name} · ${p.format}` : "Профиль не выбран.";
+          onPick(p);
         };
       } catch (error) {
         root.innerHTML = `<div class="banner bad" role="alert">${esc(error.message)} <button type="button" class="btn sm">Повторить GET</button></div>`;
@@ -4738,7 +4662,7 @@
   function mountInstance(root, graph, policy = false, initial = {}) {
     var _a;
     const prefix = `bp-instance-${++formID}`;
-    let connections = null, defaults = null, textVersion = null;
+    let connections = null, defaults = null, textProfile = null;
     let connectionError = "", defaultsError = "";
     const value = (name) => typeof initial[name] === "string" || typeof initial[name] === "number" ? String(initial[name]) : "";
     const htmlInput = (name, type, required, val = "", extra = "") => `<input id="${prefix}-${name}" data-instance="${name}" type="${type}" ${required ? "required" : ""} value="${esc(val)}" aria-describedby="${prefix}-error" ${extra}>`;
@@ -4819,10 +4743,10 @@
     });
     const picker = root.querySelector("[data-text-picker]");
     if (picker)
-      mountVersionPicker(picker, "text", (v) => {
-        textVersion = v;
+      mountProfilePicker(picker, "text", (p) => {
+        textProfile = p;
         const vars = root.querySelector("[data-install-vars]");
-        vars.innerHTML = v ? `<h3>Переменные установки</h3><p class="help">Секреты не вводятся. Пустое поле наследует серверное значение.${policy ? " Политика не принимает vars: только значения профиля/регистратора." : ""}</p>` + parseVarsSchema(v.vars_schema).filter(
+        vars.innerHTML = p ? `<h3>Переменные установки</h3><p class="help">Секреты не вводятся. Пустое поле наследует серверное значение.${policy ? " Политика не принимает vars: только значения профиля/регистратора." : ""}</p>` + parseVarsSchema(p.vars_schema).filter(
           (d) => !sensitiveVar(d) && !["node_id", "node_secret", "registry_url", "port", "proxy_port"].includes(d.name)
         ).map(
           (d, i) => policy ? `<p>${esc(d.name)}: наследование из профиля/регистратора</p>` : field(
@@ -4867,9 +4791,8 @@
             continue;
           }
           if (name === "installation_profile_version_id" && decl.type === "number") {
-            if (!textVersion)
-              return fail("Загрузите числовую версию текстового профиля; profile ID не является PK версии.", picker);
-            inputs[name] = textVersion.profile_version_id;
+            if (!textProfile) return fail("Выберите текстовый профиль установки.", picker);
+            inputs[name] = textProfile.id;
             continue;
           }
           const el = get(name);
@@ -4888,9 +4811,9 @@
           inputs[name] = v;
         }
         const vars = {};
-        if (textVersion) {
+        if (textProfile) {
           if (!defaults) return fail("Дождитесь порта регистратора. " + defaultsError);
-          const decls = parseVarsSchema(textVersion.vars_schema);
+          const decls = parseVarsSchema(textProfile.vars_schema);
           for (const d of decls) {
             if (["port", "proxy_port"].includes(d.name)) {
               if (policy && d.default && Number(d.default) !== defaults.proxy_port)
@@ -4914,7 +4837,7 @@
         }
         return { inputs, vars };
       },
-      installedTextVersion: () => textVersion
+      installedTextProfile: () => textProfile
     };
   }
   function configFields(prefix, initial) {
@@ -4947,16 +4870,15 @@
 
   // ui/pages/cabinet/blueprint-management.ts
   function mountBlueprintManagement(root, nodeID, initial, resource, onSave) {
-    var _a;
     if (root.dataset.mounted) return;
     root.dataset.mounted = nodeID;
-    let current = initial, mode = initial.mode, version = null, instance = null, busy = false, uncertain = false;
+    let current = initial, mode = initial.mode, selected = null, instance = null, busy = false, uncertain = false;
     const bound = () => resource;
-    root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound().id}">#${bound().id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый PK версии: ${(_a = initial.profile_version_id) != null ? _a : "—"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
+    root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound().id}">#${bound().id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? initial.profile_id ? `#${initial.profile_id}` : "назначен" : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
     <form><fieldset><legend>Режим управления</legend><label class="check"><input type="radio" name="blueprint-mode" value="manual"${mode === "manual" ? " checked" : ""}><span class="box"></span>Ручной</label><label class="check"><input type="radio" name="blueprint-mode" value="profile"${mode === "profile" ? " checked" : ""}><span class="box"></span>Профильный</label></fieldset>
     <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-inputs></div>
     <label class="check"><input type="checkbox" data-current-ban${initial.process_current_ban && initial.mode === "profile" ? " checked" : ""}><span class="box"></span>Обработать текущий эпизод блокировки</label><p class="help">По умолчанию выключено при новом включении. Разрешает действие сейчас для текущего эпизода; прошлые не переигрываются.</p>
-    <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этой версии при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
+    <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этого профиля при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
     <div class="banner bad" role="alert" id="bp-policy-error" hidden></div><div class="blueprint-toolbar"><button class="btn primary" type="submit">Сохранить режим</button><button class="btn" type="button" data-reload-policy>Обновить GET политики</button></div></form>`;
     const profile = root.querySelector("[data-policy-profile]"), note = root.querySelector("[data-mode-note]"), gate = root.querySelector("[data-policy-gate]"), errorBox = root.querySelector("#bp-policy-error"), form = root.querySelector("form"), submit = form.querySelector('[type="submit"]');
     const consent = root.querySelector("[data-policy-consent]"), ban = root.querySelector("[data-current-ban]");
@@ -4965,18 +4887,18 @@
       errorBox.hidden = false;
     };
     const update = () => {
-      var _a2, _b;
+      var _a, _b;
       profile.hidden = mode === "manual";
       profile.disabled = mode === "manual" || busy;
-      note.textContent = mode === "manual" ? "Ручной режим не разрешает автоматическую покупку при бане. Ресурсы не удаляются." : "Профильный режим разрешает действия выбранной версии при новых блокировках, включая платную замену VPS. Обработка текущего эпизода может действовать сразу.";
-      const graph = version == null ? void 0 : version.blueprint;
+      note.textContent = mode === "manual" ? "Ручной режим не разрешает автоматическую покупку при бане. Ресурсы не удаляются." : "Профильный режим разрешает действия выбранного профиля при новых блокировках, включая платную замену VPS. Обработка текущего эпизода может действовать сразу.";
+      const graph = selected == null ? void 0 : selected.blueprint;
       const res = bound();
-      const reason = !res ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/resources">хостинг-ресурсов</a>.` : res.provider === "beget" ? BEGET_GATE : !graph ? "Загрузите числовую версию graph-профиля и разрешите её действия явно." : runtimeGate(graph);
-      const textPicked = !!((_a2 = instance == null ? void 0 : instance.installedTextVersion) == null ? void 0 : _a2.call(instance));
+      const reason = !res ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/resources">хостинг-ресурсов</a>.` : res.provider === "beget" ? BEGET_GATE : !graph ? "Выберите graph-профиль и разрешите его действия явно." : runtimeGate(graph);
+      const textPicked = !!((_a = instance == null ? void 0 : instance.installedTextProfile) == null ? void 0 : _a.call(instance));
       if (mode === "profile" && !reason && graph)
-        gate.innerHTML = `Чек-лист · Подключение: из ресурса #${res.connection_id} ✓ · Конфигурация: ${((_b = root.querySelector("[data-config]")) == null ? void 0 : _b.value) ? "из формы ✓" : "заполните параметры VPS в форме"} · Профиль установки: ${textPicked ? "выбран ✓" : "выберите текстовую версию"}`;
+        gate.innerHTML = `Чек-лист · Подключение: из ресурса #${res.connection_id} ✓ · Конфигурация: ${((_b = root.querySelector("[data-config]")) == null ? void 0 : _b.value) ? "из формы ✓" : "заполните параметры VPS в форме"} · Профиль установки: ${textPicked ? "выбран ✓" : "выберите текстовый профиль"}`;
       else
-        gate.textContent = reason || "Nodehost · версия разрешена для настройки. Сохранение режима может разрешить платные действия при бане.";
+        gate.textContent = reason || "Nodehost · профиль разрешён для настройки. Сохранение режима может разрешить платные действия при бане.";
       submit.textContent = mode === "profile" ? "Включить автоматизацию" : "Сохранить ручной режим";
       submit.disabled = busy || uncertain || mode === "profile" && (!!reason || !textPicked || !consent.checked);
     };
@@ -4993,16 +4915,16 @@
         update();
       };
     });
-    mountVersionPicker(root.querySelector("[data-policy-picker]"), "graph", (v) => {
-      var _a2;
-      version = v;
+    mountProfilePicker(root.querySelector("[data-policy-picker]"), "graph", (p) => {
+      var _a;
+      selected = p;
       consent.checked = false;
-      ban.checked = (v == null ? void 0 : v.profile_version_id) === current.profile_version_id && current.mode === "profile" ? current.process_current_ban : false;
+      ban.checked = (p == null ? void 0 : p.id) === current.profile_id && current.mode === "profile" ? current.process_current_ban : false;
       const inputs = root.querySelector("[data-policy-inputs]");
       inputs.replaceChildren();
-      instance = (v == null ? void 0 : v.blueprint) ? mountInstance(inputs, v.blueprint, true, {
-        ...v.profile_version_id === current.profile_version_id ? current.inputs : {},
-        connection_id: (_a2 = bound()) == null ? void 0 : _a2.connection_id
+      instance = (p == null ? void 0 : p.blueprint) ? mountInstance(inputs, p.blueprint, true, {
+        ...p.id === current.profile_id ? current.inputs : {},
+        connection_id: (_a = bound()) == null ? void 0 : _a.connection_id
       }) : null;
       update();
     });
@@ -5035,18 +4957,18 @@
       }
     };
     form.onsubmit = async (e) => {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       e.preventDefault();
       if (busy || uncertain || !form.reportValidity()) return;
       let body;
       try {
         if (mode === "profile") {
-          if (!(version == null ? void 0 : version.blueprint) || !instance || !consent.checked || !bound() || bound().provider !== "nodehost")
-            throw new Error("Загрузите graph-версию Nodehost, проверьте подключение и подтвердите разрешение действий.");
+          if (!(selected == null ? void 0 : selected.blueprint) || !instance || !consent.checked || !bound() || bound().provider !== "nodehost")
+            throw new Error("Выберите graph-профиль Nodehost, проверьте подключение и подтвердите разрешение действий.");
           const values = instance.collect();
           body = {
             mode,
-            profile_version_id: version.profile_version_id,
+            profile_id: selected.id,
             inputs: values.inputs,
             process_current_ban: ban.checked,
             expected_revision: current.revision
@@ -5075,7 +4997,7 @@
         const ex = errorValue;
         uncertain = !ex.status || ex.status >= 500 || ex.code === "revision_conflict";
         error(
-          `${ex.code === "revision_conflict" ? "Настройки изменились. Выбор сохранён; обновите GET и подтвердите заново." : ex.message}${((_a2 = ex.diagnostics) == null ? void 0 : _a2.length) ? " · " + ex.diagnostics.map((d) => `${d.node_id || "граф"} ${d.port || ""}: ${d.message}`).join("; ") : ""}`
+          `${ex.code === "revision_conflict" ? "Настройки изменились. Выбор сохранён; обновите GET и подтвердите заново." : ex.message}${((_a = ex.diagnostics) == null ? void 0 : _a.length) ? " · " + ex.diagnostics.map((d) => `${d.node_id || "граф"} ${d.port || ""}: ${d.message}`).join("; ") : ""}`
         );
         (_b = root.querySelector("[data-policy-picker] select")) == null ? void 0 : _b.setAttribute("aria-describedby", "bp-policy-error");
         (_c = root.querySelector("[data-policy-picker] select")) == null ? void 0 : _c.focus();
@@ -5444,7 +5366,7 @@
     const banned = d.events.some((e) => e.type === "ip_blocked" || e.type === "node_terminated");
     const quarantined = !!((_a = d.node) == null ? void 0 : _a.quarantine) || ((_b = d.node) == null ? void 0 : _b.status) === "quarantined";
     if (!banned && !quarantined) return "";
-    if ((MGMT == null ? void 0 : MGMT.mode) === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённой версии, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
+    if ((MGMT == null ? void 0 : MGMT.mode) === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённого профиля, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
     return `<div class="banner info" role="note"><span>IP в блокировке (ip_ban) — это вердикт регистратора, показан информационно. Он <b>не</b> запускает покупку или замену сервера: автопокупка при бане не выполняется. Замену можно инициировать только вручную.</span></div>`;
   }
   function mgmtHTML() {
@@ -6182,7 +6104,7 @@
     root.innerHTML = `<h2 tabindex="-1" id="bp-inspector-title">${n ? esc(TITLES[n.type] || n.type) : "Настройки графа"}</h2>
     <button class="btn sm" type="button" data-settings>Настройки графа</button>` + (!n ? `
     ${field2("bp-profile-name", "Имя профиля", input("bp-profile-name", draft.name, 'maxlength="100" required'))}
-    ${field2("bp-name", "Имя схемы (содержимое версии)", input("bp-name", g.name, 'maxlength="100" required'))}
+    ${field2("bp-name", "Имя схемы", input("bp-name", g.name, 'maxlength="100" required'))}
     ${field2("bp-description", "Описание профиля", `<textarea id="bp-description" rows="3" aria-describedby="bp-message">${esc(draft.description)}</textarea>`)}
     ${field2("bp-provider", "Провайдер", `<select id="bp-provider">${["nodehost", "beget"].map((v) => option(v, v, g.provider)).join("")}</select>`)}
     ${field2("bp-entry-initial", "Первичное создание · initial", `<select id="bp-entry-initial">${nodes(g.entries.initial)}</select>`)}
@@ -6402,8 +6324,8 @@
       event.returnValue = "";
     }
   });
-  function openRunReview(version, blocks) {
-    const graph = version.blueprint;
+  function openRunReview(profile, blocks) {
+    const graph = profile.blueprint;
     if (!graph || runtimeGate(graph)) return;
     if (review == null ? void 0 : review.isConnected) {
       if (!review.open) review.showModal();
@@ -6414,7 +6336,7 @@
     dialog.setAttribute("aria-label", "Проверить и разрешить запуск графа");
     review = dialog;
     const path = reachable(graph, graph.entries.initial);
-    dialog.innerHTML = `<h2>Проверить и разрешить запуск · версия ${version.version}</h2><p class="mono">Профиль #${version.profile_id} · PK версии ${version.profile_version_id} · initial</p>
+    dialog.innerHTML = `<h2>Проверить и разрешить запуск</h2><p class="mono">Профиль #${profile.id} · initial</p>
     <p>Сохранение профиля не запускает его и не включает автоматические расходы. Этот запуск разрешает перечисленные платные действия в подключении Nodehost. Цена API не предоставлена. Ошибка или неизвестный результат не разрешают повторную покупку.</p>
     <details open><summary>Действия первичного пути и условные переходы</summary><ul>${graph.nodes.filter((n) => path.has(n.id)).map(
       (n) => `<li>${esc(n.id)} · ${esc(TITLES[n.type] || n.type)}<span class="mono"> ${esc(n.type)}</span> · ${blockFor(blocks, n.type) ? EFFECTS[blockFor(blocks, n.type).effects] : "Класс не загружен"}</li>`
@@ -6492,7 +6414,7 @@
         const values = instance.collect();
         const node_id = dialog.querySelector("#bp-run-node-id").value.trim();
         const body = {
-          profile_version_id: version.profile_version_id,
+          profile_id: profile.id,
           entry: "initial",
           inputs: values.inputs,
           ...Object.keys(values.vars).length ? { vars: values.vars } : {},
@@ -6537,7 +6459,7 @@
       __publicField(this, "root", root);
       __publicField(this, "id", id);
       __publicField(this, "data", null);
-      __publicField(this, "graphVersion", null);
+      __publicField(this, "graphProfile", null);
       __publicField(this, "blocks", []);
       __publicField(this, "timer");
       __publicField(this, "fetching", false);
@@ -6551,7 +6473,7 @@
         else if (!this.data || !TERMINAL.has(this.data.state)) void this.load();
       });
       this.mutationUnknown = uncertainCommands.has(id);
-      root.innerHTML = `<div class="blueprint-toolbar"><a href="#/profiles" class="btn">← Профили</a><h2 tabindex="-1">Запуск #${id}</h2><button class="btn" data-refresh>Обновить GET</button><button class="btn danger" data-cancel disabled>Остановить дальнейшие шаги</button></div><p data-run-status role="status">Загрузка запуска…</p><div data-run-summary></div><section class="blueprint-panel"><h3>Закреплённая схема</h3><div data-run-version-note></div><div data-run-version-picker></div><div data-run-graph></div></section><section class="blueprint-panel"><h3>Журнал шагов</h3><div data-run-journal></div></section>`;
+      root.innerHTML = `<div class="blueprint-toolbar"><a href="#/profiles" class="btn">← Профили</a><h2 tabindex="-1">Запуск #${id}</h2><button class="btn" data-refresh>Обновить GET</button><button class="btn danger" data-cancel disabled>Остановить дальнейшие шаги</button></div><p data-run-status role="status">Загрузка запуска…</p><div data-run-summary></div><section class="blueprint-panel"><h3>Схема профиля</h3><div data-run-profile-note></div><div data-run-graph></div></section><section class="blueprint-panel"><h3>Журнал шагов</h3><div data-run-journal></div></section>`;
       root.querySelector("h2").focus();
       root.querySelector("[data-refresh]").onclick = () => {
         void this.load();
@@ -6582,6 +6504,7 @@
       this.el("[data-run-status]").textContent = text;
     }
     async load() {
+      var _a;
       if (this.fetching || this.disposed || document.hidden) return;
       clearTimeout(this.timer);
       this.fetching = true;
@@ -6590,23 +6513,11 @@
         if (this.disposed) return;
         this.data = r;
         this.awaitingRead = false;
-        this.graphVersion = versionByPK(r.profile_version_id) || this.graphVersion;
+        if (r.profile_id && ((_a = this.graphProfile) == null ? void 0 : _a.id) !== r.profile_id) void this.loadProfile(r.profile_id);
         this.paint();
         this.status(
           `Данные получены ${(/* @__PURE__ */ new Date()).toLocaleTimeString("ru")}. ${this.notice}${this.mutationUnknown ? " Результат команды неизвестен; не повторяйте её с новым ключом. Сверьте журнал." : ""}`
         );
-        const picker = this.el("[data-run-version-picker]");
-        if (!this.graphVersion && !picker.dataset.mounted) {
-          picker.dataset.mounted = "true";
-          mountVersionPicker(picker, "graph", (v) => {
-            if (v && (v.profile_id !== r.profile_id || v.profile_version_id !== r.profile_version_id)) {
-              this.status("Версия не совпадает с закреплённым PK запуска.");
-              return;
-            }
-            this.graphVersion = v;
-            this.paint();
-          });
-        }
         if (!TERMINAL.has(r.state) && !document.hidden)
           this.timer = window.setTimeout(() => {
             void this.load();
@@ -6620,14 +6531,27 @@
         this.fetching = false;
       }
     }
+    async loadProfile(id) {
+      var _a;
+      try {
+        const m = await api.myProfiles();
+        if (this.disposed || ((_a = this.data) == null ? void 0 : _a.profile_id) !== id) return;
+        const p = [...m.profiles, ...m.published].find((x) => x.id === id);
+        if ((p == null ? void 0 : p.format) === "graph" && p.blueprint) {
+          this.graphProfile = p;
+          this.paint();
+        }
+      } catch {
+      }
+    }
     paint() {
       var _a, _b;
       const r = this.data;
       if (!r || this.disposed) return;
       this.el("[data-cancel]").disabled = this.command || this.awaitingRead || this.mutationUnknown || TERMINAL.has(r.state) || r.cancel_requested;
-      this.el("[data-run-summary]").innerHTML = `<div class="blueprint-panel"><p>${stateBadge(r.state)}${r.cancel_requested ? " · Запрошена остановка (cancel_requested)" : ""}</p><dl class="blueprint-facts"><dt>Операция</dt><dd>${(_a = r.operation_id) != null ? _a : "—"}</dd><dt>Профиль / PK версии</dt><dd>#${r.profile_id} / ${r.profile_version_id}</dd><dt>Вход / ревизия</dt><dd>${esc(r.entry)} / ${r.revision}</dd><dt>Ревизия политики</dt><dd>${r.policy_revision}</dd><dt>Ресурс</dt><dd>${r.resource_id ? `<a href="#/resources/${r.resource_id}">#${r.resource_id}</a>` : "—"}</dd><dt>Нода</dt><dd>${r.node_id ? `<a href="#/nodes/${encodeURIComponent(r.node_id)}">${esc(r.node_id)}</a>` : "—"}</dd><dt>Стоимость</dt><dd>Не предоставлена API</dd><dt>Следующее пробуждение</dt><dd>${esc(time(r.next_wake_at))}</dd></dl>${r.waiting ? `<p>Ожидание ${esc(r.waiting.type)} · после эпизода ${esc(r.waiting.after_episode_id || "—")}</p>` : ""}${r.last_error ? `<p class="banner bad">${esc(r.last_error)}</p>` : ""}</div>`;
-      const graph = ((_b = this.graphVersion) == null ? void 0 : _b.profile_version_id) === r.profile_version_id ? this.graphVersion.blueprint : void 0;
-      this.el("[data-run-version-note]").textContent = graph ? "Схема только для чтения. Показаны только подтверждённые журналом ветки; отсутствие шага не означает успех или пропуск." : "Закреплённая версия недоступна или удалена. Журнал остаётся доступен. Для схемы выберите известный числовой номер и сверьте PK.";
+      this.el("[data-run-summary]").innerHTML = `<div class="blueprint-panel"><p>${stateBadge(r.state)}${r.cancel_requested ? " · Запрошена остановка (cancel_requested)" : ""}</p><dl class="blueprint-facts"><dt>Операция</dt><dd>${(_a = r.operation_id) != null ? _a : "—"}</dd><dt>Профиль</dt><dd>#${r.profile_id}${r.profile_version_id ? ` · PK ${r.profile_version_id}` : ""}</dd><dt>Вход / ревизия</dt><dd>${esc(r.entry)} / ${r.revision}</dd><dt>Ревизия политики</dt><dd>${r.policy_revision}</dd><dt>Ресурс</dt><dd>${r.resource_id ? `<a href="#/resources/${r.resource_id}">#${r.resource_id}</a>` : "—"}</dd><dt>Нода</dt><dd>${r.node_id ? `<a href="#/nodes/${encodeURIComponent(r.node_id)}">${esc(r.node_id)}</a>` : "—"}</dd><dt>Стоимость</dt><dd>Не предоставлена API</dd><dt>Следующее пробуждение</dt><dd>${esc(time(r.next_wake_at))}</dd></dl>${r.waiting ? `<p>Ожидание ${esc(r.waiting.type)} · после эпизода ${esc(r.waiting.after_episode_id || "—")}</p>` : ""}${r.last_error ? `<p class="banner bad">${esc(r.last_error)}</p>` : ""}</div>`;
+      const graph = ((_b = this.graphProfile) == null ? void 0 : _b.id) === r.profile_id ? this.graphProfile.blueprint : void 0;
+      this.el("[data-run-profile-note]").textContent = graph ? "Схема только для чтения. Показаны только подтверждённые журналом ветки; отсутствие шага не означает успех или пропуск." : "Профиль недоступен или удалён. Журнал остаётся доступен.";
       this.el("[data-run-graph]").innerHTML = graph ? `<ol>${graph.nodes.map(
         (n) => `<li><span class="mono">${esc(n.id)}</span> · ${esc(TITLES[n.type] || n.type)} · ${blockFor(this.blocks, n.type) ? EFFECTS[blockFor(this.blocks, n.type).effects] : "Класс не загружен"}${(r.checkpoints || []).filter((c) => c.node_id === n.id).map((cp) => ` · ${stateBadge(cp.state)}`).join("")}</li>`
       ).join(
@@ -6735,7 +6659,7 @@
       const dialog = document.createElement("dialog");
       dialog.className = "blueprint-dialog";
       dialog.setAttribute("aria-label", "Несохранённые изменения графа");
-      dialog.innerHTML = `<h2>Есть несохранённые изменения</h2><p>Сохранить новую версию перед уходом? Сохранение не запускает граф.</p><div class="blueprint-toolbar"><button class="btn" data-stay autofocus>Остаться</button><button class="btn" data-discard>Не сохранять</button><button class="btn primary" data-save>Сохранить версию</button></div>`;
+      dialog.innerHTML = `<h2>Есть несохранённые изменения</h2><p>Сохранить изменения перед уходом? Сохранение не запускает граф.</p><div class="blueprint-toolbar"><button class="btn" data-stay autofocus>Остаться</button><button class="btn" data-discard>Не сохранять</button><button class="btn primary" data-save>Сохранить</button></div>`;
       const finish = (ok) => {
         dialog.close();
         dialog.remove();
@@ -6779,7 +6703,6 @@
       __publicField(this, "disposed", false);
       __publicField(this, "profileID", 0);
       __publicField(this, "loaded", null);
-      __publicField(this, "conflict", false);
       __publicField(this, "uncertain", false);
       __publicField(this, "enabled", false);
       __publicField(this, "limitReached", false);
@@ -6817,7 +6740,7 @@
       }
     }
     async load() {
-      this.root.innerHTML = `<p aria-busy="true">Загрузка блоков и версии…</p><div class="skeleton skel-block"></div>`;
+      this.root.innerHTML = `<p aria-busy="true">Загрузка блоков и профиля…</p><div class="skeleton skel-block"></div>`;
       try {
         const path = location.hash.slice(2).split("?")[0].split("/"), query = new URLSearchParams(location.hash.split("?")[1] || "");
         const [registry, m] = await Promise.all([api.blueprintBlocks(), api.myProfiles()]);
@@ -6829,19 +6752,18 @@
         if (path[2] !== "new" && !id) throw new Error("Номер профиля недопустим.");
         let name = "", description = "", graph = template(query.get("starter") || "empty");
         if (id) {
-          const version = positiveID(query.get("version") || "");
-          const v = await readVersion(id, version);
-          if (this.disposed) return;
-          if (v.format !== "graph" || !v.blueprint)
-            throw new Error("Эта версия — текстовый профиль. Откройте его из списка профилей.");
-          const p = [...m.profiles, ...m.published].find((p2) => p2.id === id);
-          graph = clone(v.blueprint);
-          name = (p == null ? void 0 : p.name) || graph.name;
-          description = (p == null ? void 0 : p.description) || "";
-          if (query.get("copy") === "1" || !m.profiles.some((p2) => p2.id === id)) name = `${name} (копия)`.slice(0, 100);
+          const p = [...m.profiles, ...m.published].find((x) => x.id === id);
+          if (!p) throw new Error("Профиль не найден.");
+          if (p.format !== "graph" || !p.blueprint)
+            throw new Error("Это текстовый профиль. Откройте его из списка профилей.");
+          graph = clone(p.blueprint);
+          name = p.name || graph.name;
+          description = p.description || "";
+          const own = m.profiles.find((x) => x.id === id);
+          if (query.get("copy") === "1" || !own) name = `${name} (копия)`.slice(0, 100);
           else {
             this.profileID = id;
-            this.loaded = v;
+            this.loaded = own;
           }
         }
         this.draft = { graph, name: name || graph.name, description, positions: layout(graph) };
@@ -6851,16 +6773,15 @@
         this.el("h2").focus({ preventScroll: true });
       } catch (error) {
         if (this.disposed) return;
-        this.root.innerHTML = `<div class="banner bad" role="alert">Версия или блоки недоступны: ${esc(error.message)}</div><a class="btn" href="#/profiles">К профилям</a> <button class="btn" type="button" data-load>Повторить GET</button>`;
+        this.root.innerHTML = `<div class="banner bad" role="alert">Профиль или блоки недоступны: ${esc(error.message)}</div><a class="btn" href="#/profiles">К профилям</a> <button class="btn" type="button" data-load>Повторить GET</button>`;
         this.el("[data-load]").onclick = () => {
           void this.load();
         };
       }
     }
     shell() {
-      this.root.innerHTML = `<div class="blueprint-toolbar"><a class="btn ghost" href="#/profiles">← Мои профили</a><h2 tabindex="-1">Редактор графа</h2><span id="bp-state" role="status"></span><button class="btn" data-validate>Проверить</button><button class="btn primary" data-save>Сохранить версию</button><button class="btn" data-run aria-describedby="bp-gate">Запустить…</button></div>
-      <p id="bp-gate" class="banner info"></p><div id="bp-message" class="banner info" role="status" aria-live="polite">Сохранение создаёт неизменяемую версию. Оно не запускает граф и не включает политику.</div>
-      <div id="bp-conflict" hidden class="banner warn"><span>Профиль изменён в другом окне. Черновик сохранён в памяти.</span><button class="btn" data-latest>Загрузить актуальную</button><button class="btn" data-copy>Сохранить отдельной копией</button></div>
+      this.root.innerHTML = `<div class="blueprint-toolbar"><a class="btn ghost" href="#/profiles">← Мои профили</a><h2 tabindex="-1">Редактор графа</h2><span id="bp-state" role="status"></span><button class="btn" data-validate>Проверить</button><button class="btn primary" data-save>Сохранить</button><button class="btn" data-run aria-describedby="bp-gate">Запустить…</button></div>
+      <p id="bp-gate" class="banner info"></p><div id="bp-message" class="banner info" role="status" aria-live="polite">Сохранение обновляет профиль на месте. Оно не запускает граф и не включает политику.</div>
       <div id="bp-uncertain" hidden class="banner warn"><span>Результат сохранения неизвестен. Повторная запись запрещена до сверки.</span><button class="btn" data-reconcile>Сверить GET</button></div>
       <div class="blueprint-toolbar"><label for="bp-starter">Шаблоны</label><select id="bp-starter"><option value="">Выберите…</option><option value="nodehost">Nodehost · замена VPS</option><option value="beget">Beget · IPv4 или замена VPS · только проектирование</option><option value="empty">Пустая схема</option></select><button class="btn" data-template>Применить как черновик</button><button class="btn" data-undo>Отменить</button><button class="btn" data-redo>Повторить</button><button class="btn" data-fit>Показать всё</button><button class="btn" data-zoom="0.8" aria-label="Уменьшить схему">−</button><span id="bp-zoom">100%</span><button class="btn" data-zoom="1.25" aria-label="Увеличить схему">+</button><span id="bp-counts"></span></div>
       <nav class="nd-tabs blueprint-tabs" role="tablist" aria-label="Панели редактора">${[
@@ -6913,14 +6834,13 @@
       const gate = runtimeGate(this.draft.graph);
       this.el("#bp-gate").textContent = gate || "Nodehost. Проверка схемы не гарантирует выполнение. Ошибка здоровья или установки не создаёт новый сервер. observe.arm не включает новую политику автоматически.";
       this.el("#bp-gate").className = `banner ${gate ? "warn" : "info"}`;
-      this.el("#bp-state").textContent = `${this.draft.name} · ${this.draft.graph.provider} · ${this.loaded ? `версия ${this.loaded.version} · PK ${this.loaded.profile_version_id}` : "локальный черновик"} · ${this.dirty ? "Есть изменения" : this.loaded ? "Сохранено" : "Не сохранён"}`;
+      this.el("#bp-state").textContent = `${this.draft.name} · ${this.draft.graph.provider} · ${this.loaded ? "сохранённый профиль" : "локальный черновик"} · ${this.dirty ? "Есть изменения" : this.loaded ? "Сохранено" : "Не сохранён"}`;
       this.el("[data-save]").disabled = this.busy || this.uncertain || !this.enabled || !this.profileID && this.limitReached;
       this.el("[data-validate]").disabled = this.busy;
       this.el("[data-run]").disabled = this.busy || this.dirty || !this.loaded || !!gate || this.uncertain;
       this.el("[data-undo]").disabled = this.busy || !this.undo.length;
       this.el("[data-redo]").disabled = this.busy || !this.redo.length;
       this.el("#bp-counts").textContent = `${this.draft.graph.nodes.length}/128 блоков · ${edgeCount(this.draft.graph)}/256 связей · ${bytes(this.draft.graph)} байт`;
-      this.el("#bp-conflict").hidden = !this.conflict;
       this.el("#bp-uncertain").hidden = !this.uncertain;
       this.el(".blueprint-workspace").toggleAttribute("inert", this.busy);
       if (!this.enabled || !this.profileID && this.limitReached)
@@ -7068,7 +6988,7 @@
       if (!this.valid) (_a = this.el("[data-diagnostic]")) == null ? void 0 : _a.focus();
       return this.valid;
     }
-    async save(copy = false) {
+    async save() {
       var _a;
       const focused = document.activeElement;
       if (focused instanceof HTMLElement && this.root.contains(focused)) focused.blur();
@@ -7091,18 +7011,16 @@
           format: "graph",
           blueprint: this.draft.graph
         };
-        const body = !copy && this.profileID ? { ...payload, expected_version: this.loaded.version } : payload;
-        if (bytes(body) > 256 * 1024) throw new Error("Полное тело запроса превышает 256 КиБ UTF-8.");
+        if (bytes(payload) > 256 * 1024) throw new Error("Полное тело запроса превышает 256 КиБ UTF-8.");
         writing = true;
         this.pendingWrite = clone(payload);
-        const p = !copy && this.profileID ? await api.saveGraphProfile(this.profileID, { ...payload, expected_version: this.loaded.version }) : await api.createGraphProfile(payload);
+        const p = this.profileID ? await api.saveGraphProfile(this.profileID, payload) : await api.createGraphProfile(payload);
         acknowledged = true;
         this.profileID = p.id;
-        const v = await readVersion(p.id, p.versions);
-        if (stableJSON(v.blueprint) !== stableJSON(payload.blueprint))
-          throw new Error("Прочитанная версия отличается от отправленной. Нужна сверка; черновик не потерян.");
-        this.accept(v);
-        this.say("Новая версия сохранена. Запуск и политика не включены.");
+        if (p.blueprint && stableJSON(p.blueprint) !== stableJSON(payload.blueprint))
+          throw new Error("Прочитанный профиль отличается от отправленного. Нужна сверка; черновик не потерян.");
+        this.accept(p, payload);
+        this.say("Профиль сохранён. Запуск и политика не включены.");
         return true;
       } catch (error) {
         const e = error;
@@ -7112,24 +7030,27 @@
           this.findings();
           (_a = this.el("[data-diagnostic]")) == null ? void 0 : _a.focus();
         }
-        this.conflict = e.code === "revision_conflict";
         this.uncertain = acknowledged || writing && (!e.status || e.status >= 500);
         if (!this.uncertain) this.pendingWrite = null;
-        this.say(this.conflict ? "Профиль изменён в другом окне; черновик и история сохранены." : e.message, true);
+        if (e.status === 409) {
+          this.say("Профиль изменён в другом окне. Загружено актуальное содержимое.", true);
+          await this.load();
+          return false;
+        }
+        this.say(e.message, true);
         return false;
       } finally {
         this.busy = false;
         if (!this.disposed) this.status();
       }
     }
-    accept(v, saved) {
-      this.loaded = v;
+    accept(p, saved) {
+      this.loaded = p;
       this.pendingInput = false;
       this.baseline = saved ? JSON.stringify({ graph: saved.blueprint, name: saved.name, description: saved.description }) : this.content();
-      this.conflict = false;
       this.uncertain = false;
       this.pendingWrite = null;
-      const hash = `#/profiles/editor/${v.profile_id}?version=${v.version}`;
+      const hash = `#/profiles/editor/${p.id}`;
       history.replaceState(null, "", hash);
       editorHash = hash;
     }
@@ -7139,19 +7060,18 @@
       const m = await api.myProfiles(), p = m.profiles.find(
         (p2) => this.profileID ? p2.id === this.profileID : p2.name === ((sent == null ? void 0 : sent.name) || this.draft.name.trim())
       );
-      if (!(p == null ? void 0 : p.versions)) {
+      if (!p) {
         this.say("Сохранение не подтверждено. Черновик оставлен; автоматического повтора нет.", true);
         return;
       }
-      const v = await readVersion(p.id, p.versions);
-      if (stableJSON(v.blueprint) === stableJSON((sent == null ? void 0 : sent.blueprint) || this.draft.graph) && p.name === ((sent == null ? void 0 : sent.name) || this.draft.name.trim()) && p.description === ((_a = sent == null ? void 0 : sent.description) != null ? _a : this.draft.description)) {
+      if (stableJSON(p.blueprint) === stableJSON((sent == null ? void 0 : sent.blueprint) || this.draft.graph) && p.name === ((sent == null ? void 0 : sent.name) || this.draft.name.trim()) && p.description === ((_a = sent == null ? void 0 : sent.description) != null ? _a : this.draft.description)) {
         this.profileID = p.id;
-        this.accept(v, sent || void 0);
+        this.accept(p, sent || void 0);
         this.status();
-        this.say("Сохранение подтверждено чтением версии.");
+        this.say("Сохранение подтверждено чтением профиля.");
       } else
         this.say(
-          "Актуальное содержимое отличается. Не повторяйте запись вслепую; откройте актуальную версию отдельно и сравните.",
+          "Актуальное содержимое отличается. Не повторяйте запись вслепую; откройте профиль отдельно и сравните.",
           true
         );
     }
@@ -7193,34 +7113,6 @@
         return;
       }
       if (this.busy) return;
-      if (t.closest("[data-latest]")) {
-        if (window.confirm("Загрузить актуальную версию? Локальный черновик будет удалён.")) {
-          const m = await api.myProfiles(), p = m.profiles.find((p2) => p2.id === this.profileID);
-          if (p == null ? void 0 : p.versions) {
-            const v = await readVersion(p.id, p.versions);
-            if (v.blueprint) {
-              this.draft = {
-                graph: clone(v.blueprint),
-                name: p.name,
-                description: p.description,
-                positions: layout(v.blueprint)
-              };
-              this.undo = [];
-              this.redo = [];
-              this.accept(v);
-              this.paint();
-            }
-          }
-        }
-        return;
-      }
-      if (t.closest("[data-copy]")) {
-        this.select("");
-        this.say("Укажите новое имя профиля, затем сохраните отдельную копию.");
-        if (window.confirm("Сохранить отдельный профиль под текущим именем? При совпадении имён сервер вернёт ошибку."))
-          await this.save(true);
-        return;
-      }
       if (this.busy) return;
       const select = t.closest("[data-select]");
       if (select) {
@@ -7928,7 +7820,7 @@
         sel.disabled = false;
         sel.dataset.ready = String(opts.length > 0);
         delete sel.dataset.loadError;
-        $("sv-profile-status").textContent = opts.length ? "Только подтверждённые текстовые профили. Published без последнего номера здесь не исполняются; сделайте текстовую копию по известной версии в «Мои профили»." : "Нет подтверждённых текстовых профилей. В «Мои профили» откройте опубликованный профиль по известному номеру и сохраните текстовую копию.";
+        $("sv-profile-status").textContent = opts.length ? "Текстовые профили: опубликованные и ваши." : "Нет текстовых профилей — создайте их в «Мои профили».";
         const preselect = isReinstall && defaultId !== curId ? 0 : isReinstall ? defaultId : 0;
         sel.value = String(preselect);
         if (!sel.value && sel.options.length) sel.selectedIndex = 0;
@@ -8974,9 +8866,8 @@
   var CR_CAT_SEQ = 0;
   var CR_EST_TIMER = 0;
   var CR_EST_SEQ = 0;
-  var CR_PROF = null;
+  var CR_PROFILES = null;
   var CR_PROF_ID = 0;
-  var CR_VER_PK = 0;
   var CR_EST_LAST = null;
   var CR_STEPS = ["Создание", "Установка", "Готово"];
   function toggleCrForm(open) {
@@ -8986,7 +8877,6 @@
     if (open) {
       fillCrConnections();
       CR_IDEM = newIdemKey();
-      CR_VER_PK = 0;
       CR_PROF_ID = 0;
       renderCrSteps(-1);
       $("cr-err").hidden = true;
@@ -9260,7 +9150,7 @@
     const sel = $("cr-prof");
     const help = $("cr-prof-help");
     textProfiles().then((m) => {
-      CR_PROF = m;
+      CR_PROFILES = m;
       const pub = m.published || [];
       const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
       if (!pub.length && !own.length) {
@@ -9272,23 +9162,21 @@
       for (const p of pub) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
       for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
       sel.innerHTML = opts.join("");
-      help.textContent = "Текстовые профили: опубликованные и ваши. Последняя версия подставится автоматически.";
+      help.textContent = "Текстовые профили: опубликованные и ваши.";
     }).catch((e) => {
       help.textContent = "Не удалось загрузить профили: " + e.message;
     });
   }
+  function textProfileByID(id) {
+    return [...(CR_PROFILES == null ? void 0 : CR_PROFILES.published) || [], ...(CR_PROFILES == null ? void 0 : CR_PROFILES.profiles) || []].find((p) => p.id === id);
+  }
   function onCrProfileChange() {
-    var _a;
     scheduleCrEstimate();
     const sel = $("cr-prof");
-    const vSel = $("cr-ver");
     const instant = $("cr-instant");
     const wrap = $("cr-inst-vars-wrap");
     CR_PROF_ID = Number(sel.value) || 0;
-    CR_VER_PK = 0;
     if (!CR_PROF_ID) {
-      vSel.disabled = true;
-      vSel.innerHTML = `<option value="">Сначала профиль</option>`;
       instant.checked = false;
       instant.disabled = true;
       wrap.hidden = true;
@@ -9296,45 +9184,9 @@
     }
     instant.disabled = false;
     instant.checked = true;
-    const latest = ((_a = CR_PROF == null ? void 0 : CR_PROF.profiles.find((p) => p.id === CR_PROF_ID)) == null ? void 0 : _a.versions) || 0;
-    if (!latest) {
-      vSel.disabled = true;
-      vSel.innerHTML = `<option value="">Версии неизвестны</option>`;
-      return;
-    }
-    const opts = [];
-    for (let v = latest; v >= 1; v--) opts.push(`<option value="${v}">v${v}</option>`);
-    vSel.innerHTML = opts.join("");
-    vSel.disabled = false;
-    const cached = knownVersion(CR_PROF_ID, latest);
-    if (cached) {
-      CR_VER_PK = cached.profile_version_id;
-      mountVars("cr-inst-vars", parseVarsSchema(cached.vars_schema));
-      $("cr-inst-vars-wrap").hidden = false;
-    } else {
-      onCrVersionChange();
-    }
-  }
-  function onCrVersionChange() {
-    const vSel = $("cr-ver");
-    const v = Number(vSel.value) || 0;
-    if (!CR_PROF_ID || !v) return;
-    const wrap = $("cr-inst-vars-wrap");
-    const cached = knownVersion(CR_PROF_ID, v);
-    if (cached) {
-      CR_VER_PK = cached.profile_version_id;
-      mountVars("cr-inst-vars", parseVarsSchema(cached.vars_schema));
-      wrap.hidden = false;
-      return;
-    }
-    wrap.hidden = true;
-    readVersion(CR_PROF_ID, v).then((pv) => {
-      CR_VER_PK = pv.profile_version_id;
-      mountVars("cr-inst-vars", parseVarsSchema(pv.vars_schema));
-      wrap.hidden = false;
-    }).catch((e) => {
-      $("cr-prof-help").textContent = "Версия недоступна: " + e.message;
-    });
+    const p = textProfileByID(CR_PROF_ID);
+    mountVars("cr-inst-vars", parseVarsSchema(p == null ? void 0 : p.vars_schema));
+    wrap.hidden = false;
   }
   function shortCrErr(e) {
     if (e.code === "quota_exceeded") return "квота исчерпана";
@@ -9479,13 +9331,13 @@
       renderCrBatch(items);
       loadResources();
     }
-    if (spec.wantsInstall && spec.pv) {
+    if (spec.wantsInstall && spec.profileID) {
       for (const item of items) {
         if (item.state !== "ready" || item.resId == null) continue;
         item.state = "installing";
         renderCrBatch(items);
         try {
-          const op = await api.installCloudResource(item.resId, newIdemKey(), { profile_version_id: spec.pv, vars: spec.vars });
+          const op = await api.installCloudResource(item.resId, newIdemKey(), { profile_id: spec.profileID, vars: spec.vars });
           const ir = await waitInstallDone(op.id);
           if (ir.ok) item.state = "done";
           else {
@@ -9565,8 +9417,8 @@
     }
     const instant = $("cr-instant");
     const wantsInstall = CR_PROF_ID > 0 && instant.checked && !instant.disabled;
-    if (wantsInstall && !CR_VER_PK) {
-      showErr("Дождитесь загрузки версии профиля.");
+    if (wantsInstall && !CR_PROF_ID) {
+      showErr("Выберите профиль установки.");
       return;
     }
     let vars = {};
@@ -9595,7 +9447,7 @@
     const hostname = crValue("cr-hostname");
     const btn = $("cr-submit");
     if (count > 1) {
-      void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, pv: CR_VER_PK, vars });
+      void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, profileID: CR_PROF_ID, vars });
       return;
     }
     const configuration = {
@@ -9619,13 +9471,13 @@
       const resId = ack.resource_id;
       RES_PROGRESS[resId] = `<div class="banner info" style="margin:0"><span>Ресурс ${esc(name)}: создаётся · ожидание IP… операция #${ack.operation_id}</span></div>`;
       if (wantsInstall) {
-        const pv = CR_VER_PK;
+        const pid = CR_PROF_ID;
         const rows = vars;
         renderCrSteps(1);
         pollResourceState(resId, ack.operation_id, name, "ready", "", () => {
           RES_PROGRESS[resId] = `<div class="banner info" style="margin:0"><span>Ресурс ${esc(name)} готов — установка профиля…</span></div>`;
           renderResources();
-          installCreatedResource(resId, ack.operation_id, name, pv, rows);
+          installCreatedResource(resId, ack.operation_id, name, pid, rows);
         });
       } else {
         toggleCrForm(false);
@@ -9651,8 +9503,8 @@
       }
     });
   }
-  function installCreatedResource(resId, _opId, label, pv, vars) {
-    api.installCloudResource(resId, newIdemKey(), { profile_version_id: pv, vars }).then((op) => {
+  function installCreatedResource(resId, _opId, label, profileID, vars) {
+    api.installCloudResource(resId, newIdemKey(), { profile_id: profileID, vars }).then((op) => {
       announce(`Ресурс ${label}: установка профиля запущена`);
       pollInstallOp(resId, op.id, label);
     }).catch((e) => {
@@ -9931,13 +9783,7 @@
     const lbl = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Запуск…";
-    textProfiles().then((m) => {
-      var _a, _b;
-      const latest = ((_a = (m.profiles || []).find((x) => x.id === pid)) == null ? void 0 : _a.versions) || 0;
-      const pk = ((_b = knownVersion(pid, latest)) == null ? void 0 : _b.profile_version_id) || 0;
-      if (!pk) throw new Error("Не удалось определить версию профиля.");
-      return api.installCloudResource(r.id, newIdemKey(), { profile_version_id: pk, vars });
-    }).then(() => {
+    api.installCloudResource(r.id, newIdemKey(), { profile_id: pid, vars }).then(() => {
       closeModal();
       showToast("Установка запущена");
       announce(`Ресурс ${r.label}: установка запущена`);
@@ -10211,7 +10057,6 @@
       renderCrNameError();
     });
     $("cr-prof").addEventListener("change", onCrProfileChange);
-    $("cr-ver").addEventListener("change", onCrVersionChange);
   }
   var AP_STORAGE_KEY = "sharedd.autopilot.fleet";
   var AP_STATE_META = {
@@ -10251,7 +10096,6 @@
   var AP_EST_TIMER = 0;
   var AP_EST_SEQ = 0;
   var AP_EST_LAST = null;
-  var AP_PROF = null;
   var AP_FLEET = null;
   var AP_POLL_ID = 0;
   var AP_POLL_TIMER = 0;
@@ -10529,51 +10373,22 @@
   function apLoadProfiles() {
     const sel = $("ap-prof");
     const help = $("ap-prof-help");
-    api.myProfiles().then(hydrateOwn).then((m) => {
-      AP_PROF = m;
+    textProfiles().then((m) => {
       const pub = m.published || [];
-      const ownText = (m.profiles || []).filter((p) => {
-        var _a;
-        return !!p.versions && ((_a = knownVersion(p.id, p.versions)) == null ? void 0 : _a.format) === "text";
-      });
-      const own = ownText.filter((p) => !pub.some((x) => x.id === p.id));
+      const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
       if (!pub.length && !own.length) {
         sel.innerHTML = `<option value="">Нет текстовых профилей</option>`;
         help.innerHTML = `Текстовых профилей нет — создайте их в разделе <a href="#/profiles">Мои профили</a>.`;
-        $("ap-ver").disabled = true;
         return;
       }
       const opts = [`<option value="">Выберите профиль…</option>`];
       for (const p of pub) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
       for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
       sel.innerHTML = opts.join("");
-      help.textContent = "Текстовые профили: опубликованные и ваши. Для опубликованного укажите номер версии.";
-      apProfileChanged();
+      help.textContent = "Текстовые профили: опубликованные и ваши.";
     }).catch((e) => {
       help.textContent = "Не удалось загрузить профили: " + e.message;
     });
-  }
-  function apProfileChanged() {
-    const sel = $("ap-prof");
-    const ver = $("ap-ver");
-    const pid = Number(sel.value) || 0;
-    if (!pid) {
-      ver.value = "";
-      ver.disabled = true;
-      return;
-    }
-    ver.disabled = false;
-    const own = AP_PROF == null ? void 0 : AP_PROF.profiles.find((p) => p.id === pid);
-    if (own == null ? void 0 : own.versions) ver.value = String(own.versions);
-    else ver.value = "";
-  }
-  async function apResolveProfileVersion(pid, ordinal) {
-    if (!positiveID(String(pid)) || !positiveID(String(ordinal)))
-      throw new Error("Укажите положительный номер версии профиля.");
-    const pv = knownVersion(pid, ordinal) || await readVersion(pid, ordinal);
-    if (pv.format !== "text")
-      throw new Error("Выберите текстовый профиль: граф для автопилота не поддерживается.");
-    return pv.profile_version_id;
   }
   function apSubmitErrorText(e) {
     if (e.code === "idempotency_conflict") return "Запрос уже был отправлен с другим телом. Повторите развёртывание.";
@@ -10586,7 +10401,7 @@
     return e.message || "Не удалось запустить автопилот.";
   }
   async function apSubmit(e) {
-    var _a, _b, _c;
+    var _a, _b;
     e.preventDefault();
     if (AP_SUBMITTING) return;
     apHideError();
@@ -10635,20 +10450,8 @@
       return;
     }
     const pid = Number((_b = $("ap-prof")) == null ? void 0 : _b.value) || 0;
-    const ordinal = positiveID(((_c = $("ap-ver")) == null ? void 0 : _c.value) || "");
     if (!pid) {
       apShowError("Выберите профиль установки.", "ap-prof");
-      return;
-    }
-    if (!ordinal) {
-      apShowError("Укажите положительный номер версии профиля.", "ap-ver");
-      return;
-    }
-    let pk = 0;
-    try {
-      pk = await apResolveProfileVersion(pid, ordinal);
-    } catch (err) {
-      apShowError(err.message, "ap-ver");
       return;
     }
     const count = apCount();
@@ -10670,7 +10473,7 @@
         ...period ? { period } : {},
         ...networkSpeed ? { networkSpeed } : {}
       },
-      installation_profile_version_id: pk,
+      installation_profile_id: pid,
       auto_replace: $("ap-auto").checked
     };
     const key = newIdemKey();
@@ -10843,7 +10646,6 @@
     for (const id of ["ap-os", "ap-cpu", "ap-disktype", "ap-period", "ap-net"]) {
       $(id).addEventListener("change", apScheduleEstimate);
     }
-    $("ap-prof").addEventListener("change", apProfileChanged);
     const countEl = $("ap-count");
     countEl.addEventListener("input", () => {
       const v = Number(countEl.value);
@@ -10893,26 +10695,24 @@
       <span class="s">Создайте текстовый профиль или граф. Сохранение графа не запускает сервер и не включает политику.</span></div>`;
         return;
       }
-      body.innerHTML = MYPROF.profiles.map((p) => {
-        var _a2, _b;
-        return `<div class="node-card" data-pid="${p.id}">
+      body.innerHTML = MYPROF.profiles.map((p) => `<div class="node-card" data-pid="${p.id}">
     <div class="node-main">
       <div class="node-top">
         <span class="node-id mono">${esc(p.name)}</span>
         ${profBadge(p)}
-        <span class="badge">${((_a2 = knownVersion(p.id, p.versions || 0)) == null ? void 0 : _a2.format) === "graph" ? "граф" : ((_b = knownVersion(p.id, p.versions || 0)) == null ? void 0 : _b.format) === "text" ? "текст" : "формат не загружен"}</span>
+        <span class="badge">${profileFormatLabel(p)}</span>
       </div>
-      <div class="node-sub"><span>${esc(p.description || "—")}</span>
-        ${p.versions != null ? `<span class="dim"> · версий: ${p.versions}</span>` : ""}</div>
+      <div class="node-sub"><span>${esc(p.description || "—")}</span></div>
     </div>
     <div class="node-side srv-actions">
-      <label for="profile-version-${p.id}" class="help">Версия</label><input id="profile-version-${p.id}" class="blueprint-version-number" type="number" min="1" step="1" value="${p.versions || ""}" aria-label="Версия профиля ${esc(p.name)}">
       <button class="btn sm" data-pedit="${p.id}">Изменить</button>
       <button class="btn sm danger" data-pdel="${p.id}">Удалить</button>
     </div>
-  </div>`;
-      }).join("");
+  </div>`).join("");
     });
+  }
+  function profileFormatLabel(p) {
+    return p.format === "graph" ? "граф" : p.format === "text" ? "текст" : "формат не указан";
   }
   function renderPublishedProfiles() {
     const box = $("profiles-published");
@@ -10924,47 +10724,37 @@
     }
     box.innerHTML = `<div class="note" style="margin:0 0 6px">Опубликованные администратором</div>` + pub.map((p) => `<div class="node-card">
     <div class="node-main">
-      <div class="node-top"><span class="node-id mono">${esc(p.name)}</span><span class="badge ok"><i></i>опубликован</span></div>
+      <div class="node-top"><span class="node-id mono">${esc(p.name)}</span><span class="badge ok"><i></i>опубликован</span><span class="badge">${profileFormatLabel(p)}</span></div>
       <div class="node-sub"><span>${esc(p.description || "—")}</span></div>
     </div>
     <div class="node-side srv-actions">
-      <label for="profile-version-${p.id}-pub" class="help">Номер версии</label><input id="profile-version-${p.id}-pub" class="blueprint-version-number" type="number" min="1" step="1" aria-label="Известный номер версии ${esc(p.name)}" placeholder="Номер">
       <button class="btn sm" data-pcopy="${p.id}">Сделать копию</button>
     </div>
   </div>`).join("");
   }
   function copyPublishedProfile(btn, id) {
-    void openVisibleProfile(id, true, btn);
+    btn.disabled = true;
+    api.copyProfile(id).then((p) => {
+      loadProfiles();
+      openProfile(p);
+    }).catch((e) => {
+      var _a;
+      const msg = e.code === "profile_limit_reached" ? `Достигнут лимит профилей (${(_a = MYPROF == null ? void 0 : MYPROF.max) != null ? _a : "—"}). Удалите ненужный профиль перед созданием нового` : e.code === "duplicate_name" ? "Профиль с таким именем уже существует — выберите другое имя." : e.message;
+      showToast(msg, true);
+      btn.disabled = false;
+    });
   }
-  async function openVisibleProfile(id, copy = false, btn) {
-    const meta = [...(MYPROF == null ? void 0 : MYPROF.profiles) || [], ...(MYPROF == null ? void 0 : MYPROF.published) || []].find((p) => p.id === id);
-    const input2 = document.getElementById(`profile-version-${id}${copy ? "-pub" : ""}`);
-    const ordinal = positiveID((input2 == null ? void 0 : input2.value) || "");
-    if (!meta || !ordinal) {
-      showToast("Укажите известный положительный номер версии. Published API не сообщает последнюю версию.", true);
-      input2 == null ? void 0 : input2.focus();
+  function openProfile(p) {
+    if (p.format === "graph") {
+      location.hash = `#/profiles/editor/${p.id}`;
       return;
     }
-    if (btn) btn.disabled = true;
-    try {
-      const v = await readVersion(id, ordinal);
-      if (v.format === "graph") {
-        location.hash = `#/profiles/editor/${id}?version=${v.version}${copy ? "&copy=1" : ""}`;
-        return;
-      }
-      const own = MYPROF == null ? void 0 : MYPROF.profiles.find((p) => p.id === id);
-      const seed = { ...meta, steps: v.steps || "", vars_schema: v.vars_schema };
-      if (copy) profileEditor(null, { ...seed, name: `${meta.name} (копия)` });
-      else if (own) profileEditor({ ...own, steps: v.steps, vars_schema: v.vars_schema });
-    } catch (e) {
-      showToast(e.message, true);
-    } finally {
-      if (btn) btn.disabled = false;
-    }
+    if ("published" in p) profileEditor(p);
+    else profileEditor(null, p);
   }
   function loadProfiles(poll = false) {
     PROF_ERR = null;
-    api.myProfiles().then(hydrateOwn).then((r) => {
+    api.myProfiles().then((r) => {
       MYPROF = r;
       PROF_RETRY_DONE = false;
       renderProfiles(poll);
@@ -10992,7 +10782,7 @@
       <div class="field" style="gap:6px"><label>Переменные профиля</label>
         <div class="vars-editor" id="mp-vars"></div>
         <span class="help">${esc(PROFILE_VARS_HELP)}</span></div>
-      <div class="note">Переименование не создаёт версию. Изменение шагов или переменных создаёт НОВУЮ версию: история не перезаписывается. Профиль остаётся черновиком, пока администратор его не опубликует.</div>
+      <div class="note">Сохранение обновляет профиль на месте. Профиль остаётся черновиком, пока администратор его не опубликует.</div>
       <div class="banner bad" id="mp-err" role="alert" hidden style="margin:0"></div>
     </div>`,
       [
@@ -11020,20 +10810,20 @@
       return;
     }
     const nameChanged = isEdit && name !== p.name;
-    const versionChanged = !isEdit || steps !== (p.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p.vars_schema));
-    if (versionChanged && !steps.trim()) {
+    const contentChanged = !isEdit || steps !== (p.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p.vars_schema));
+    if (contentChanged && !steps.trim()) {
       errBox.textContent = "Шаги обязательны.";
       errBox.hidden = false;
       $("mp-steps").focus();
       return;
     }
-    const varErr = versionChanged ? validateVarsEditor($("mp-vars")) : null;
+    const varErr = contentChanged ? validateVarsEditor($("mp-vars")) : null;
     if (varErr) {
       errBox.textContent = varErr;
       errBox.hidden = false;
       return;
     }
-    if (isEdit && !versionChanged && !nameChanged) {
+    if (isEdit && !contentChanged && !nameChanged) {
       closeModal();
       showToast("Изменений нет.");
       return;
@@ -11045,7 +10835,7 @@
     if (isEdit) {
       const payload = {};
       if (nameChanged) payload.name = name;
-      if (versionChanged) {
+      if (contentChanged) {
         payload.steps = steps;
         payload.vars_schema = vars_schema;
       }
@@ -11055,7 +10845,7 @@
     }
     call.then(() => {
       closeModal();
-      showToast(!isEdit ? "Профиль создан." : versionChanged ? "Профиль сохранён (новая версия)." : "Профиль переименован.");
+      showToast(!isEdit ? "Профиль создан." : contentChanged ? "Профиль сохранён." : "Профиль переименован.");
       loadProfiles();
     }).catch((e) => {
       var _a;
@@ -11071,7 +10861,7 @@
   function removeProfile(p) {
     openModal(
       `Удалить профиль «${p.name}»?`,
-      "Профиль и все его версии будут удалены. Уже созданные серверы не затрагиваются.",
+      "Профиль будет удалён. Уже созданные серверы не затрагиваются.",
       [
         { label: "Отмена", cls: "ghost", onClick: closeModal },
         { label: "Удалить", cls: "danger", onClick: (ev) => {
@@ -11084,7 +10874,7 @@
             loadProfiles();
           }).catch((e) => {
             if (e.code === "profile_in_use") {
-              openModal("Профиль используется", "Профиль оставлен: его версия закреплена политикой или незавершённым запуском. Сначала проверьте управление нодой или откройте известный запуск по ID.", [
+              openModal("Профиль используется", "Профиль оставлен: он закреплён политикой или незавершённым запуском. Сначала проверьте управление нодой или откройте известный запуск по ID.", [
                 { label: "Закрыть", onClick: closeModal },
                 { label: "К управлению нодами", onClick: () => {
                   closeModal();
@@ -11564,7 +11354,8 @@
     }
     const pedit = t.closest("[data-pedit]");
     if (pedit) {
-      void openVisibleProfile(Number(pedit.dataset.pedit), false, pedit);
+      const p = MYPROF == null ? void 0 : MYPROF.profiles.find((x) => x.id === Number(pedit.dataset.pedit));
+      if (p) openProfile(p);
       return;
     }
     const pdel = t.closest("[data-pdel]");

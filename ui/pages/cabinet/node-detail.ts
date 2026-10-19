@@ -426,7 +426,7 @@ function banNoteHTML(d: NodeDetail): string {
   const banned = d.events.some((e) => e.type === "ip_blocked" || e.type === "node_terminated");
   const quarantined = !!d.node?.quarantine || d.node?.status === "quarantined";
   if (!banned && !quarantined) return "";
-  if (MGMT?.mode === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённой версии, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
+  if (MGMT?.mode === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённого профиля, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
   return `<div class="banner info" role="note"><span>IP в блокировке (ip_ban) — это вердикт регистратора, показан информационно. Он <b>не</b> запускает покупку или замену сервера: автопокупка при бане не выполняется. Замену можно инициировать только вручную.</span></div>`;
 }
 

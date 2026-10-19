@@ -1,10 +1,10 @@
 package control
 
 // Профили установки (docs/specs/beget-provisioning.md §5, addendum §3): профиль =
-// имя/описание/published + версии; версия = текст шагов (упорядоченный список
-// shell-команд, формат mtplane) + vars_schema (таблица переменных). Шаги
-// выполняются по SSH на VPS пользователя. Пользователь выбирает только
-// published-профили.
+// имя/описание/published + одна строка контента (шаги shell-команд в формате
+// mtplane + vars_schema, либо blueprint-граф). Версий больше нет: правки
+// обновляют эту строку in place. Шаги выполняются по SSH на VPS пользователя.
+// Пользователь выбирает только published-профили.
 //
 // Имя колонки БД оставлено историческим (`playbook`) — переименование
 // потребовало бы миграции существующих баз; наружу и в Go поле называется
@@ -286,26 +286,28 @@ func (s *Store) CountProfileVersions(profileID int64) (int, error) {
 // DefaultProfileName — штатный профиль установки ноды (addendum §4.4).
 const DefaultProfileName = "sharedd-node"
 
-// DefaultProfileSteps — штатный профиль (addendum §4.4/§7): устанавливает
-// закреплённый telemt и ставит агент sharedd, который регистрируется по
-// персональному node_secret. Имя ноды задаёт {{ label }}: у Beget это
-// уже выделенный NAME-HASH, у manual — label пользователя, к которому
-// установщик добавляет свой -<5hex>. node_id реестр НЕ предсоздаёт.
-// Идемпотентно: повторный прогон ничего не ломает.
-//
-// Переменные: port (default 443), authkey (опц.), api_addr (опц.); label,
-// node_secret, registry_url инъектируются сервером. Синтаксис — документированный
-// `{{ var }}` (H2; поддерживается и `{{.var}}`). Общий node_token НЕ инъектится
-// (M5): агент авторизуется персональным node_secret.
-const DefaultProfileSteps = `# Установка telemt (закреплённый инсталлятор)
-curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/install.sh | sudo bash -s -- -telemt -port {{ port }} -fix -fix-type v3
+// DefaultProfileSteps — штатный профиль: MTProxyL с бинарным движком
+// (mtproxyl-bin) + агент sharedd. Канал агента выбирается переменной
+// sharedd_channel (stable|dev). port/sni/secret/ad_tag — переменные установки;
+// label, node_secret, registry_url инъектируются сервером. Синтаксис
+// `{{ var }}` shell-квотится ровно один раз.
+const DefaultProfileSteps = `# Установка MTProxyL (manager, binary engine)
+curl -fsSL https://raw.githubusercontent.com/Liafanx/MTProxyL/main/install.sh -o /root/mtproxyl-install.sh
+ENGINE_URL={{ engine_url }}
+TAG={{ ad_tag }}
+EXTRA=""
+[ -n "$ENGINE_URL" ] && EXTRA="--engine-url $ENGINE_URL"
+[ -n "$TAG" ] && EXTRA="$EXTRA --ad-tag $TAG"
+bash /root/mtproxyl-install.sh -- --mode manager --engine binary $EXTRA --proxy-mode mtproto --port {{ port }} --sni {{ sni }} --secret {{ secret }} --mask on --sni-policy reject_handshake --force
 
-# Установка агента sharedd и запуск: --name задаёт имя ноды (агент/установщик
-# добавит -<5hex>), персональный node_secret — Bearer machine-API (общий
-# реестровый токен не нужен). Отдельный --node-secret не передаётся: install_node.sh
-# поддерживает только --registry/--registry-token/--name, а реестр классифицирует
-# Bearer по хешу node_secret, поэтому --registry-token={{ node_secret }} достаточен.
-curl -fsSL https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_node.sh | sudo bash -s -- --registry={{ registry_url }} --name={{ label }} --registry-token={{ node_secret }}
+# Установка агента sharedd выбранного канала (stable|dev) и запуск.
+# --name={{ label }}: короткое имя, суффикс -<5hex> добавит агент;
+# персональный node_secret — Bearer machine-API.
+case {{ sharedd_channel }} in
+  stable|dev) ;;
+  *) echo 'sharedd_channel must be stable or dev' >&2; exit 1 ;;
+esac
+curl -fsSL https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_node_web.sh | sudo bash -s -- --channel={{ sharedd_channel }} --registry={{ registry_url }} --name={{ label }} --registry-token={{ node_secret }}
 
 # Проверка: агент поднялся И реально зарегистрировался в реестре (DEF-B:
 # провал /register (неверный секрет, 403-карантин, неверный порт) делает
@@ -325,21 +327,45 @@ echo 'node did not register with the registry' >&2
 exit 1
 `
 
-// DefaultProfileVarsSchema — таблица переменных штатного профиля. authkey и
-// node_secret необязательны: агент авторизуется персональным node_secret
-// (contract §1). Служебные переменные (label/node_secret/registry_url)
-// инъектируются сервером и здесь не объявляются.
-const DefaultProfileVarsSchema = `{"vars":[{"name":"authkey","description":"Персональный ключ агента (если есть)","secret":true},{"name":"api_addr","description":"Адрес telemt API"},{"name":"port","description":"Порт shared_proxy","default":"443"}]}`
+// DefaultProfileVarsSchema — переменные штатного профиля. engine_url и ad_tag
+// необязательны (пусто = выбор MTProxyL); sharedd_channel — канал агента.
+const DefaultProfileVarsSchema = `{"vars":[{"name":"engine_url","description":"URL архива telemt (пусто = выбор MTProxyL)","default":""},{"name":"ad_tag","description":"Рекламный тег MTProxyL","default":""},{"name":"sharedd_channel","description":"Канал агента sharedd: stable или dev","default":"stable"},{"name":"api_addr","description":"Адрес telemt API"},{"name":"port","description":"Порт shared_proxy","default":"443"}]}`
+
+// legacyDefaultMarker — признак старой версии штатного профиля (telemt
+// через MTPROTO_FIX). Такие версии автоматически дополняются новой.
+const legacyDefaultMarker = "MTPROTO_FIX_By_MEKO"
+
+// DefaultProfileDescription — подпись штатного профиля.
+const DefaultProfileDescription = "Штатная установка ноды sharedd (MTProxyL + агент)"
+
+// legacyDefaultDescription — прежняя подпись (telemt); меняется на актуальную.
+const legacyDefaultDescription = "Штатная установка ноды sharedd (telemt + агент)"
 
 // EnsureDefaultProfile создаёт штатный профиль (опубликованный) при первом
-// запуске, если его ещё нет. Идемпотентно: существующий не трогаем.
+// запуске, если его ещё нет. Идемпотентно: существующий не трогаем, кроме
+// легаси-содержимого (telemt/MTPROTO_FIX): оно перезаписывается in place
+// (версий больше нет — у профиля одна строка контента).
 func (s *Store) EnsureDefaultProfile() (Profile, error) {
 	if p, err := s.ProfileByName(DefaultProfileName); err == nil {
+		v, verr := s.ProfileVersion(p.ID, 0)
+		if verr != nil && !errors.Is(verr, ErrNotFound) {
+			return Profile{}, verr
+		}
+		if verr != nil || strings.Contains(v.Steps, legacyDefaultMarker) {
+			if _, nerr := s.AddProfileVersion(p.ID, DefaultProfileSteps, DefaultProfileVarsSchema); nerr != nil {
+				return Profile{}, nerr
+			}
+			if p.Description == legacyDefaultDescription {
+				_, _ = s.UpdateProfileDescription(p.ID, DefaultProfileDescription)
+			}
+			_, _ = s.SetProfilePublished(p.ID, true)
+			return s.Profile(p.ID)
+		}
 		return p, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return Profile{}, err
 	}
-	p, err := s.CreateProfile(DefaultProfileName, "Штатная установка ноды sharedd (telemt + агент)", 0)
+	p, err := s.CreateProfile(DefaultProfileName, DefaultProfileDescription, 0)
 	if err != nil {
 		if errors.Is(err, ErrDuplicateName) { // гонка двух стартов — берём победителя
 			return s.ProfileByName(DefaultProfileName)
@@ -352,8 +378,10 @@ func (s *Store) EnsureDefaultProfile() (Profile, error) {
 	return s.PublishProfile(p.ID)
 }
 
-// AddProfileVersion добавляет версию (номер = max+1). Изменение версии
-// сбрасывает published — оператор должен явно опубликовать снова.
+// AddProfileVersion записывает контент профиля. Версий больше нет: если у
+// профиля есть строка контента — она обновляется IN PLACE (номер не меняется),
+// иначе создаётся первая строка. Published не сбрасывается: правка — это та же
+// единственная версия профиля.
 func (s *Store) AddProfileVersion(profileID int64, steps, varsSchema string) (ProfileVersion, error) {
 	if steps == "" {
 		return ProfileVersion{}, fmt.Errorf("%w: steps required", ErrValidation)
@@ -364,30 +392,29 @@ func (s *Store) AddProfileVersion(profileID int64, steps, varsSchema string) (Pr
 	if _, err := s.Profile(profileID); err != nil {
 		return ProfileVersion{}, err
 	}
-	tx, err := s.sql.Begin()
-	if err != nil {
-		return ProfileVersion{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var next int
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(version),0)+1 FROM profile_versions WHERE profile_id = ?`, profileID).Scan(&next); err != nil {
+	latest, err := s.ProfileVersion(profileID, 0)
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return ProfileVersion{}, err
 	}
 	now := time.Now().Unix()
-	// Колонка БД исторически называется playbook — см. комментарий к пакету.
-	res, err := tx.Exec(`INSERT INTO profile_versions (profile_id, version, playbook, vars_schema, created_at) VALUES (?,?,?,?,?)`,
-		profileID, next, steps, varsSchema, now)
+	if err == nil {
+		// Колонка БД исторически называется playbook — см. комментарий к пакету.
+		// Переход graph→text очищает blueprint-поля этой же строки.
+		if _, err := s.sql.Exec(`UPDATE profile_versions
+			SET playbook = ?, vars_schema = ?, format = ?, blueprint_json = '', schema_version = 0, content_hash = ''
+			WHERE id = ?`, steps, varsSchema, FormatText, latest.ID); err != nil {
+			return ProfileVersion{}, err
+		}
+		return ProfileVersion{ID: latest.ID, ProfileID: profileID, Version: latest.Version,
+			Steps: steps, VarsSchema: varsSchema, Format: FormatText, CreatedAt: latest.CreatedAt}, nil
+	}
+	res, err := s.sql.Exec(`INSERT INTO profile_versions (profile_id, version, playbook, vars_schema, created_at, format)
+		VALUES (?,?,?,?,?,?)`, profileID, 1, steps, varsSchema, now, FormatText)
 	if err != nil {
 		return ProfileVersion{}, err
 	}
-	if _, err := tx.Exec(`UPDATE profiles SET published = 0, updated_at = ? WHERE id = ?`, now, profileID); err != nil {
-		return ProfileVersion{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return ProfileVersion{}, err
-	}
 	id, _ := res.LastInsertId()
-	return ProfileVersion{ID: id, ProfileID: profileID, Version: next, Steps: steps, VarsSchema: varsSchema, Format: FormatText, CreatedAt: now}, nil
+	return ProfileVersion{ID: id, ProfileID: profileID, Version: 1, Steps: steps, VarsSchema: varsSchema, Format: FormatText, CreatedAt: now}, nil
 }
 
 // PublishProfile — делает профиль доступным пользователям. Требует ≥1 версии.
@@ -434,9 +461,9 @@ func (s *Store) AuthoredVersionFor(profileID int64, version int) (ProfileVersion
 	return s.ProfileVersionByID(profileID, version)
 }
 
-// CreateProfileVersionGraph appends an immutable graph version (format="graph")
-// with number = max+1 and resets published, mirroring AddProfileVersion. The
-// playbook column is NOT NULL, so an empty string is stored for graph versions.
+// CreateProfileVersionGraph записывает граф-контент профиля in place: если
+// строка контента уже есть, она обновляется (номер не меняется), иначе
+// создаётся первая. Текст и vars_schema очищаются при переходе text→graph.
 func (s *Store) CreateProfileVersionGraph(profileID int64, blueprintJSON string, schemaVersion int, contentHash string) (ProfileVersion, error) {
 	if strings.TrimSpace(blueprintJSON) == "" || schemaVersion <= 0 || contentHash == "" {
 		return ProfileVersion{}, fmt.Errorf("%w: blueprint, schema_version and content_hash required", ErrValidation)
@@ -444,32 +471,31 @@ func (s *Store) CreateProfileVersionGraph(profileID int64, blueprintJSON string,
 	if _, err := s.Profile(profileID); err != nil {
 		return ProfileVersion{}, err
 	}
-	tx, err := s.sql.Begin()
-	if err != nil {
-		return ProfileVersion{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var next int
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(version),0)+1 FROM profile_versions WHERE profile_id = ?`, profileID).Scan(&next); err != nil {
+	latest, err := s.ProfileVersion(profileID, 0)
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return ProfileVersion{}, err
 	}
 	now := time.Now().Unix()
-	res, err := tx.Exec(`INSERT INTO profile_versions
+	if err == nil {
+		if _, err := s.sql.Exec(`UPDATE profile_versions
+			SET playbook = '', vars_schema = '', format = ?, blueprint_json = ?, schema_version = ?, content_hash = ?
+			WHERE id = ?`, FormatGraph, blueprintJSON, schemaVersion, contentHash, latest.ID); err != nil {
+			return ProfileVersion{}, err
+		}
+		return ProfileVersion{ID: latest.ID, ProfileID: profileID, Version: latest.Version,
+			Format: FormatGraph, Blueprint: blueprintJSON, SchemaVersion: schemaVersion,
+			ContentHash: contentHash, CreatedAt: latest.CreatedAt}, nil
+	}
+	res, err := s.sql.Exec(`INSERT INTO profile_versions
 		(profile_id, version, playbook, vars_schema, created_at, format, blueprint_json, schema_version, content_hash)
 		VALUES (?,?,?,?,?,?,?,?,?)`,
-		profileID, next, "", "", now, FormatGraph, blueprintJSON, schemaVersion, contentHash)
+		profileID, 1, "", "", now, FormatGraph, blueprintJSON, schemaVersion, contentHash)
 	if err != nil {
-		return ProfileVersion{}, err
-	}
-	if _, err := tx.Exec(`UPDATE profiles SET published = 0, updated_at = ? WHERE id = ?`, now, profileID); err != nil {
-		return ProfileVersion{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return ProfileVersion{}, err
 	}
 	id, _ := res.LastInsertId()
 	return ProfileVersion{
-		ID: id, ProfileID: profileID, Version: next, Format: FormatGraph,
+		ID: id, ProfileID: profileID, Version: 1, Format: FormatGraph,
 		Blueprint: blueprintJSON, SchemaVersion: schemaVersion, ContentHash: contentHash, CreatedAt: now,
 	}, nil
 }

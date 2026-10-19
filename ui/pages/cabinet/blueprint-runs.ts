@@ -3,14 +3,14 @@ import { api, newIdemKey } from "./api";
 import type {
   APIError,
   BlueprintBlock,
+  Profile,
   ProfileRun,
   ProfileRunBody,
   ProfileRunCheckpoint,
-  ProfileVersion,
   ResumeDecision,
 } from "./api";
-import { blockFor, bytes, EFFECTS, reachable, runtimeGate, TITLES, versionByPK } from "./blueprint-model";
-import { mountInstance, mountVersionPicker } from "./blueprint-instance";
+import { blockFor, bytes, EFFECTS, reachable, runtimeGate, TITLES } from "./blueprint-model";
+import { mountInstance } from "./blueprint-instance";
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 const STATES: Record<string, [string, string]> = {
@@ -54,8 +54,8 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 
-export function openRunReview(version: ProfileVersion, blocks: BlueprintBlock[]): void {
-  const graph = version.blueprint;
+export function openRunReview(profile: Profile, blocks: BlueprintBlock[]): void {
+  const graph = profile.blueprint;
   if (!graph || runtimeGate(graph)) return;
   if (review?.isConnected) {
     if (!review.open) review.showModal();
@@ -66,7 +66,7 @@ export function openRunReview(version: ProfileVersion, blocks: BlueprintBlock[])
   dialog.setAttribute("aria-label", "Проверить и разрешить запуск графа");
   review = dialog;
   const path = reachable(graph, graph.entries.initial);
-  dialog.innerHTML = `<h2>Проверить и разрешить запуск · версия ${version.version}</h2><p class="mono">Профиль #${version.profile_id} · PK версии ${version.profile_version_id} · initial</p>
+  dialog.innerHTML = `<h2>Проверить и разрешить запуск</h2><p class="mono">Профиль #${profile.id} · initial</p>
     <p>Сохранение профиля не запускает его и не включает автоматические расходы. Этот запуск разрешает перечисленные платные действия в подключении Nodehost. Цена API не предоставлена. Ошибка или неизвестный результат не разрешают повторную покупку.</p>
     <details open><summary>Действия первичного пути и условные переходы</summary><ul>${graph.nodes
       .filter((n) => path.has(n.id))
@@ -165,7 +165,7 @@ export function openRunReview(version: ProfileVersion, blocks: BlueprintBlock[])
       const values = instance.collect();
       const node_id = dialog.querySelector<HTMLInputElement>("#bp-run-node-id")!.value.trim();
       const body: ProfileRunBody = {
-        profile_version_id: version.profile_version_id,
+        profile_id: profile.id,
         entry: "initial",
         inputs: values.inputs,
         ...(Object.keys(values.vars).length ? { vars: values.vars } : {}),
@@ -209,7 +209,7 @@ export function closeBlueprintRun(): void {
 }
 class RunView {
   private data: ProfileRun | null = null;
-  private graphVersion: ProfileVersion | null = null;
+  private graphProfile: Profile | null = null;
   private blocks: BlueprintBlock[] = [];
   private timer: number | undefined;
   private fetching = false;
@@ -227,7 +227,7 @@ class RunView {
     private id: number,
   ) {
     this.mutationUnknown = uncertainCommands.has(id);
-    root.innerHTML = `<div class="blueprint-toolbar"><a href="#/profiles" class="btn">← Профили</a><h2 tabindex="-1">Запуск #${id}</h2><button class="btn" data-refresh>Обновить GET</button><button class="btn danger" data-cancel disabled>Остановить дальнейшие шаги</button></div><p data-run-status role="status">Загрузка запуска…</p><div data-run-summary></div><section class="blueprint-panel"><h3>Закреплённая схема</h3><div data-run-version-note></div><div data-run-version-picker></div><div data-run-graph></div></section><section class="blueprint-panel"><h3>Журнал шагов</h3><div data-run-journal></div></section>`;
+    root.innerHTML = `<div class="blueprint-toolbar"><a href="#/profiles" class="btn">← Профили</a><h2 tabindex="-1">Запуск #${id}</h2><button class="btn" data-refresh>Обновить GET</button><button class="btn danger" data-cancel disabled>Остановить дальнейшие шаги</button></div><p data-run-status role="status">Загрузка запуска…</p><div data-run-summary></div><section class="blueprint-panel"><h3>Схема профиля</h3><div data-run-profile-note></div><div data-run-graph></div></section><section class="blueprint-panel"><h3>Журнал шагов</h3><div data-run-journal></div></section>`;
     root.querySelector<HTMLElement>("h2")!.focus();
     root.querySelector<HTMLButtonElement>("[data-refresh]")!.onclick = () => {
       void this.load();
@@ -270,23 +270,11 @@ class RunView {
       if (this.disposed) return;
       this.data = r;
       this.awaitingRead = false;
-      this.graphVersion = versionByPK(r.profile_version_id) || this.graphVersion;
+      if (r.profile_id && this.graphProfile?.id !== r.profile_id) void this.loadProfile(r.profile_id);
       this.paint();
       this.status(
         `Данные получены ${new Date().toLocaleTimeString("ru")}. ${this.notice}${this.mutationUnknown ? " Результат команды неизвестен; не повторяйте её с новым ключом. Сверьте журнал." : ""}`,
       );
-      const picker = this.el("[data-run-version-picker]");
-      if (!this.graphVersion && !picker.dataset.mounted) {
-        picker.dataset.mounted = "true";
-        mountVersionPicker(picker, "graph", (v) => {
-          if (v && (v.profile_id !== r.profile_id || v.profile_version_id !== r.profile_version_id)) {
-            this.status("Версия не совпадает с закреплённым PK запуска.");
-            return;
-          }
-          this.graphVersion = v;
-          this.paint();
-        });
-      }
       if (!TERMINAL.has(r.state) && !document.hidden)
         this.timer = window.setTimeout(() => {
           void this.load();
@@ -300,18 +288,30 @@ class RunView {
       this.fetching = false;
     }
   }
+  private async loadProfile(id: number): Promise<void> {
+    try {
+      const m = await api.myProfiles();
+      if (this.disposed || this.data?.profile_id !== id) return;
+      const p = [...m.profiles, ...m.published].find((x) => x.id === id);
+      if (p?.format === "graph" && p.blueprint) {
+        this.graphProfile = p;
+        this.paint();
+      }
+    } catch {
+      /* профиль недоступен: журнал остаётся доступен */
+    }
+  }
   private paint(): void {
     const r = this.data;
     if (!r || this.disposed) return;
     this.el<HTMLButtonElement>("[data-cancel]").disabled =
       this.command || this.awaitingRead || this.mutationUnknown || TERMINAL.has(r.state) || r.cancel_requested;
     this.el("[data-run-summary]").innerHTML =
-      `<div class="blueprint-panel"><p>${stateBadge(r.state)}${r.cancel_requested ? " · Запрошена остановка (cancel_requested)" : ""}</p><dl class="blueprint-facts"><dt>Операция</dt><dd>${r.operation_id ?? "—"}</dd><dt>Профиль / PK версии</dt><dd>#${r.profile_id} / ${r.profile_version_id}</dd><dt>Вход / ревизия</dt><dd>${esc(r.entry)} / ${r.revision}</dd><dt>Ревизия политики</dt><dd>${r.policy_revision}</dd><dt>Ресурс</dt><dd>${r.resource_id ? `<a href="#/resources/${r.resource_id}">#${r.resource_id}</a>` : "—"}</dd><dt>Нода</dt><dd>${r.node_id ? `<a href="#/nodes/${encodeURIComponent(r.node_id)}">${esc(r.node_id)}</a>` : "—"}</dd><dt>Стоимость</dt><dd>Не предоставлена API</dd><dt>Следующее пробуждение</dt><dd>${esc(time(r.next_wake_at))}</dd></dl>${r.waiting ? `<p>Ожидание ${esc(r.waiting.type)} · после эпизода ${esc(r.waiting.after_episode_id || "—")}</p>` : ""}${r.last_error ? `<p class="banner bad">${esc(r.last_error)}</p>` : ""}</div>`;
-    const graph =
-      this.graphVersion?.profile_version_id === r.profile_version_id ? this.graphVersion.blueprint : undefined;
-    this.el("[data-run-version-note]").textContent = graph
+      `<div class="blueprint-panel"><p>${stateBadge(r.state)}${r.cancel_requested ? " · Запрошена остановка (cancel_requested)" : ""}</p><dl class="blueprint-facts"><dt>Операция</dt><dd>${r.operation_id ?? "—"}</dd><dt>Профиль</dt><dd>#${r.profile_id}${r.profile_version_id ? ` · PK ${r.profile_version_id}` : ""}</dd><dt>Вход / ревизия</dt><dd>${esc(r.entry)} / ${r.revision}</dd><dt>Ревизия политики</dt><dd>${r.policy_revision}</dd><dt>Ресурс</dt><dd>${r.resource_id ? `<a href="#/resources/${r.resource_id}">#${r.resource_id}</a>` : "—"}</dd><dt>Нода</dt><dd>${r.node_id ? `<a href="#/nodes/${encodeURIComponent(r.node_id)}">${esc(r.node_id)}</a>` : "—"}</dd><dt>Стоимость</dt><dd>Не предоставлена API</dd><dt>Следующее пробуждение</dt><dd>${esc(time(r.next_wake_at))}</dd></dl>${r.waiting ? `<p>Ожидание ${esc(r.waiting.type)} · после эпизода ${esc(r.waiting.after_episode_id || "—")}</p>` : ""}${r.last_error ? `<p class="banner bad">${esc(r.last_error)}</p>` : ""}</div>`;
+    const graph = this.graphProfile?.id === r.profile_id ? this.graphProfile.blueprint : undefined;
+    this.el("[data-run-profile-note]").textContent = graph
       ? "Схема только для чтения. Показаны только подтверждённые журналом ветки; отсутствие шага не означает успех или пропуск."
-      : "Закреплённая версия недоступна или удалена. Журнал остаётся доступен. Для схемы выберите известный числовой номер и сверьте PK.";
+      : "Профиль недоступен или удалён. Журнал остаётся доступен.";
     this.el("[data-run-graph]").innerHTML = graph
       ? `<ol>${graph.nodes
           .map(

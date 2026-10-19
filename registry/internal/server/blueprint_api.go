@@ -94,18 +94,14 @@ type profileVersionJSON struct {
 	VarsSchema       string          `json:"vars_schema,omitempty"`
 }
 
-// GET /api/me/profiles/{id}/versions/{version} — numeric version, not latest.
+// GET /api/me/profiles/{id}/versions/{version} — kept for old clients: the
+// number is ignored and the current (single) content row is returned.
 // Ownership: own profile or published profile; otherwise 404.
 func (r *Registry) handleProfileVersionGet(w http.ResponseWriter, req *http.Request) {
 	u := sessionFrom(req).user
 	id, ok := parseID(req.PathValue("id"))
 	if !ok {
 		controlAPIError(w, http.StatusNotFound, "not_found", "bad profile id")
-		return
-	}
-	version, ok := parseID(req.PathValue("version"))
-	if !ok || version <= 0 {
-		controlAPIError(w, http.StatusNotFound, "not_found", "bad profile version")
 		return
 	}
 	p, err := r.control.Profile(id)
@@ -117,7 +113,7 @@ func (r *Registry) handleProfileVersionGet(w http.ResponseWriter, req *http.Requ
 		writeControlErr(w, control.ErrNotFound, "user.profiles.version.owner")
 		return
 	}
-	v, err := r.control.ProfileVersionByID(id, int(version))
+	v, err := r.control.ProfileVersion(id, 0)
 	if err != nil {
 		writeControlErr(w, err, "user.profiles.version.lookup")
 		return
@@ -185,25 +181,12 @@ func (r *Registry) appendGraphVersion(w http.ResponseWriter, profileID int64, d 
 	return true
 }
 
-// addGraphVersion validates raw and appends an immutable graph version. Returns
-// false (response already written) on failure.
+// addGraphVersion validates raw and writes it in place. Returns false
+// (response already written) on failure.
 func (r *Registry) addGraphVersion(w http.ResponseWriter, profileID int64, raw json.RawMessage, operation string) bool {
 	d, ok := prepareGraphVersion(w, raw, operation)
 	if !ok {
 		return false
 	}
 	return r.appendGraphVersion(w, profileID, d, operation)
-}
-
-// currentGraphVersion returns the current max version of profileID, or 0 when
-// the profile has no versions yet.
-func (r *Registry) currentGraphVersion(profileID int64) (int, error) {
-	v, err := r.control.ProfileVersion(profileID, 0)
-	if err != nil {
-		if errors.Is(err, control.ErrNotFound) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	return v.Version, nil
 }

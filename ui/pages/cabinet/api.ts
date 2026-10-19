@@ -38,14 +38,17 @@ export interface ManualServerPayload {
 
 export interface ManualServerCheck { verified: boolean; last_error?: string; }
 
-export interface Profile { id: number; name: string; description: string; vars_schema?: string; }
+export interface Profile {
+  id: number; name: string; description: string;
+  format?: "graph" | "text"; steps?: string; vars_schema?: string; blueprint?: Blueprint;
+}
 
-// addendum-profiles-vps.md §3: свой профиль (полный, для правки). Правка
-// шагов создаёт новую версию (append-only).
+// Свой профиль (полный, для правки). Один профиль — одно содержимое,
+// правка перезаписывает его на месте.
 export interface OwnProfile {
   id: number; name: string; description: string; published: boolean;
   created_at: number; updated_at: number;
-  steps?: string; vars_schema?: string; versions?: number;
+  format?: "graph" | "text"; steps?: string; vars_schema?: string; blueprint?: Blueprint;
 }
 
 export interface MyProfiles {
@@ -83,10 +86,6 @@ export interface BlueprintBlock {
 }
 export interface BlueprintDiagnostic { node_id?: string; port?: string; code: string; message: string; }
 export interface BlueprintValidation { valid: boolean; diagnostics: BlueprintDiagnostic[]; }
-export interface ProfileVersion {
-  profile_id: number; version: number; profile_version_id: number; format: "graph" | "text";
-  blueprint?: Blueprint; steps?: string; vars_schema?: string;
-}
 export interface GraphProfilePayload { name: string; description: string; format: "graph"; blueprint: Blueprint; }
 export interface APIError extends Error { code?: string; status?: number; reason?: string; diagnostics?: BlueprintDiagnostic[]; }
 export interface ProfileRunCheckpoint {
@@ -94,20 +93,20 @@ export interface ProfileRunCheckpoint {
   error?: string; output?: Record<string, unknown>; next_attempt_at: number;
 }
 export interface ProfileRun {
-  id: number; operation_id?: number; profile_version_id: number; profile_id: number;
+  id: number; operation_id?: number; profile_version_id?: number; profile_id: number;
   node_id?: string; entry: "initial" | "observe"; state: string; revision: number;
   resource_id: number | null; policy_revision: number; cancel_requested: boolean;
   next_wake_at?: number; last_error?: string;
   waiting?: { type: string; after_episode_id?: string }; checkpoints?: ProfileRunCheckpoint[];
 }
 export interface ProfileRunBody {
-  profile_version_id: number; entry: "initial"; inputs: Record<string, unknown>;
+  profile_id: number; entry: "initial"; inputs: Record<string, unknown>;
   vars?: Record<string, string>; node_id?: string; confirm: true;
 }
 export interface ProfileRunAck { operation_id: number; run_id: number; state: string; resource_id: number | null; }
 export type ResumeDecision = "reconcile" | "retry_safe" | "acknowledge";
 export interface ManagementBody {
-  mode: "manual" | "profile"; profile_version_id?: number; inputs?: Record<string, unknown>;
+  mode: "manual" | "profile"; profile_id?: number; inputs?: Record<string, unknown>;
   process_current_ban?: boolean; expected_revision: number;
 }
 
@@ -348,7 +347,7 @@ export interface CloudReplaceBody {
   connection_id: number; label: string;
   configuration: NodehostConfiguration;
   confirm: true; expected_revision: number;
-  installation_profile_version_id?: number; vars?: Record<string, unknown>;
+  profile_id?: number; vars?: Record<string, unknown>;
 }
 
 /* ── флот/Autopilot (docs/specs/hosting-blueprints/fleet-autopilot.md) ──
@@ -404,14 +403,14 @@ export interface FleetCreateBody {
   name?: string;
   count: number;
   configuration: FleetConfiguration;
-  installation_profile_version_id: number;
+  installation_profile_id: number;
   auto_replace: boolean;
 }
 
 export interface FleetCreateAck { fleet_id: number; }
 
 export interface ManagementPolicy {
-  mode: "manual" | "profile"; profile_version_id: number | null;
+  mode: "manual" | "profile"; profile_id: number | null;
   inputs: Record<string, unknown>; process_current_ban: boolean;
   revision: number; current_resource_id: number | null; active_run_id?: number | null;
 }
@@ -533,11 +532,10 @@ export const api = {
   updateProfile: (id: number, body: ProfilePayload) => req<OwnProfile>(`/api/me/profiles/${id}`, "PUT", body),
   deleteProfile: (id: number) => req<void>(`/api/me/profiles/${id}`, "DELETE"),
   blueprintBlocks: () => req<{ schema_version: number; blocks: BlueprintBlock[] }>("/api/me/blueprint-blocks"),
-  profileVersion: (id: number, version: number) => req<ProfileVersion>(`/api/me/profiles/${id}/versions/${version}`),
   validateBlueprint: (blueprint: Blueprint, inputs?: Record<string, unknown>) =>
     req<BlueprintValidation>("/api/me/profiles/validate", "POST", { format: "graph", blueprint, ...(inputs === undefined ? {} : { inputs }) }),
   createGraphProfile: (body: GraphProfilePayload) => req<OwnProfile>("/api/me/profiles", "POST", body),
-  saveGraphProfile: (id: number, body: GraphProfilePayload & { expected_version: number }) => req<OwnProfile>(`/api/me/profiles/${id}`, "PUT", body),
+  saveGraphProfile: (id: number, body: GraphProfilePayload) => req<OwnProfile>(`/api/me/profiles/${id}`, "PUT", body),
   createProfileRun: (body: ProfileRunBody, key: string) => req<ProfileRunAck>("/api/me/profile-runs", "POST", body, { headers: { "Idempotency-Key": key } }),
   profileRun: (id: number) => req<ProfileRun>(`/api/me/profile-runs/${id}`),
   cancelProfileRun: (id: number, expected_revision: number, key: string) => req<ProfileRunAck>(`/api/me/profile-runs/${id}/cancel`, "POST", { expected_revision }, { headers: { "Idempotency-Key": key } }),
@@ -582,8 +580,8 @@ export const api = {
       { subnet_id: subnetId || 0 }, { headers: { "Idempotency-Key": key } }),
   replaceCloudResource: (id: number, key: string, body: CloudReplaceBody) =>
     req<CommandAck>(`/api/me/cloud-resources/${id}/replace`, "POST", body, { headers: { "Idempotency-Key": key } }),
-  // FROZEN: {profile_version_id, vars} — PK версии профиля, не profile_id.
-  installCloudResource: (id: number, key: string, body: { profile_version_id?: number; vars?: Record<string, unknown> }) =>
+  // FROZEN: {profile_id, vars} — профиль адресуется id, содержимое одно.
+  installCloudResource: (id: number, key: string, body: { profile_id?: number; vars?: Record<string, unknown> }) =>
     req<Operation>(`/api/me/cloud-resources/${id}/install`, "POST", body, { headers: { "Idempotency-Key": key } }),
   // FROZEN: 200 {ssh_ok,error}; 409 not_ready/ssh_unavailable; 501 beget.
   checkCloudResource: (id: number) =>

@@ -15,9 +15,9 @@ import (
 	"sharedd/registry/internal/nodehost"
 )
 
-func fleetBody(connID int64, count int, auto bool, pvID int64) string {
-	return fmt.Sprintf(`{"connection_id":%d,"name":"base","count":%d,"configuration":{"name":"pool-node","cpu":"AMD Ryzen 9 7950X","cores":2,"ram":4,"disk":40,"diskType":"SSD NVMe","os":"ubuntu-24.04","location":"DE","period":"1m"},"installation_profile_version_id":%d,"auto_replace":%t}`,
-		connID, count, pvID, auto)
+func fleetBody(connID int64, count int, auto bool, profileID int64) string {
+	return fmt.Sprintf(`{"connection_id":%d,"name":"base","count":%d,"configuration":{"name":"pool-node","cpu":"AMD Ryzen 9 7950X","cores":2,"ram":4,"disk":40,"diskType":"SSD NVMe","os":"ubuntu-24.04","location":"DE","period":"1m"},"installation_profile_id":%d,"auto_replace":%t}`,
+		connID, count, profileID, auto)
 }
 
 func fleetPost(t *testing.T, r *Registry, cookies map[string]string, csrf, body, key string) *httptestResponse {
@@ -134,7 +134,7 @@ func TestFleetHappyPathAutoReplaceAndIdempotency(t *testing.T) {
 	uid, connID, cookies, csrf := cloudSession(t, r, "fleet-happy")
 	pv := fleetProfileVersion(t, r)
 
-	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 2, true, pv.ID), "fleet-key-1")
+	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 2, true, pv.ProfileID), "fleet-key-1")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("fleet create: %d %s", rec.Code, rec.Body)
 	}
@@ -175,7 +175,7 @@ func TestFleetHappyPathAutoReplaceAndIdempotency(t *testing.T) {
 	}
 
 	// Replay of the same Idempotency-Key: same fleet, no second batch.
-	rec = fleetPost(t, r, cookies, csrf, fleetBody(connID, 2, true, pv.ID), "fleet-key-1")
+	rec = fleetPost(t, r, cookies, csrf, fleetBody(connID, 2, true, pv.ProfileID), "fleet-key-1")
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body, fmt.Sprint(ack.FleetID)) {
 		t.Fatalf("replay: %d %s", rec.Code, rec.Body)
 	}
@@ -183,7 +183,7 @@ func TestFleetHappyPathAutoReplaceAndIdempotency(t *testing.T) {
 		t.Fatalf("provider create calls = %d, want 2", n)
 	}
 	// Same key, different body → conflict.
-	rec = fleetPost(t, r, cookies, csrf, fleetBody(connID, 3, true, pv.ID), "fleet-key-1")
+	rec = fleetPost(t, r, cookies, csrf, fleetBody(connID, 3, true, pv.ProfileID), "fleet-key-1")
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body, "idempotency_conflict") {
 		t.Fatalf("conflict: %d %s", rec.Code, rec.Body)
 	}
@@ -206,7 +206,7 @@ func TestFleetAutoReplaceOffLeavesManual(t *testing.T) {
 	uid, connID, cookies, csrf := cloudSession(t, r, "fleet-manual")
 	pv := fleetProfileVersion(t, r)
 
-	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 1, false, pv.ID), "fleet-key-manual")
+	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 1, false, pv.ProfileID), "fleet-key-manual")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("fleet create: %d %s", rec.Code, rec.Body)
 	}
@@ -237,7 +237,7 @@ func TestFleetPerItemFailureContinues(t *testing.T) {
 	_, connID, cookies, csrf := cloudSession(t, r, "fleet-flaky")
 	pv := fleetProfileVersion(t, r)
 
-	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 3, false, pv.ID), "fleet-key-flaky")
+	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 3, false, pv.ProfileID), "fleet-key-flaky")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("fleet create: %d %s", rec.Code, rec.Body)
 	}

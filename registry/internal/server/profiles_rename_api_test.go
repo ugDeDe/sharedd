@@ -39,8 +39,8 @@ func TestAdminProfileRenameHTTP(t *testing.T) {
 	}
 	var got profileAdminJSON
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
-	if got.Name != "ren-c" || got.Versions != 1 {
-		t.Fatalf("renamed = %+v, want name ren-c, versions 1", got)
+	if got.Name != "ren-c" || got.Steps != "# s\necho hi\n" {
+		t.Fatalf("rename must keep the single content row: %+v", got)
 	}
 	rec = adminCall(t, r, http.MethodGet, "/panel/api/admin/profiles", testPanelToken, "")
 	if body := rec.Body.String(); !strings.Contains(body, `"ren-c"`) || strings.Contains(body, `"ren-b"`) || !strings.Contains(body, `"ren-a"`) {
@@ -61,7 +61,7 @@ func TestAdminProfileRenameHTTP(t *testing.T) {
 		t.Fatalf("no-op rename: %d %s", rec.Code, rec.Body.String())
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
-	if got.Name != "ren-c" || got.Versions != 1 {
+	if got.Name != "ren-c" || got.Steps != "# s\necho hi\n" {
 		t.Fatalf("no-op result = %+v", got)
 	}
 }

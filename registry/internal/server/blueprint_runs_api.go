@@ -124,6 +124,8 @@ func writeRunAck(w http.ResponseWriter, opID, runID int64, state string, resourc
 }
 
 type profileRunCreateBody struct {
+	ProfileID int64 `json:"profile_id"`
+	// ProfileVersionID is the legacy alias: resolved to its ProfileID.
 	ProfileVersionID int64                      `json:"profile_version_id"`
 	Entry            string                     `json:"entry"`
 	ResourceID       *int64                     `json:"resource_id"`
@@ -158,10 +160,25 @@ func (r *Registry) handleProfileRunCreate(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	// Validate before any mutation.
-	pv, err := r.control.ProfileVersionByNumericID(body.ProfileVersionID)
+	// Resolve the profile identity: profile_id is authoritative; the legacy
+	// profile_version_id only tells us which profile it belongs to. The single
+	// content row of that profile is what gets pinned.
+	profileID := body.ProfileID
+	if profileID == 0 && body.ProfileVersionID > 0 {
+		row, err := r.control.ProfileVersionByNumericID(body.ProfileVersionID)
+		if err != nil {
+			controlAPIError(w, http.StatusUnprocessableEntity, "profile_invalid", "profile version is not available")
+			return
+		}
+		profileID = row.ProfileID
+	}
+	if profileID <= 0 {
+		controlAPIError(w, http.StatusUnprocessableEntity, "profile_invalid", "profile_id is required")
+		return
+	}
+	pv, err := r.control.ProfileVersion(profileID, 0)
 	if err != nil {
-		controlAPIError(w, http.StatusUnprocessableEntity, "profile_invalid", "profile version is not available")
+		controlAPIError(w, http.StatusUnprocessableEntity, "profile_invalid", "profile is not available")
 		return
 	}
 	if pv.Format != control.FormatGraph {

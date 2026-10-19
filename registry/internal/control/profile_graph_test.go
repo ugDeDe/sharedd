@@ -56,7 +56,7 @@ func TestProfileGraphVersionMigrationIdempotentAndStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// text version keeps legacy semantics
+	// text content creates the single row
 	tv, err := s.AddProfileVersion(p.ID, "# step\necho hi\n", "")
 	if err != nil {
 		t.Fatal(err)
@@ -64,44 +64,48 @@ func TestProfileGraphVersionMigrationIdempotentAndStorage(t *testing.T) {
 	if tv.Format != FormatText || tv.Version != 1 {
 		t.Fatalf("text version = %+v", tv)
 	}
-	// graph version is immutable, max+1, and resets published
+	// graph content overwrites the SAME row: no new version, no conflict
 	gv, err := s.CreateProfileVersionGraph(p.ID, `{"schema_version":1}`, 1, "deadbeef")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gv.Format != FormatGraph || gv.Version != 2 || gv.ContentHash != "deadbeef" || gv.Blueprint == "" {
+	if gv.Format != FormatGraph || gv.Version != 1 || gv.ID != tv.ID || gv.ContentHash != "deadbeef" || gv.Blueprint == "" {
 		t.Fatalf("graph version = %+v", gv)
+	}
+	if n, _ := s.CountProfileVersions(p.ID); n != 1 {
+		t.Fatalf("versions = %d, want 1 (edits are in place)", n)
 	}
 	if _, err := s.CreateProfileVersionGraph(p.ID, "", 1, "x"); err == nil {
 		t.Fatalf("empty blueprint must be rejected")
 	}
-	// numeric lookup, not latest
-	got, err := s.ProfileVersionByID(p.ID, 1)
-	if err != nil || got.Format != FormatText || got.Steps != tv.Steps {
-		t.Fatalf("version 1 lookup = %+v err=%v", got, err)
+	// writing text again restores text fields on the same row
+	tv2, err := s.AddProfileVersion(p.ID, "# step2\necho bye\n", "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	got2, err := s.AuthoredVersionFor(p.ID, 2)
-	if err != nil || got2.Format != FormatGraph || got2.Blueprint != gv.Blueprint {
-		t.Fatalf("version 2 lookup = %+v err=%v", got2, err)
+	if tv2.ID != tv.ID || tv2.Version != 1 || tv2.Format != FormatText || tv2.Steps != "# step2\necho bye\n" {
+		t.Fatalf("text rewrite = %+v", tv2)
+	}
+	gv2, err := s.CreateProfileVersionGraph(p.ID, `{"schema_version":1}`, 1, "cafebabe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gv2.ID != tv.ID || gv2.Version != 1 || gv2.ContentHash != "cafebabe" {
+		t.Fatalf("graph rewrite = %+v", gv2)
 	}
 	if _, err := s.ProfileVersionByID(p.ID, 0); err != ErrNotFound {
 		t.Fatalf("version 0 must be ErrNotFound, got %v", err)
 	}
-	// published reset by graph version
-	pp, err := s.Profile(p.ID)
-	if err != nil || pp.Published {
-		t.Fatalf("published must reset, got %+v", pp)
-	}
 	s.Close()
 
-	// Re-open must be idempotent and preserve rows.
+	// Re-open must be idempotent and preserve the row.
 	s2, err := Open(path, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s2.Close()
-	again, err := s2.AuthoredVersionFor(p.ID, 2)
-	if err != nil || again.ContentHash != "deadbeef" {
+	again, err := s2.AuthoredVersionFor(p.ID, 1)
+	if err != nil || again.ContentHash != "cafebabe" {
 		t.Fatalf("after reopen = %+v err=%v", again, err)
 	}
 	// third open too (idempotent migrations)

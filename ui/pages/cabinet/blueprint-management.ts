@@ -1,7 +1,7 @@
 import { api } from "./api";
-import type { APIError, CloudResource, ManagementBody, ManagementPolicy, ProfileVersion } from "./api";
+import type { APIError, CloudResource, ManagementBody, ManagementPolicy, Profile } from "./api";
 import { BEGET_GATE, bytes, runtimeGate } from "./blueprint-model";
-import { mountInstance, mountVersionPicker } from "./blueprint-instance";
+import { mountInstance, mountProfilePicker } from "./blueprint-instance";
 import type { InstanceForm } from "./blueprint-instance";
 
 export function mountBlueprintManagement(
@@ -15,7 +15,7 @@ export function mountBlueprintManagement(
   root.dataset.mounted = nodeID;
   let current = initial,
     mode = initial.mode,
-    version: ProfileVersion | null = null,
+    selected: Profile | null = null,
     instance: InstanceForm | null = null,
     busy = false,
     uncertain = false;
@@ -23,11 +23,11 @@ export function mountBlueprintManagement(
      — источник префиллов, даже когда политика ещё не связана (current_resource_id
      = null). PUT management свяжет его автоматически (backend-компаньон). */
   const bound = (): CloudResource | null => resource;
-  root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound()!.id}">#${bound()!.id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый PK версии: ${initial.profile_version_id ?? "—"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
+  root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound()!.id}">#${bound()!.id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? (initial.profile_id ? `#${initial.profile_id}` : "назначен") : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
     <form><fieldset><legend>Режим управления</legend><label class="check"><input type="radio" name="blueprint-mode" value="manual"${mode === "manual" ? " checked" : ""}><span class="box"></span>Ручной</label><label class="check"><input type="radio" name="blueprint-mode" value="profile"${mode === "profile" ? " checked" : ""}><span class="box"></span>Профильный</label></fieldset>
     <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-inputs></div>
     <label class="check"><input type="checkbox" data-current-ban${initial.process_current_ban && initial.mode === "profile" ? " checked" : ""}><span class="box"></span>Обработать текущий эпизод блокировки</label><p class="help">По умолчанию выключено при новом включении. Разрешает действие сейчас для текущего эпизода; прошлые не переигрываются.</p>
-    <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этой версии при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
+    <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этого профиля при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
     <div class="banner bad" role="alert" id="bp-policy-error" hidden></div><div class="blueprint-toolbar"><button class="btn primary" type="submit">Сохранить режим</button><button class="btn" type="button" data-reload-policy>Обновить GET политики</button></div></form>`;
   const profile = root.querySelector<HTMLElement>("[data-policy-profile]")!,
     note = root.querySelector<HTMLElement>("[data-mode-note]")!,
@@ -47,8 +47,8 @@ export function mountBlueprintManagement(
     note.textContent =
       mode === "manual"
         ? "Ручной режим не разрешает автоматическую покупку при бане. Ресурсы не удаляются."
-        : "Профильный режим разрешает действия выбранной версии при новых блокировках, включая платную замену VPS. Обработка текущего эпизода может действовать сразу.";
-    const graph = version?.blueprint;
+        : "Профильный режим разрешает действия выбранного профиля при новых блокировках, включая платную замену VPS. Обработка текущего эпизода может действовать сразу.";
+    const graph = selected?.blueprint;
     const res = bound();
     /* Блокирует только реально недостающее: нет ресурса (нечего автоматизировать),
        beget, не загружен graph или runtime-гейт. Связь с ресурсом — не блокер:
@@ -58,19 +58,19 @@ export function mountBlueprintManagement(
       : res.provider === "beget"
         ? BEGET_GATE
         : !graph
-          ? "Загрузите числовую версию graph-профиля и разрешите её действия явно."
+          ? "Выберите graph-профиль и разрешите его действия явно."
           : runtimeGate(graph);
-    const textPicked = !!instance?.installedTextVersion?.();
+    const textPicked = !!instance?.installedTextProfile?.();
     if (mode === "profile" && !reason && graph)
       gate.innerHTML = `Чек-лист · Подключение: из ресурса #${res!.connection_id} ✓ · Конфигурация: ${
         root.querySelector<HTMLInputElement>("[data-config]")?.value
           ? "из формы ✓"
           : "заполните параметры VPS в форме"
-      } · Профиль установки: ${textPicked ? "выбран ✓" : "выберите текстовую версию"}`;
+      } · Профиль установки: ${textPicked ? "выбран ✓" : "выберите текстовый профиль"}`;
     else
       gate.textContent =
         reason ||
-        "Nodehost · версия разрешена для настройки. Сохранение режима может разрешить платные действия при бане.";
+        "Nodehost · профиль разрешён для настройки. Сохранение режима может разрешить платные действия при бане.";
     submit.textContent = mode === "profile" ? "Включить автоматизацию" : "Сохранить ручной режим";
     submit.disabled =
       busy || uncertain || (mode === "profile" && (!!reason || !textPicked || !consent.checked));
@@ -88,20 +88,18 @@ export function mountBlueprintManagement(
       update();
     };
   });
-  mountVersionPicker(root.querySelector<HTMLElement>("[data-policy-picker]")!, "graph", (v) => {
-    version = v;
+  mountProfilePicker(root.querySelector<HTMLElement>("[data-policy-picker]")!, "graph", (p) => {
+    selected = p;
     consent.checked = false;
     ban.checked =
-      v?.profile_version_id === current.profile_version_id && current.mode === "profile"
-        ? current.process_current_ban
-        : false;
+      p?.id === current.profile_id && current.mode === "profile" ? current.process_current_ban : false;
     const inputs = root.querySelector<HTMLElement>("[data-policy-inputs]")!;
     inputs.replaceChildren();
     /* Префилл: сохранённые inputs политики приоритетны; connection_id из ресурса
        узла (найден по node_id), даже когда политика ещё не связана. */
-    instance = v?.blueprint
-      ? mountInstance(inputs, v.blueprint, true, {
-          ...(v.profile_version_id === current.profile_version_id ? current.inputs : {}),
+    instance = p?.blueprint
+      ? mountInstance(inputs, p.blueprint, true, {
+          ...(p.id === current.profile_id ? current.inputs : {}),
           connection_id: bound()?.connection_id,
         })
       : null;
@@ -144,12 +142,12 @@ export function mountBlueprintManagement(
     let body: ManagementBody;
     try {
       if (mode === "profile") {
-        if (!version?.blueprint || !instance || !consent.checked || !bound() || bound()!.provider !== "nodehost")
-          throw new Error("Загрузите graph-версию Nodehost, проверьте подключение и подтвердите разрешение действий.");
+        if (!selected?.blueprint || !instance || !consent.checked || !bound() || bound()!.provider !== "nodehost")
+          throw new Error("Выберите graph-профиль Nodehost, проверьте подключение и подтвердите разрешение действий.");
         const values = instance.collect();
         body = {
           mode,
-          profile_version_id: version.profile_version_id,
+          profile_id: selected.id,
           inputs: values.inputs,
           process_current_ban: ban.checked,
           expected_revision: current.revision,

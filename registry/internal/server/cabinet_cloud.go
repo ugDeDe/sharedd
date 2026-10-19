@@ -746,7 +746,9 @@ func (r *Registry) handleCloudInstall(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	var body struct {
-		ProfileID        *int64          `json:"profile_id"`
+		ProfileID int64 `json:"profile_id"`
+		// ProfileVersionID is the legacy alias: only used to resolve ProfileID
+		// when profile_id is absent.
 		ProfileVersionID json.RawMessage `json:"profile_version_id"`
 		Vars             map[string]any  `json:"vars"`
 	}
@@ -783,33 +785,26 @@ func (r *Registry) handleCloudInstall(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	var pv control.ProfileVersion
-	var err error
-	if len(body.ProfileVersionID) != 0 {
-		// RawMessage distinguishes omission from null/zero: an explicitly
-		// invalid selection must never fall back to a default installation.
+	// Resolve the profile ID. profile_id is authoritative; profile_version_id is
+	// accepted only as a legacy alias when profile_id is absent.
+	profileID := body.ProfileID
+	if profileID == 0 && len(body.ProfileVersionID) != 0 {
 		var versionID int64
 		if json.Unmarshal(body.ProfileVersionID, &versionID) != nil || versionID <= 0 {
 			controlAPIError(w, http.StatusUnprocessableEntity, "profile_invalid", "profile_version_id must be a positive version-row ID")
 			return
 		}
-		pv, err = r.control.ProfileVersionByNumericID(versionID)
-		if err == nil {
-			// Reuse existing ownership/publication and feature-flag gates;
-			// discard the latest row, keeping the explicitly selected version.
-			_, err = r.selectableProfileVersion(u, pv.ProfileID)
-		}
-		if err == nil && body.ProfileID != nil && *body.ProfileID != pv.ProfileID {
-			controlAPIError(w, http.StatusBadRequest, "profile_mismatch", "profile_id does not match profile_version_id")
+		row, rerr := r.control.ProfileVersionByNumericID(versionID)
+		if rerr != nil {
+			writeProfileSelectErr(w, rerr)
 			return
 		}
-	} else {
-		effectiveProfile := existing.ProfileID
-		if body.ProfileID != nil && *body.ProfileID != 0 {
-			effectiveProfile = *body.ProfileID
-		}
-		pv, err = r.selectableProfileVersion(u, effectiveProfile)
+		profileID = row.ProfileID
 	}
+	if profileID == 0 {
+		profileID = existing.ProfileID
+	}
+	pv, err := r.selectableProfileVersion(u, profileID)
 	if err != nil {
 		logProfileControlErr("cloud.install.select_profile", err)
 		writeProfileSelectErr(w, err)
@@ -1499,7 +1494,9 @@ func (r *Registry) handleNodeManagementPut(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	var body struct {
-		Mode              string                     `json:"mode"`
+		Mode string `json:"mode"`
+		// ProfileID is authoritative; ProfileVersionID is the legacy alias.
+		ProfileID         int64                      `json:"profile_id"`
 		ProfileVersionID  int64                      `json:"profile_version_id"`
 		Inputs            map[string]json.RawMessage `json:"inputs"`
 		ProcessCurrentBan bool                       `json:"process_current_ban"`
@@ -1533,10 +1530,24 @@ func (r *Registry) handleNodeManagementPut(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// 1. Pinned version exists, is a graph, and is own or published.
-	pv, err := r.control.ProfileVersionByNumericID(body.ProfileVersionID)
+	// 1. Resolve the profile ID (legacy version alias allowed), then use its
+	// single content row. Policies still reference a row internally.
+	profileID := body.ProfileID
+	if profileID == 0 && body.ProfileVersionID > 0 {
+		row, err := r.control.ProfileVersionByNumericID(body.ProfileVersionID)
+		if err != nil {
+			controlAPIError(w, http.StatusUnprocessableEntity, "profile_incompatible", "profile version is not available")
+			return
+		}
+		profileID = row.ProfileID
+	}
+	if profileID <= 0 {
+		controlAPIError(w, http.StatusUnprocessableEntity, "profile_incompatible", "profile_id is required")
+		return
+	}
+	pv, err := r.control.ProfileVersion(profileID, 0)
 	if err != nil {
-		controlAPIError(w, http.StatusUnprocessableEntity, "profile_incompatible", "profile version is not available")
+		controlAPIError(w, http.StatusUnprocessableEntity, "profile_incompatible", "profile is not available")
 		return
 	}
 	if pv.Format != control.FormatGraph {

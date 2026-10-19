@@ -17,12 +17,15 @@ import (
 )
 
 type fleetCreateBody struct {
-	ConnectionID                 int64                   `json:"connection_id"`
-	Name                         string                  `json:"name"`
-	Count                        int                     `json:"count"`
-	Configuration                *nodehost.CreateRequest `json:"configuration"`
-	InstallationProfileVersionID int64                   `json:"installation_profile_version_id"`
-	AutoReplace                  bool                    `json:"auto_replace"`
+	ConnectionID  int64                   `json:"connection_id"`
+	Name          string                  `json:"name"`
+	Count         int                     `json:"count"`
+	Configuration *nodehost.CreateRequest `json:"configuration"`
+	// InstallationProfileID is authoritative. The legacy
+	// installation_profile_version_id is resolved to its ProfileID.
+	InstallationProfileID        int64 `json:"installation_profile_id"`
+	InstallationProfileVersionID int64 `json:"installation_profile_version_id"`
+	AutoReplace                  bool  `json:"auto_replace"`
 }
 
 func (r *Registry) mountFleets(mux *http.ServeMux) {
@@ -52,16 +55,13 @@ func fleetLabels(name string, count int) ([]string, bool) {
 	return labels, true
 }
 
-// fleetProfileVersion — exact version row, text format, own or published.
-func (r *Registry) fleetProfileVersion(u control.User, id int64) (control.ProfileVersion, error) {
-	if id <= 0 {
+// fleetProfileVersion — single content row of an installable text profile,
+// own or published.
+func (r *Registry) fleetProfileVersion(u control.User, profileID int64) (control.ProfileVersion, error) {
+	if profileID <= 0 {
 		return control.ProfileVersion{}, control.ErrValidation
 	}
-	pv, err := r.control.ProfileVersionByNumericID(id)
-	if err != nil {
-		return control.ProfileVersion{}, err
-	}
-	p, err := r.control.Profile(pv.ProfileID)
+	p, err := r.control.Profile(profileID)
 	if err != nil {
 		return control.ProfileVersion{}, err
 	}
@@ -70,6 +70,10 @@ func (r *Registry) fleetProfileVersion(u control.User, id int64) (control.Profil
 	}
 	if !p.Published && !r.userProfilesEnabled() {
 		return control.ProfileVersion{}, errUserProfilesDisabled
+	}
+	pv, err := r.control.ProfileVersion(profileID, 0)
+	if err != nil {
+		return control.ProfileVersion{}, err
 	}
 	if pv.Format != "" && pv.Format != control.FormatText {
 		return control.ProfileVersion{}, control.ErrValidation
@@ -132,7 +136,16 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 		controlAPIError(w, http.StatusNotImplemented, "not_implemented", "beget fleets are not implemented")
 		return
 	}
-	pv, err := r.fleetProfileVersion(u, body.InstallationProfileVersionID)
+	profileID := body.InstallationProfileID
+	if profileID == 0 && body.InstallationProfileVersionID > 0 {
+		row, err := r.control.ProfileVersionByNumericID(body.InstallationProfileVersionID)
+		if err != nil {
+			writeFleetProfileErr(w, err)
+			return
+		}
+		profileID = row.ProfileID
+	}
+	pv, err := r.fleetProfileVersion(u, profileID)
 	if err != nil {
 		writeFleetProfileErr(w, err)
 		return
@@ -160,6 +173,8 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 
 	f, created, err := r.control.CreateFleet(control.Fleet{
 		UserID: u.ID, ConnectionID: conn.ID, Count: body.Count, AutoReplace: body.AutoReplace,
+		// With in-place edits the content row ID is stable, so it identifies
+		// the profile for the fleet worker.
 		ProfileVersionID: pv.ID, ConfigurationJSON: string(cfgJSON), FleetKey: idemKey,
 		State: control.FleetRunning,
 	}, labels)

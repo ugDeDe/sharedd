@@ -8,6 +8,7 @@ package server
 // Отключаемо флагом user_profiles_enabled.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -219,8 +220,8 @@ func (r *Registry) handleMeUpdateProfile(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	graph := body.Format != nil && *body.Format == control.FormatGraph
-	// Validate the graph and enforce CAS BEFORE any mutation (rename/version
-	// append), so an invalid or stale edit leaves the profile untouched (F3/F1).
+	// expected_version is accepted (old clients) and ignored: content is a
+	// single row edited in place, so there is nothing to compare.
 	var draft graphVersionDraft
 	if graph {
 		if len(body.Blueprint) == 0 {
@@ -230,17 +231,6 @@ func (r *Registry) handleMeUpdateProfile(w http.ResponseWriter, req *http.Reques
 		ok := false
 		if draft, ok = prepareGraphVersion(w, body.Blueprint, "user.profiles.update"); !ok {
 			return
-		}
-		if body.ExpectedVersion != nil {
-			cur, err := r.currentGraphVersion(id)
-			if err != nil {
-				writeControlErr(w, err, "user.profiles.update.cas")
-				return
-			}
-			if cur != *body.ExpectedVersion {
-				controlAPIError(w, http.StatusConflict, "revision_conflict", "profile was modified concurrently")
-				return
-			}
 		}
 	}
 	// Переименование СВОЕЙ копии — метаданные: версию НЕ создаёт, published не
@@ -347,7 +337,14 @@ func (r *Registry) handleMeProfiles(w http.ResponseWriter, req *http.Request) {
 			writeControlErr(w, err, "user.profiles.list.published_version")
 			return
 		}
-		pj.VarsSchema = v.VarsSchema
+		pj.VarsSchema, pj.Steps = v.VarsSchema, v.Steps
+		pj.Format = v.Format
+		if pj.Format == "" {
+			pj.Format = control.FormatText
+		}
+		if pj.Format == control.FormatGraph && json.Valid([]byte(v.Blueprint)) {
+			pj.Blueprint = json.RawMessage(v.Blueprint)
+		}
 		pubViews = append(pubViews, pj)
 	}
 	writeCabinetJSON(w, http.StatusOK, map[string]any{

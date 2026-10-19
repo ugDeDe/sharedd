@@ -137,11 +137,6 @@
                 <select id="ap-prof"><option value="">Загрузка профилей…</option></select>
                 <span class="help" id="ap-prof-help">Только текстовые профили: опубликованные и ваши.</span>
               </div>
-              <div class="field">
-                <label for="ap-ver">Версия профиля</label>
-                <input id="ap-ver" type="number" inputmode="numeric" min="1" step="1" placeholder="Номер версии" disabled>
-                <span class="help">Для своего профиля подставляется последняя версия; для опубликованного укажите номер.</span>
-              </div>
             </div>
             <label class="check" style="margin-top:10px">
               <input type="checkbox" id="ap-auto" checked aria-describedby="ap-auto-help">
@@ -288,7 +283,7 @@
         <div class="node-list" id="profiles-published" hidden></div>
         <div class="card-body blueprint-toolbar"><a class="btn" href="#/profiles/editor/new?starter=nodehost">Nodehost · замена VPS</a><a class="btn" href="#/profiles/editor/new?starter=beget">Beget · только проектирование</a></div>
         <form id="profiles-open-run" class="card-body blueprint-toolbar"><label for="profiles-run-id">Открыть запуск по известному ID</label><input id="profiles-run-id" type="number" min="1" step="1" required class="blueprint-version-number"><button class="btn" type="submit">Открыть запуск</button><span class="help">Откройте по ID или после явного запуска профиля. Общего списка запусков API не предоставляет.</span></form>
-        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Правка шагов создаёт новую версию — история не перезаписывается. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
+        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Сохранение обновляет профиль на месте. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
       </section>
     </section>
 
@@ -442,10 +437,6 @@
                   <label for="cr-prof">Профиль</label>
                   <select id="cr-prof"><option value="">— без профиля —</option></select>
                   <span class="help" id="cr-prof-help" aria-live="polite">Можно настроить и позже — на карточке ресурса.</span>
-                </div>
-                <div class="field">
-                  <label for="cr-ver">Версия</label>
-                  <select id="cr-ver" disabled><option value="">Сначала профиль</option></select>
                 </div>
               </div>
               <label class="check" style="margin-top:10px"><input type="checkbox" id="cr-instant" checked disabled><span class="box"></span> Установить сразу после создания</label>

@@ -19,18 +19,19 @@ import (
 // maxStepsBytes — потолок размера текста шагов (addendum §3: ≤ 64 KiB).
 const maxStepsBytes = 64 << 10
 
-// profileAdminJSON — профиль с последней версией (steps/vars_schema).
+// profileAdminJSON — профиль с единственной строкой контента (steps/vars_schema
+// или blueprint). Версий в API больше нет.
 type profileAdminJSON struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Published   bool   `json:"published"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
-	Steps       string `json:"steps,omitempty"`
-	VarsSchema  string `json:"vars_schema,omitempty"`
-	// Versions — число версий профиля (addendum §7.5).
-	Versions int `json:"versions"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Published   bool            `json:"published"`
+	CreatedAt   int64           `json:"created_at"`
+	UpdatedAt   int64           `json:"updated_at"`
+	Steps       string          `json:"steps,omitempty"`
+	VarsSchema  string          `json:"vars_schema,omitempty"`
+	Format      string          `json:"format,omitempty"`
+	Blueprint   json.RawMessage `json:"blueprint,omitempty"`
 }
 
 func (r *Registry) profileAdminView(p control.Profile) (profileAdminJSON, error) {
@@ -38,15 +39,20 @@ func (r *Registry) profileAdminView(p control.Profile) (profileAdminJSON, error)
 		ID: p.ID, Name: p.Name, Description: p.Description, Published: p.Published,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
-	if v, err := r.control.ProfileVersion(p.ID, 0); err == nil {
-		out.Steps, out.VarsSchema = v.Steps, v.VarsSchema
-	} else if !errors.Is(err, control.ErrNotFound) {
-		return out, fmt.Errorf("read latest profile version: %w", err)
+	v, err := r.control.ProfileVersion(p.ID, 0)
+	if err != nil {
+		if !errors.Is(err, control.ErrNotFound) {
+			return out, fmt.Errorf("read latest profile version: %w", err)
+		}
+		return out, nil
 	}
-	if n, err := r.control.CountProfileVersions(p.ID); err == nil {
-		out.Versions = n
-	} else {
-		return out, fmt.Errorf("count profile versions: %w", err)
+	out.Steps, out.VarsSchema = v.Steps, v.VarsSchema
+	out.Format = v.Format
+	if out.Format == "" {
+		out.Format = control.FormatText
+	}
+	if out.Format == control.FormatGraph && json.Valid([]byte(v.Blueprint)) {
+		out.Blueprint = json.RawMessage(v.Blueprint)
 	}
 	return out, nil
 }
@@ -70,9 +76,8 @@ type profilePayload struct {
 	VarsSchema  *string         `json:"vars_schema"`
 	Format      *string         `json:"format"`
 	Blueprint   json.RawMessage `json:"blueprint"`
-	// ExpectedVersion — graph PUT CAS (03 §6): when set it must equal the
-	// current max version, else 409 revision_conflict. Absent → legacy text
-	// callers keep working unchanged.
+	// ExpectedVersion accepted for old clients and ignored: profile content is a
+	// single row edited in place, so there is no revision to compare.
 	ExpectedVersion *int `json:"expected_version"`
 }
 

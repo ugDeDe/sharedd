@@ -123,10 +123,10 @@ func TestGraphProfileCreateVersionAndOwnership(t *testing.T) {
 		t.Fatalf("unexpected version DTO: %s", rec.Body.String())
 	}
 
-	// latest is not acceptable
+	// the version segment is ignored: any value returns the current row.
 	rec = cabinetCall(t, r, http.MethodGet, fmt.Sprintf("/api/me/profiles/%d/versions/latest", created.ID), cookieMap(sess, csrf), "", "")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("latest must 404, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("version segment must be ignored, got %d %s", rec.Code, rec.Body.String())
 	}
 	// bob cannot read alice's unpublished version
 	bsess, bcsrf := cabinetLogin(t, r, "bob", "password-123")
@@ -158,8 +158,8 @@ func TestGraphProfileRejectsConflictAndInvalid(t *testing.T) {
 	}
 }
 
-// F1: graph PUT CAS via expected_version (03 §6).
-func TestGraphProfileUpdateCAS(t *testing.T) {
+// F1: expected_version is accepted but ignored; content is overwritten in place.
+func TestGraphProfileUpdateIgnoresExpectedVersion(t *testing.T) {
 	r, _ := newCabinetRegistry(t)
 	cabinetUser(t, r, "alice", 5)
 	sess, csrf := cabinetLogin(t, r, "alice", "password-123")
@@ -175,30 +175,18 @@ func TestGraphProfileUpdateCAS(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 	path := fmt.Sprintf("/api/me/profiles/%d", created.ID)
 
-	// correct expected_version:1 → 200 and a new immutable version
 	put := fmt.Sprintf(`{"format":"graph","expected_version":1,"blueprint":%s}`, loadTemplate(t, "nodehost_replacement.json"))
 	rec = cabinetCall(t, r, http.MethodPut, path, cookieMap(sess, csrf), csrf, put)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("cas ok: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("put: %d %s", rec.Code, rec.Body.String())
 	}
-	if n, _ := r.control.CountProfileVersions(created.ID); n != 2 {
-		t.Fatalf("version count = %d, want 2", n)
-	}
-
-	// stale expected_version:1 → 409 and no new version
+	// Stale expected_version must not 409: the same single row is updated.
 	rec = cabinetCall(t, r, http.MethodPut, path, cookieMap(sess, csrf), csrf, put)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("stale cas: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second put: %d %s", rec.Code, rec.Body.String())
 	}
-	var conflict struct {
-		Error string `json:"error"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &conflict)
-	if conflict.Error != "revision_conflict" {
-		t.Fatalf("want revision_conflict, got %q", conflict.Error)
-	}
-	if n, _ := r.control.CountProfileVersions(created.ID); n != 2 {
-		t.Fatalf("stale cas appended a version: %d", n)
+	if n, _ := r.control.CountProfileVersions(created.ID); n != 1 {
+		t.Fatalf("version count = %d, want 1", n)
 	}
 }
 
@@ -280,7 +268,7 @@ func TestTextProfileUpdateUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Format != "text" || v.Version != 2 || v.Steps != "# s\necho two\n" {
+	if v.Format != "text" || v.Version != 1 || v.Steps != "# s\necho two\n" {
 		t.Fatalf("text version = %+v", v)
 	}
 }

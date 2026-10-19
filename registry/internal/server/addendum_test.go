@@ -22,7 +22,7 @@ func jsonBody(t *testing.T, v any) string {
 	return string(b)
 }
 
-// §5.3 — админ CRUD + версии; правка шагов создаёт новую версию.
+// §5.3 — админ CRUD; правка шагов перезаписывает единственную строку.
 func TestAdminProfilesCRUDAndVersions(t *testing.T) {
 	r, _ := newCabinetRegistry(t)
 	r.cfg.Panel.Token = testPanelToken
@@ -46,24 +46,22 @@ func TestAdminProfilesCRUDAndVersions(t *testing.T) {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// правка шагов → НОВАЯ версия 2 (история не перезаписана).
+	// правка шагов перезаписывает ту же строку; версий больше нет.
 	updBody := jsonBody(t, map[string]any{"steps": "# two\necho 2\n"})
 	rec = adminCall(t, r, http.MethodPut, fmt.Sprintf("/panel/api/admin/profiles/%d", created.ID), testPanelToken, updBody)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update profile: %d %s", rec.Code, rec.Body.String())
 	}
-	v1, err := r.control.ProfileVersion(created.ID, 1)
-	if err != nil || v1.Steps == "" {
-		t.Fatalf("version 1 must remain: %+v err=%v", v1, err)
+	v, err := r.control.ProfileVersion(created.ID, 0)
+	if err != nil || !strings.Contains(v.Steps, "echo 2") {
+		t.Fatalf("current row = %+v err=%v", v, err)
 	}
-	v2, err := r.control.ProfileVersion(created.ID, 2)
-	if err != nil || !strings.Contains(v2.Steps, "echo 2") {
-		t.Fatalf("version 2 = %+v err=%v", v2, err)
+	if n, _ := r.control.CountProfileVersions(created.ID); n != 1 {
+		t.Fatalf("versions = %d, want 1", n)
 	}
-	// правка сбрасывает published (оператор публикует явно).
 	p, _ := r.control.Profile(created.ID)
-	if p.Published {
-		t.Fatal("editing a profile must unpublish it")
+	if !p.Published {
+		t.Fatal("editing in place must keep published")
 	}
 
 	// пустой текст шагов отклоняется.

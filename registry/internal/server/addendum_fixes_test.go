@@ -220,8 +220,8 @@ func TestCabinetRetryInstallPreservesProfile(t *testing.T) {
 	}
 }
 
-// E — admin JSON профиля отдаёт число версий (§7.5).
-func TestAdminProfilesExposeVersionCount(t *testing.T) {
+// E — admin PUT перезаписывает единственную строку контента (версий нет).
+func TestAdminProfilePutOverwritesInPlace(t *testing.T) {
 	r, _ := newCabinetRegistry(t)
 	r.cfg.Panel.Token = testPanelToken
 	createBody := jsonBody(t, map[string]any{
@@ -233,8 +233,8 @@ func TestAdminProfilesExposeVersionCount(t *testing.T) {
 	}
 	var created profileAdminJSON
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.Versions != 1 {
-		t.Fatalf("versions = %d, want 1", created.Versions)
+	if created.Steps != "# s\necho hi\n" {
+		t.Fatalf("created steps = %q", created.Steps)
 	}
 	upd := jsonBody(t, map[string]any{"steps": "# 2\necho 2\n"})
 	rec = adminCall(t, r, http.MethodPut, fmt.Sprintf("/panel/api/admin/profiles/%d", created.ID), testPanelToken, upd)
@@ -243,12 +243,14 @@ func TestAdminProfilesExposeVersionCount(t *testing.T) {
 	}
 	var updated profileAdminJSON
 	_ = json.Unmarshal(rec.Body.Bytes(), &updated)
-	if updated.Versions != 2 {
-		t.Fatalf("versions after edit = %d, want 2", updated.Versions)
+	if updated.ID != created.ID || updated.Steps != "# 2\necho 2\n" {
+		t.Fatalf("update must overwrite the same profile: %+v", updated)
 	}
-	// список тоже отдаёт число версий.
+	if n, _ := r.control.CountProfileVersions(created.ID); n != 1 {
+		t.Fatalf("versions = %d, want 1", n)
+	}
 	rec = adminCall(t, r, http.MethodGet, "/panel/api/admin/profiles", testPanelToken, "")
-	if !strings.Contains(rec.Body.String(), `"versions":2`) {
-		t.Fatalf("list must expose versions: %s", rec.Body.String())
+	if strings.Contains(rec.Body.String(), `"versions"`) {
+		t.Fatalf("profile JSON must not expose versioning: %s", rec.Body.String())
 	}
 }

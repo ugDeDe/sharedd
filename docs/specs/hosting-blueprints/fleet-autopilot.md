@@ -33,7 +33,7 @@ failures are `404 not_found`.
     "period": "1m",
     "networkSpeed": "..."
   },
-  "installation_profile_version_id": 41,
+  "installation_profile_id": 6,
   "auto_replace": true
 }
 ```
@@ -47,8 +47,10 @@ Validation:
 - `count` is `1..20`.
 - `configuration` follows the same rules as cloud-resource create
   (`validCloudConfig`), including a non-empty provider `name`.
-- `installation_profile_version_id` is an existing `profile_versions.id`
-  (`format` empty/text), own or published.
+- `installation_profile_id` is the installable profile, own or published.
+  Versioning is gone (one content row per profile). The legacy
+  `installation_profile_version_id` is still accepted as an alias and is
+  resolved to its parent profile; its content is not pinned separately.
 - Item labels are `name-01 .. name-NN` (zero-padded). `name` defaults to
   `fleet` and is capped at 7 characters so every label passes the node-id
   NAME prefix rule (`1..10` characters before the generated hash).
@@ -135,14 +137,14 @@ processed sequentially:
    `fleet:<fleet_id>:<idx>`, so a replay can never issue a second paid Create.
 2. **Wait** for the resource to become `ready` (`cloudCreateBudget`).
 3. **Install** through the same helper as `POST .../install`
-   (`startCloudInstall`) with the exact `profile_version_id` (no default
+   (`startCloudInstall`) with the profile's current content row (no default
    substitution), expected node id and claim-on-first-register secret reuse.
 4. **Wait** for the install operation (`done`/`failed`, bounded by the
    provision budget). Transient install failures get at most one retry.
 5. **Policy**:
    - `auto_replace=true`: enable node management `mode=profile` with the
      `system-nodehost-replacement` version and inputs
-     `{connection_id, configuration_ref, installation_profile_version_id}`,
+     `{connection_id, configuration_ref, installation_profile_id}`,
      `process_current_ban=false`.
    - `auto_replace=false`: if a policy row exists and is not `manual`, switch
      it to `manual`. No policy row is created (default is manual).
@@ -248,11 +250,10 @@ gofmt -l internal
 
 Состав формы (без других кнопок, кроме отправки): проверенное подключение
 Nodehost, количество 1–20, локация, CPU (фильтруется локацией), ОС, тип диска,
-ядра/ОЗУ/диск с лимитами каталога, период, необязательная скорость сети,
-текстовый профиль установки (свой или опубликованный) и числовой номер
-версии. Номер версии резолвится в `profile_version_id` через
-`GET /api/me/profiles/{id}/versions/{version}`; граф в автопилот не
-принимается. Чекбокс «Заменять ноды при бане автоматически» включён по
+ядра/ОЗУ/диск с лимитами каталога, период, необязательная скорость сети и
+текстовый профиль установки (свой или опубликованный). В запрос уходит
+`profile_id`: у профиля одно содержимое, номер версии не выбирается. Граф в
+автопилот не принимается. Чекбокс «Заменять ноды при бане автоматически» включён по
 умолчанию и отправляется как `auto_replace`; его подпись честно объясняет:
 ON — при бане платная замена создаётся ДО удаления старой, OFF — ноды живут,
 замена вручную и бан сам по себе ничего не покупает.

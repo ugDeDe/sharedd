@@ -584,10 +584,13 @@ func (r *Registry) handleMeAuthkeyDelete(w http.ResponseWriter, req *http.Reques
 }
 
 type profileJSON struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	VarsSchema  string `json:"vars_schema,omitempty"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Steps       string          `json:"steps,omitempty"`
+	VarsSchema  string          `json:"vars_schema,omitempty"`
+	Format      string          `json:"format,omitempty"`
+	Blueprint   json.RawMessage `json:"blueprint,omitempty"`
 }
 
 // ── DELETE /api/me/nodes/{node_id} ────────────────────────────────

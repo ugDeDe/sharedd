@@ -16,7 +16,7 @@ import type { Authkey, BegetLink, CloudReplaceBody, CloudResource, Configuration
 import { openNodeDetail, closeNodeDetail, pollNodeDetail } from "./node-detail";
 import { canLeaveBlueprint, isBlueprintRoute, leaveBlueprintEditor, openBlueprintEditor } from "./blueprint-editor";
 import { closeBlueprintRun, leaveRunReview, openBlueprintRun } from "./blueprint-runs";
-import { hydrateOwn, knownVersion, positiveID, readVersion, textProfiles } from "./blueprint-model";
+import { positiveID, textProfiles } from "./blueprint-model";
 
 /* ── состояние ───────────────────────────────────────────────────────── */
 let ME: Me | null = null;
@@ -591,7 +591,7 @@ function openInstall(s: ManualServer, mode: InstallMode): void {
      sel.disabled = false;
       sel.dataset.ready = String(opts.length > 0);
      delete sel.dataset.loadError;
-      $("sv-profile-status").textContent = opts.length ? "Только подтверждённые текстовые профили. Published без последнего номера здесь не исполняются; сделайте текстовую копию по известной версии в «Мои профили»." : "Нет подтверждённых текстовых профилей. В «Мои профили» откройте опубликованный профиль по известному номеру и сохраните текстовую копию.";
+      $("sv-profile-status").textContent = opts.length ? "Текстовые профили: опубликованные и ваши." : "Нет текстовых профилей — создайте их в «Мои профили».";
      // Переустановка предвыбирает текущий профиль (значение 0 = «оставить»);
      // если текущий и есть штатный — предвыбираем его реальный id.
      const preselect = isReinstall && defaultId !== curId ? 0 : (isReinstall ? defaultId : 0);
@@ -1630,9 +1630,8 @@ let CR_CATALOG_ERR: string | null = null;
 let CR_CAT_SEQ = 0;
 let CR_EST_TIMER = 0;
 let CR_EST_SEQ = 0;
-let CR_PROF: MyProfiles | null = null;
+let CR_PROFILES: MyProfiles | null = null;
 let CR_PROF_ID = 0;
-let CR_VER_PK = 0;
 let CR_EST_LAST: EstimateResult | null = null;
 const CR_STEPS = ["Создание", "Установка", "Готово"];
 
@@ -1641,7 +1640,7 @@ interface CrBatchItem { name: string; state: CrBatchState; resId?: number; reaso
 interface CrBatchSpec {
   connID: number; count: number; name: string; hostname: string;
   conf: Omit<NodehostConfiguration, "name" | "hostname">;
-  wantsInstall: boolean; pv: number; vars: Record<string, string>;
+  wantsInstall: boolean; profileID: number; vars: Record<string, string>;
 }
 
 function toggleCrForm(open: boolean): void {
@@ -1651,7 +1650,7 @@ function toggleCrForm(open: boolean): void {
   if (open) {
     fillCrConnections();
     CR_IDEM = newIdemKey();
-    CR_VER_PK = 0; CR_PROF_ID = 0;
+    CR_PROF_ID = 0;
     renderCrSteps(-1);
     ($("cr-err") as HTMLElement).hidden = true;
     ($("cr-estimate") as HTMLElement).hidden = true;
@@ -1929,13 +1928,12 @@ function runCrEstimate(): void {
   });
 }
 
-/* Профили установки: те же textProfiles()/readVersion()/knownVersion(), что в
-   визарде и модалке установки — published + свои ТЕКСТОВЫЕ (graph отфильтрован). */
+/* Профили установки: published + свои текстовые (format приходит в профиле). */
 function loadCrProfiles(): void {
   const sel = $("cr-prof") as HTMLSelectElement;
   const help = $("cr-prof-help");
   textProfiles().then((m) => {
-    CR_PROF = m;
+    CR_PROFILES = m;
     const pub = m.published || [];
     const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
     if (!pub.length && !own.length) {
@@ -1947,23 +1945,23 @@ function loadCrProfiles(): void {
     for (const p of pub) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
     for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
     sel.innerHTML = opts.join("");
-    help.textContent = "Текстовые профили: опубликованные и ваши. Последняя версия подставится автоматически.";
+    help.textContent = "Текстовые профили: опубликованные и ваши.";
   }).catch((e: Error) => {
     help.textContent = "Не удалось загрузить профили: " + e.message;
   });
 }
 
+function textProfileByID(id: number): Profile | undefined {
+  return [...(CR_PROFILES?.published || []), ...(CR_PROFILES?.profiles || [])].find((p) => p.id === id);
+}
+
 function onCrProfileChange(): void {
   scheduleCrEstimate();
   const sel = $("cr-prof") as HTMLSelectElement;
-  const vSel = $("cr-ver") as HTMLSelectElement;
   const instant = $("cr-instant") as HTMLInputElement;
   const wrap = $("cr-inst-vars-wrap");
   CR_PROF_ID = Number(sel.value) || 0;
-  CR_VER_PK = 0;
   if (!CR_PROF_ID) {
-    vSel.disabled = true;
-    vSel.innerHTML = `<option value="">Сначала профиль</option>`;
     instant.checked = false;
     instant.disabled = true;
     wrap.hidden = true;
@@ -1971,46 +1969,9 @@ function onCrProfileChange(): void {
   }
   instant.disabled = false;
   instant.checked = true;
-  const latest = CR_PROF?.profiles.find((p) => p.id === CR_PROF_ID)?.versions || 0;
-  if (!latest) {
-    vSel.disabled = true;
-    vSel.innerHTML = `<option value="">Версии неизвестны</option>`;
-    return;
-  }
-  const opts: string[] = [];
-  for (let v = latest; v >= 1; v--) opts.push(`<option value="${v}">v${v}</option>`);
-  vSel.innerHTML = opts.join("");
-  vSel.disabled = false;
-  const cached = knownVersion(CR_PROF_ID, latest); // hydrateOwn уже скачал последнюю
-  if (cached) {
-    CR_VER_PK = cached.profile_version_id;
-    mountVars("cr-inst-vars", parseVarsSchema(cached.vars_schema));
-    ($("cr-inst-vars-wrap") as HTMLElement).hidden = false;
-  } else {
-    onCrVersionChange();
-  }
-}
-
-function onCrVersionChange(): void {
-  const vSel = $("cr-ver") as HTMLSelectElement;
-  const v = Number(vSel.value) || 0;
-  if (!CR_PROF_ID || !v) return;
-  const wrap = $("cr-inst-vars-wrap");
-  const cached = knownVersion(CR_PROF_ID, v);
-  if (cached) {
-    CR_VER_PK = cached.profile_version_id;
-    mountVars("cr-inst-vars", parseVarsSchema(cached.vars_schema));
-    wrap.hidden = false;
-    return;
-  }
-  wrap.hidden = true;
-  readVersion(CR_PROF_ID, v).then((pv) => {
-    CR_VER_PK = pv.profile_version_id;
-    mountVars("cr-inst-vars", parseVarsSchema(pv.vars_schema));
-    wrap.hidden = false;
-  }).catch((e: Error) => {
-    $("cr-prof-help").textContent = "Версия недоступна: " + e.message;
-  });
+  const p = textProfileByID(CR_PROF_ID);
+  mountVars("cr-inst-vars", parseVarsSchema(p?.vars_schema));
+  wrap.hidden = false;
 }
 
 /* ── пачка ресурсов (количество > 1) ─────────────────────────────────── */
@@ -2137,12 +2098,12 @@ async function runCrBatch(spec: CrBatchSpec): Promise<void> {
     renderCrBatch(items);
     loadResources();
   }
-  if (spec.wantsInstall && spec.pv) {
+  if (spec.wantsInstall && spec.profileID) {
     for (const item of items) {
       if (item.state !== "ready" || item.resId == null) continue;
       item.state = "installing"; renderCrBatch(items);
       try {
-        const op = await api.installCloudResource(item.resId, newIdemKey(), { profile_version_id: spec.pv, vars: spec.vars });
+        const op = await api.installCloudResource(item.resId, newIdemKey(), { profile_id: spec.profileID, vars: spec.vars });
         const ir = await waitInstallDone(op.id);
         if (ir.ok) item.state = "done";
         else { item.state = "error"; item.reason = `создан; установка: ${ir.reason || "ошибка"}`; }
@@ -2203,10 +2164,10 @@ function submitCreateResource(e: Event): void {
   for (const [bad, id, msg] of checks) {
     if (bad) { showErr(msg, id); return; }
   }
-  // Мгновенная установка: PK версии уже должен быть загружен, переменные валидны.
+  // Мгновенная установка: профиль выбран, переменные валидны.
   const instant = $("cr-instant") as HTMLInputElement;
   const wantsInstall = CR_PROF_ID > 0 && instant.checked && !instant.disabled;
-  if (wantsInstall && !CR_VER_PK) { showErr("Дождитесь загрузки версии профиля."); return; }
+  if (wantsInstall && !CR_PROF_ID) { showErr("Выберите профиль установки."); return; }
   let vars: Record<string, string> = {};
   if (wantsInstall) {
     const ed = document.querySelector<HTMLElement>("#cr-inst-vars .vars-editor");
@@ -2225,7 +2186,7 @@ function submitCreateResource(e: Event): void {
   const btn = $("cr-submit") as HTMLButtonElement;
   if (count > 1) {
     // Последовательная пачка: по одному create на элемент с собственным ключом.
-    void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, pv: CR_VER_PK, vars });
+    void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, profileID: CR_PROF_ID, vars });
     return;
   }
   const configuration: NodehostConfiguration = {
@@ -2245,14 +2206,14 @@ function submitCreateResource(e: Event): void {
         `<div class="banner info" style="margin:0"><span>Ресурс ${esc(name)}: создаётся · ожидание IP… операция #${ack.operation_id}</span></div>`;
       if (wantsInstall) {
         // Форма остаётся открытой со шагами Создание → Установка → Готово.
-        const pv = CR_VER_PK;
+        const pid = CR_PROF_ID;
         const rows = vars;
         renderCrSteps(1);
         pollResourceState(resId, ack.operation_id, name, "ready", "", () => {
           RES_PROGRESS[resId] =
             `<div class="banner info" style="margin:0"><span>Ресурс ${esc(name)} готов — установка профиля…</span></div>`;
           renderResources();
-          installCreatedResource(resId, ack.operation_id, name, pv, rows);
+          installCreatedResource(resId, ack.operation_id, name, pid, rows);
         });
       } else {
         toggleCrForm(false);
@@ -2282,8 +2243,8 @@ function submitCreateResource(e: Event): void {
 
 /* Установка сразу после создания: ошибки установки показываются на карточке
    и НЕ ломают созданный ресурс (повтор — «Установить профиль» на карточке). */
-function installCreatedResource(resId: number, _opId: number, label: string, pv: number, vars: Record<string, string>): void {
-  api.installCloudResource(resId, newIdemKey(), { profile_version_id: pv, vars })
+function installCreatedResource(resId: number, _opId: number, label: string, profileID: number, vars: Record<string, string>): void {
+  api.installCloudResource(resId, newIdemKey(), { profile_id: profileID, vars })
     .then((op) => {
       announce(`Ресурс ${label}: установка профиля запущена`);
       pollInstallOp(resId, op.id, label);
@@ -2543,14 +2504,7 @@ function doInstallRes(btn: HTMLButtonElement, r: CloudResource): void {
   const pid = Number(sel.value) || 0;
   const lbl = btn.textContent;
   btn.disabled = true; btn.textContent = "Запуск…";
-  // FROZEN install-контракт принимает PK версии профиля. Последняя версия
-  // текстового профиля уже в кэше (hydrateOwn внутри textProfiles).
-  textProfiles().then((m) => {
-    const latest = (m.profiles || []).find((x) => x.id === pid)?.versions || 0;
-    const pk = knownVersion(pid, latest)?.profile_version_id || 0;
-    if (!pk) throw new Error("Не удалось определить версию профиля.");
-    return api.installCloudResource(r.id, newIdemKey(), { profile_version_id: pk, vars });
-  }).then(() => {
+  api.installCloudResource(r.id, newIdemKey(), { profile_id: pid, vars }).then(() => {
     closeModal();
     showToast("Установка запущена");
     announce(`Ресурс ${r.label}: установка запущена`);
@@ -2742,7 +2696,6 @@ function initHosting(): void {
     renderCrNameError();
   });
   ($("cr-prof") as HTMLSelectElement).addEventListener("change", onCrProfileChange);
-  ($("cr-ver") as HTMLSelectElement).addEventListener("change", onCrVersionChange);
 }
 
 /* ═══ Автопилот: N нод одним платным заказом ═══════════════════════════
@@ -2792,7 +2745,6 @@ let AP_CAT_SEQ = 0;
 let AP_EST_TIMER = 0;
 let AP_EST_SEQ = 0;
 let AP_EST_LAST: EstimateResult | null = null;
-let AP_PROF: MyProfiles | null = null;
 let AP_FLEET: Fleet | null = null;
 let AP_POLL_ID = 0;
 let AP_POLL_TIMER = 0;
@@ -3076,54 +3028,22 @@ function apRunEstimate(): void {
 function apLoadProfiles(): void {
   const sel = $("ap-prof") as HTMLSelectElement;
   const help = $("ap-prof-help");
-  // Свои — только подтверждённо текстовые (последняя версия в кэше
-  // hydrateOwn). Опубликованные показываем все: их последняя версия не
-  // известна без номера, формат проверится при отправке.
-  api.myProfiles().then(hydrateOwn).then((m) => {
-    AP_PROF = m;
+  textProfiles().then((m) => {
     const pub = m.published || [];
-    const ownText = (m.profiles || []).filter((p) =>
-      !!p.versions && knownVersion(p.id, p.versions)?.format === "text");
-    const own = ownText.filter((p) => !pub.some((x) => x.id === p.id));
+    const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
     if (!pub.length && !own.length) {
       sel.innerHTML = `<option value="">Нет текстовых профилей</option>`;
       help.innerHTML = `Текстовых профилей нет — создайте их в разделе <a href="#/profiles">Мои профили</a>.`;
-      ($("ap-ver") as HTMLInputElement).disabled = true;
       return;
     }
     const opts = [`<option value="">Выберите профиль…</option>`];
     for (const p of pub) opts.push(`<option value="${p.id}">${esc(p.name)}</option>`);
     for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
     sel.innerHTML = opts.join("");
-    help.textContent = "Текстовые профили: опубликованные и ваши. Для опубликованного укажите номер версии.";
-    apProfileChanged();
+    help.textContent = "Текстовые профили: опубликованные и ваши.";
   }).catch((e: Error) => {
     help.textContent = "Не удалось загрузить профили: " + e.message;
   });
-}
-
-function apProfileChanged(): void {
-  const sel = $("ap-prof") as HTMLSelectElement;
-  const ver = $("ap-ver") as HTMLInputElement;
-  const pid = Number(sel.value) || 0;
-  if (!pid) {
-    ver.value = "";
-    ver.disabled = true;
-    return;
-  }
-  ver.disabled = false;
-  const own = AP_PROF?.profiles.find((p) => p.id === pid);
-  if (own?.versions) ver.value = String(own.versions);
-  else ver.value = "";
-}
-
-async function apResolveProfileVersion(pid: number, ordinal: number): Promise<number> {
-  if (!positiveID(String(pid)) || !positiveID(String(ordinal)))
-    throw new Error("Укажите положительный номер версии профиля.");
-  const pv = knownVersion(pid, ordinal) || await readVersion(pid, ordinal);
-  if (pv.format !== "text")
-    throw new Error("Выберите текстовый профиль: граф для автопилота не поддерживается.");
-  return pv.profile_version_id;
 }
 
 /* ── отправка ────────────────────────────────────────────────────────── */
@@ -3175,16 +3095,7 @@ async function apSubmit(e: Event): Promise<void> {
     apShowError(`Диск: допустимо ${lim.disk_gb.min}–${lim.disk_gb.max} ГБ.`, "ap-disk"); return;
   }
   const pid = Number(($("ap-prof") as HTMLSelectElement)?.value) || 0;
-  const ordinal = positiveID(($("ap-ver") as HTMLInputElement)?.value || "");
   if (!pid) { apShowError("Выберите профиль установки.", "ap-prof"); return; }
-  if (!ordinal) { apShowError("Укажите положительный номер версии профиля.", "ap-ver"); return; }
-  let pk = 0;
-  try {
-    pk = await apResolveProfileVersion(pid, ordinal);
-  } catch (err) {
-    apShowError((err as Error).message, "ap-ver");
-    return;
-  }
   const count = apCount();
   const period = apValue("ap-period");
   const networkSpeed = apValue("ap-net");
@@ -3198,7 +3109,7 @@ async function apSubmit(e: Event): Promise<void> {
       ...(period ? { period } : {}),
       ...(networkSpeed ? { networkSpeed } : {}),
     },
-    installation_profile_version_id: pk,
+    installation_profile_id: pid,
     auto_replace: ($("ap-auto") as HTMLInputElement).checked,
   };
   const key = newIdemKey();
@@ -3382,7 +3293,6 @@ function initAutopilot(): void {
   for (const id of ["ap-os", "ap-cpu", "ap-disktype", "ap-period", "ap-net"]) {
     ($(id) as HTMLSelectElement).addEventListener("change", apScheduleEstimate);
   }
-  ($("ap-prof") as HTMLSelectElement).addEventListener("change", apProfileChanged);
   const countEl = $("ap-count") as HTMLInputElement;
   countEl.addEventListener("input", () => {
     const v = Number(countEl.value);
@@ -3440,18 +3350,20 @@ function renderProfiles(poll = false): void {
       <div class="node-top">
         <span class="node-id mono">${esc(p.name)}</span>
         ${profBadge(p)}
-        <span class="badge">${knownVersion(p.id, p.versions || 0)?.format === "graph" ? "граф" : knownVersion(p.id, p.versions || 0)?.format === "text" ? "текст" : "формат не загружен"}</span>
+        <span class="badge">${profileFormatLabel(p)}</span>
       </div>
-      <div class="node-sub"><span>${esc(p.description || "—")}</span>
-        ${p.versions != null ? `<span class="dim"> · версий: ${p.versions}</span>` : ""}</div>
+      <div class="node-sub"><span>${esc(p.description || "—")}</span></div>
     </div>
     <div class="node-side srv-actions">
-      <label for="profile-version-${p.id}" class="help">Версия</label><input id="profile-version-${p.id}" class="blueprint-version-number" type="number" min="1" step="1" value="${p.versions || ""}" aria-label="Версия профиля ${esc(p.name)}">
       <button class="btn sm" data-pedit="${p.id}">Изменить</button>
       <button class="btn sm danger" data-pdel="${p.id}">Удалить</button>
     </div>
   </div>`).join("");
   });
+}
+
+function profileFormatLabel(p: Profile): string {
+  return p.format === "graph" ? "граф" : p.format === "text" ? "текст" : "формат не указан";
 }
 
 /* Опубликованные админом профили — только для копирования себе:
@@ -3463,43 +3375,41 @@ function renderPublishedProfiles(): void {
   if (!pub.length) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="note" style="margin:0 0 6px">Опубликованные администратором</div>` + pub.map((p) => `<div class="node-card">
     <div class="node-main">
-      <div class="node-top"><span class="node-id mono">${esc(p.name)}</span><span class="badge ok"><i></i>опубликован</span></div>
+      <div class="node-top"><span class="node-id mono">${esc(p.name)}</span><span class="badge ok"><i></i>опубликован</span><span class="badge">${profileFormatLabel(p)}</span></div>
       <div class="node-sub"><span>${esc(p.description || "—")}</span></div>
     </div>
     <div class="node-side srv-actions">
-      <label for="profile-version-${p.id}-pub" class="help">Номер версии</label><input id="profile-version-${p.id}-pub" class="blueprint-version-number" type="number" min="1" step="1" aria-label="Известный номер версии ${esc(p.name)}" placeholder="Номер">
       <button class="btn sm" data-pcopy="${p.id}">Сделать копию</button>
     </div>
   </div>`).join("");
 }
 
-/* «Сделать копию»: копия опубликованного профиля → свой черновик; открываем
-   её в обычном редакторе профиля (шаги/переменные доступны сразу). Ошибки
-   (лимит, дубликат имени) показываем как вернёт сервер. */
+/* «Сделать копию»: копия опубликованного профиля → свой черновик. */
 function copyPublishedProfile(btn: HTMLButtonElement, id: number): void {
-  void openVisibleProfile(id, true, btn);
+  btn.disabled = true;
+  api.copyProfile(id)
+    .then((p) => {
+      loadProfiles();
+      openProfile(p);
+    })
+    .catch((e: Error & { code?: string }) => {
+      const msg = e.code === "profile_limit_reached"
+        ? `Достигнут лимит профилей (${MYPROF?.max ?? "—"}). Удалите ненужный профиль перед созданием нового`
+        : e.code === "duplicate_name" ? "Профиль с таким именем уже существует — выберите другое имя." : e.message;
+      showToast(msg, true);
+      btn.disabled = false;
+    });
 }
 
-async function openVisibleProfile(id: number, copy = false, btn?: HTMLButtonElement): Promise<void> {
-  const meta = [...(MYPROF?.profiles || []), ...(MYPROF?.published || [])].find((p) => p.id === id);
-  const input = document.getElementById(`profile-version-${id}${copy ? "-pub" : ""}`) as HTMLInputElement | null;
-  const ordinal = positiveID(input?.value || "");
-  if (!meta || !ordinal) { showToast("Укажите известный положительный номер версии. Published API не сообщает последнюю версию.", true); input?.focus(); return; }
-  if (btn) btn.disabled = true;
-  try {
-    const v = await readVersion(id, ordinal);
-    if (v.format === "graph") { location.hash = `#/profiles/editor/${id}?version=${v.version}${copy ? "&copy=1" : ""}`; return; }
-    const own = MYPROF?.profiles.find((p) => p.id === id);
-    const seed = { ...meta, steps: v.steps || "", vars_schema: v.vars_schema };
-    if (copy) profileEditor(null, { ...seed, name: `${meta.name} (копия)` });
-    else if (own) profileEditor({ ...own, steps: v.steps, vars_schema: v.vars_schema });
-  } catch (e) { showToast((e as Error).message, true); }
-  finally { if (btn) btn.disabled = false; }
+function openProfile(p: OwnProfile | Profile): void {
+  if (p.format === "graph") { location.hash = `#/profiles/editor/${p.id}`; return; }
+  if ("published" in p) profileEditor(p);
+  else profileEditor(null, p);
 }
 
 function loadProfiles(poll = false): void {
   PROF_ERR = null;
-  api.myProfiles().then(hydrateOwn).then((r) => { MYPROF = r; PROF_RETRY_DONE = false; renderProfiles(poll); })
+  api.myProfiles().then((r) => { MYPROF = r; PROF_RETRY_DONE = false; renderProfiles(poll); })
     .catch((e: Error & { status?: number; code?: string }) => {
       PROF_ERR = e.code === "users_disabled" ? "Функция недоступна" : e.message;
       renderProfiles(poll);
@@ -3527,7 +3437,7 @@ function profileEditor(p: OwnProfile | null, seed?: Pick<OwnProfile, "name" | "d
       <div class="field" style="gap:6px"><label>Переменные профиля</label>
         <div class="vars-editor" id="mp-vars"></div>
         <span class="help">${esc(PROFILE_VARS_HELP)}</span></div>
-      <div class="note">Переименование не создаёт версию. Изменение шагов или переменных создаёт НОВУЮ версию: история не перезаписывается. Профиль остаётся черновиком, пока администратор его не опубликует.</div>
+      <div class="note">Сохранение обновляет профиль на месте. Профиль остаётся черновиком, пока администратор его не опубликует.</div>
       <div class="banner bad" id="mp-err" role="alert" hidden style="margin:0"></div>
     </div>`,
     [
@@ -3548,26 +3458,24 @@ function saveProfile(btn: HTMLButtonElement, p: OwnProfile | null): void {
   const rows = collectVarsEditor($("mp-vars"));
   const vars_schema = serializeVarsSchema(rows);
   if (!name) { errBox.textContent = "Укажите имя профиля."; errBox.hidden = false; $("mp-name").focus(); return; }
-  // Переименование — метаданные: версию не создаёт (backend RenameProfile).
   const nameChanged = isEdit && name !== p!.name;
-  const versionChanged = !isEdit || steps !== (p!.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p!.vars_schema));
-  if (versionChanged && !steps.trim()) { errBox.textContent = "Шаги обязательны."; errBox.hidden = false; $("mp-steps").focus(); return; }
-  const varErr = versionChanged ? validateVarsEditor($("mp-vars")) : null;
+  const contentChanged = !isEdit || steps !== (p!.steps || "") || vars_schema !== serializeVarsSchema(parseVarsSchema(p!.vars_schema));
+  if (contentChanged && !steps.trim()) { errBox.textContent = "Шаги обязательны."; errBox.hidden = false; $("mp-steps").focus(); return; }
+  const varErr = contentChanged ? validateVarsEditor($("mp-vars")) : null;
   if (varErr) { errBox.textContent = varErr; errBox.hidden = false; return; }
-  if (isEdit && !versionChanged && !nameChanged) { closeModal(); showToast("Изменений нет."); return; }
+  if (isEdit && !contentChanged && !nameChanged) { closeModal(); showToast("Изменений нет."); return; }
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = isEdit ? "Сохранение…" : "Создание…";
   let call: Promise<OwnProfile>;
   if (isEdit) {
-    // Шлём только изменённое: отправка steps без изменений создала бы версию.
     const payload: ProfilePayload = {};
     if (nameChanged) payload.name = name;
-    if (versionChanged) { payload.steps = steps; payload.vars_schema = vars_schema; }
+    if (contentChanged) { payload.steps = steps; payload.vars_schema = vars_schema; }
     call = api.updateProfile(p!.id, payload);
   } else {
     call = api.createProfile({ name, description, steps, vars_schema });
   }
-  call.then(() => { closeModal(); showToast(!isEdit ? "Профиль создан." : versionChanged ? "Профиль сохранён (новая версия)." : "Профиль переименован."); loadProfiles(); })
+  call.then(() => { closeModal(); showToast(!isEdit ? "Профиль создан." : contentChanged ? "Профиль сохранён." : "Профиль переименован."); loadProfiles(); })
     .catch((e: Error & { code?: string }) => {
       const msg = e.code === "profile_limit_reached"
         ? `Достигнут лимит профилей (${MYPROF?.max ?? "—"}). Удалите ненужный профиль перед созданием нового`
@@ -3582,7 +3490,7 @@ function saveProfile(btn: HTMLButtonElement, p: OwnProfile | null): void {
 
 function removeProfile(p: OwnProfile): void {
   openModal(`Удалить профиль «${p.name}»?`,
-    "Профиль и все его версии будут удалены. Уже созданные серверы не затрагиваются.",
+    "Профиль будет удалён. Уже созданные серверы не затрагиваются.",
     [
       { label: "Отмена", cls: "ghost", onClick: closeModal },
       { label: "Удалить", cls: "danger", onClick: (ev) => {
@@ -3592,7 +3500,7 @@ function removeProfile(p: OwnProfile): void {
           .then(() => { closeModal(); showToast("Профиль удалён."); loadProfiles(); })
           .catch((e: Error & { code?: string }) => {
             if (e.code === "profile_in_use") {
-              openModal("Профиль используется", "Профиль оставлен: его версия закреплена политикой или незавершённым запуском. Сначала проверьте управление нодой или откройте известный запуск по ID.", [
+              openModal("Профиль используется", "Профиль оставлен: он закреплён политикой или незавершённым запуском. Сначала проверьте управление нодой или откройте известный запуск по ID.", [
                 { label: "Закрыть", onClick: closeModal },
                 { label: "К управлению нодами", onClick: () => { closeModal(); location.hash = "#/nodes"; } },
                 { label: "Открыть запуск по ID", onClick: () => { closeModal(); location.hash = "#/profiles"; $("profiles-run-id").focus(); } },
@@ -4071,7 +3979,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   const pedit = t.closest<HTMLElement>("[data-pedit]");
-  if (pedit) { void openVisibleProfile(Number(pedit.dataset.pedit), false, pedit as HTMLButtonElement); return; }
+  if (pedit) { const p = MYPROF?.profiles.find((x) => x.id === Number(pedit.dataset.pedit)); if (p) openProfile(p); return; }
   const pdel = t.closest<HTMLElement>("[data-pdel]");
   if (pdel) { const p = MYPROF?.profiles.find((x) => x.id === Number(pdel.dataset.pdel)); if (p) removeProfile(p); return; }
   const pcopy = t.closest<HTMLButtonElement>("button[data-pcopy]");
