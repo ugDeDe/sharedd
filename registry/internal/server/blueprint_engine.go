@@ -509,7 +509,7 @@ func (r *Registry) executeProfileRun(ctx context.Context, runID, expectedRevisio
 			// H3: a delete that definitively failed (resource=error) may be
 			// dispatched again with a fresh attempt key. Any other dispatched
 			// mutation is never re-entered.
-			if !(node.Type == "server.delete" && st.deleteRetrySafe(cp)) {
+			if node.Type != "server.delete" || !st.deleteRetrySafe(cp) {
 				out, err := st.reconcileNode(ctx, node, cp)
 				if err == nil && out.err != nil {
 					err = out.err
@@ -993,15 +993,14 @@ func (st *bpState) createServer(ctx context.Context, node blueprint.Node) bpOutc
 	// Держим общий guard по op.ID, пока идёт создание: фоновый
 	// reconcileStuckCloudCreates иначе увидит op без живого воркера и
 	// вмешается в создание, которое ведёт ран (был реальный двойной исход).
-	var providerOpID string
-	createDone := make(chan struct{})
-	if !st.r.provisionWorkers().run(op.ID, cloudCreateBudget+cloudPollInterval, func(wctx context.Context) {
-		defer close(createDone)
-		providerOpID = st.r.cloudCreateDo(wctx, res.ID, conn, cfg, opKey, op.ID)
-	}) {
+	// acquire/release — не отдельная горутина: panic провайдера обязан
+	// долетать до recover воркера рана (needs_attention/worker_panic), а не
+	// ронять процесс.
+	if !st.r.provisionWorkers().acquire(op.ID) {
 		return bpOutcome{err: fmt.Errorf("%w: create worker busy", errBlueprintUnknown)}
 	}
-	<-createDone
+	defer st.r.provisionWorkers().release(op.ID)
+	providerOpID := st.r.cloudCreateDo(ctx, res.ID, conn, cfg, opKey, op.ID)
 	// Keep the provider operation id in the intent so a read-only reconcile
 	// (Operation/Server) can resolve an ambiguous create without re-sending it.
 	if providerOpID != "" {

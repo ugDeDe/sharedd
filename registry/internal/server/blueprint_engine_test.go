@@ -369,7 +369,7 @@ func TestNodeManagementProfileEnableValidationAndHistoricalBan(t *testing.T) {
 	}
 
 	// Provider mismatch -> 422.
-	begetRaw := []byte(fmt.Sprintf(`{"schema_version":1,"name":"beget-test","provider":"beget","inputs":{"connection_id":{"type":"number","required":false}},"entries":{"initial":"stop1","observe":"stop2"},"nodes":[{"id":"stop1","type":"terminal.stop","params":{"reason":"policy_inactive"},"in":{}},{"id":"stop2","type":"terminal.stop","params":{"reason":"policy_inactive"},"in":{}}],"edges":[]}`))
+	begetRaw := []byte(`{"schema_version":1,"name":"beget-test","provider":"beget","inputs":{"connection_id":{"type":"number","required":false}},"entries":{"initial":"stop1","observe":"stop2"},"nodes":[{"id":"stop1","type":"terminal.stop","params":{"reason":"policy_inactive"},"in":{}},{"id":"stop2","type":"terminal.stop","params":{"reason":"policy_inactive"},"in":{}}],"edges":[]}`)
 	bv := mkGraphVersion(t, r, uid, begetRaw)
 	bad := fmt.Sprintf(`{"mode":"profile","profile_version_id":%d,"inputs":{},"expected_revision":2}`, bv.ID)
 	if rec := put(bad); rec.Code != http.StatusUnprocessableEntity {
@@ -436,23 +436,6 @@ func TestProfileRunRoutesOwnershipCSRFAndIdempotency(t *testing.T) {
 		t.Fatalf("stale cancel: want 409, got %d %s", rec5.Code, rec5.Body)
 	}
 	_ = blueprint.SchemaVersion
-}
-
-func bpDeleteGraph() []byte {
-	return []byte(`{
- "schema_version":1,"name":"delete-graph","provider":"nodehost",
- "inputs":{"connection_id":{"type":"number","required":true},"configuration":{"type":"config","required":true}},
- "entries":{"initial":"create_initial","observe":"stop"},
- "nodes":[
-  {"id":"create_initial","type":"server.create","params":{"purpose":"initial"},"in":{"connection":{"ref":"input.connection_id"},"configuration":{"ref":"input.configuration"}}},
-  {"id":"ready_initial","type":"server.ready","params":{"timeout_seconds":30},"in":{"operation":{"ref":"create_initial.operation"}}},
-  {"id":"delete_old","type":"server.delete","params":{},"in":{"server":{"ref":"ready_initial.server"}}},
-  {"id":"stop","type":"terminal.stop","params":{},"in":{}}
- ],
- "edges":[
-  {"from":"create_initial","port":"ok","to":"ready_initial"},
-  {"from":"ready_initial","port":"ok","to":"delete_old"}
- ]}`)
 }
 
 func bpGuardCreateGraph() []byte {

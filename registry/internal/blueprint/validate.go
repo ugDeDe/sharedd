@@ -485,15 +485,6 @@ func blockOf(bp Blueprint, id string) (Block, bool) {
 	return Block{}, false
 }
 
-func nodeOf(bp Blueprint, id string) (Node, bool) {
-	for _, n := range bp.Nodes {
-		if n.ID == id {
-			return n, true
-		}
-	}
-	return Node{}, false
-}
-
 func portMap(ps []Port) map[string]Port {
 	m := make(map[string]Port, len(ps))
 	for _, p := range ps {

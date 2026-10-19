@@ -49,6 +49,26 @@ func (w *provisionWorker) runningOp(opID int64) bool {
 	return w.running[opID]
 }
 
+// acquire — занять guard операции для СИНХРОННОГО вызова в текущей
+// горутине (blueprint-ран вызывает create в своём воркере и должен сохранить
+// recover на том же стеке). false — операция уже выполняется.
+func (w *provisionWorker) acquire(opID int64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.running[opID] {
+		return false
+	}
+	w.running[opID] = true
+	return true
+}
+
+// release — освободить guard, занятый acquire.
+func (w *provisionWorker) release(opID int64) {
+	w.mu.Lock()
+	delete(w.running, opID)
+	w.mu.Unlock()
+}
+
 // run запускает fn в отдельной горутине под таймаутом timeout, привязанным к
 // базовому ctx воркера. false — операция уже выполняется (двойной запуск
 // невозможен).

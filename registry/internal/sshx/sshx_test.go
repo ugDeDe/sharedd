@@ -30,8 +30,8 @@ func TestKeepaliveBlockedWrite(t *testing.T) {
 	for _, cancellation := range []bool{false, true} {
 		t.Run(strconv.FormatBool(cancellation), func(t *testing.T) {
 			conn, peer := net.Pipe() // No peer reader: the request write must block.
-			defer conn.Close()
-			defer peer.Close()
+			defer func() { _ = conn.Close() }()
+			defer func() { _ = peer.Close() }()
 			ctx, cancel := context.WithCancelCause(context.Background())
 			defer cancel(nil)
 			stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
@@ -79,7 +79,7 @@ func TestRunKeepalive(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			serverDone := make(chan struct{})
@@ -89,14 +89,14 @@ func TestRunKeepalive(t *testing.T) {
 				if err != nil {
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				cfg := &ssh.ServerConfig{NoClientAuth: true}
 				cfg.AddHostKey(signer)
 				server, channels, requests, err := ssh.NewServerConn(conn, cfg)
 				if err != nil {
 					return
 				}
-				defer server.Close()
+				defer func() { _ = server.Close() }()
 				silentDone := make(chan struct{})
 				requestsDone := make(chan struct{})
 				go func() {
@@ -206,7 +206,7 @@ func TestRunSessionFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			serverDone := make(chan struct{})
 			go func() {
 				defer close(serverDone)
@@ -214,14 +214,14 @@ func TestRunSessionFailures(t *testing.T) {
 				if err != nil {
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				cfg := &ssh.ServerConfig{NoClientAuth: true}
 				cfg.AddHostKey(signer)
 				server, channels, requests, err := ssh.NewServerConn(conn, cfg)
 				if err != nil {
 					return
 				}
-				defer server.Close()
+				defer func() { _ = server.Close() }()
 				go ssh.DiscardRequests(requests)
 				for incoming := range channels {
 					if stage == "session" {
@@ -284,7 +284,7 @@ func TestRunBoundsStalledHandshake(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			accepted := make(chan net.Conn, 1)
 			go func() {
 				conn, err := listener.Accept()
@@ -306,7 +306,7 @@ func TestRunBoundsStalledHandshake(t *testing.T) {
 			}()
 			select {
 			case conn := <-accepted:
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 			case <-time.After(3 * time.Second):
 				t.Fatal("SSH did not connect")
 			}

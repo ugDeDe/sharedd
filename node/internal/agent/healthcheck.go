@@ -724,10 +724,7 @@ func fetchDCStats(apiAddr string, client *http.Client, now time.Time) (dc2Verdic
 		DCs:                  make([]DCStat, 0, len(parsed.Data.DCs)),
 	}
 	for _, d := range parsed.Data.DCs {
-		stats.DCs = append(stats.DCs, DCStat{
-			DC: d.DC, AvailableEndpoints: d.AvailableEndpoints,
-			AliveWriters: d.AliveWriters, FreshAliveWriters: d.FreshAliveWriters, RTTMs: d.RTTMs,
-		})
+		stats.DCs = append(stats.DCs, DCStat(d))
 	}
 	return evaluateDC2(&parsed, now), stats
 }

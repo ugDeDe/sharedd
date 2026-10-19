@@ -11,7 +11,6 @@ import (
 type (
 	historyDB = history.DB
 	banRow    = history.BanRow
-	ipHistRow = history.IPHistoryRow
 )
 
 var openHistoryDB = history.Open
