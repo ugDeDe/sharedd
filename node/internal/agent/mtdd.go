@@ -263,6 +263,12 @@ func syncMtddUsers(c *mtddConfig, shared map[string]string) (int, error) {
 	if rerr != nil && !os.IsNotExist(rerr) {
 		log.Printf("mtdd: cannot read users file %s: %v (creating missing users only)", mtddUsersFile(c), rerr)
 	}
+	// секрет уже у другого пользователя — mtdd запрещает дубликаты (409), а
+	// клиенты с этим секретом и так обслуживаются: пропускаем.
+	holder := make(map[string]string, len(existing))
+	for _, u := range existing {
+		holder[strings.ToLower(u.Secret)] = u.Name
+	}
 	changed := 0
 	var firstErr error
 	note := func(err error) {
@@ -278,6 +284,9 @@ func syncMtddUsers(c *mtddConfig, shared map[string]string) (int, error) {
 		secret = strings.ToLower(secret)
 		enc := url.PathEscape(name)
 		cur, ok := existing[name]
+		if h, dup := holder[secret]; dup && h != name {
+			continue
+		}
 		switch {
 		case !ok:
 			err := mtddAPI(c, http.MethodPost, "/v1/users", map[string]any{"name": name, "secret": secret})

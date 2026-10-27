@@ -605,13 +605,21 @@ if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     elif [ -n "$mp" ]; then
         METRICS_URL="http://127.0.0.1:${mp}/metrics"
     fi
+    # mtdd: /metrics под Bearer-токеном, порт — control_port из JSON-конфига
+    METRICS_AUTH=()
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then
+        mdp=$(grep -oE '"control_port"[[:space:]]*:[[:space:]]*[0-9]+' "$TELEMT_CONFIG" 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
+        METRICS_URL="http://127.0.0.1:${mdp:-9090}/metrics"
+        mtok=$(sed -n 's/^\(export \)\{0,1\}MTDD_API_TOKEN=//p' /etc/mtdd/credentials.env 2>/dev/null | head -n1 || true)
+        [ -n "$mtok" ] && METRICS_AUTH=("Authorization: Bearer $mtok")
+    fi
     say "жду подъёма прокси с новым конфигом (опрашиваю ${METRICS_URL}, до 120 с)..."
     UP=0
     for _ in $(seq 1 120); do
         if command -v curl &>/dev/null; then
-            curl -fsS --max-time 3 "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
+            curl -fsS --max-time 3 ${METRICS_AUTH[@]+-H "${METRICS_AUTH[0]}"} "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
         else
-            wget -q -T 3 -O /dev/null "$METRICS_URL" 2>/dev/null && { UP=1; break; }
+            wget -q -T 3 -O /dev/null ${METRICS_AUTH[@]+--header="${METRICS_AUTH[0]}"} "$METRICS_URL" 2>/dev/null && { UP=1; break; }
         fi
         sleep 1
     done

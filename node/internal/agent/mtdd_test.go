@@ -146,14 +146,15 @@ func TestSyncMtddUsers(t *testing.T) {
 	c := strings.Repeat("c", 32)
 	f := newMtddFixture(t, `{"users":[`+
 		`{"name":"same","secret":"`+a+`","enabled":true},`+
-		`{"name":"rot","secret":"`+a+`","enabled":true},`+
+		`{"name":"rot","secret":"`+strings.Repeat("d", 32)+`","enabled":true},`+
 		`{"name":"off","secret":"`+b+`","enabled":false}]}`)
 	mc, err := loadMtddConfig(f.cfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	n, err := syncMtddUsers(mc, map[string]string{
-		"same": a, "rot": strings.ToUpper(b), "off": b, "new": c, "bad": "zz",
+		"same": a, "rot": strings.ToUpper(strings.Repeat("e", 32)), "off": b, "new": c, "bad": "zz",
+		"dupe": a, // секрет a уже у "same"/"rot" — не создаём (409 в реальном mtdd)
 	})
 	if err != nil {
 		t.Fatal(err)
