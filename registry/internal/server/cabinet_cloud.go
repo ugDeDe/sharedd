@@ -221,6 +221,8 @@ func cloudControlErr(w http.ResponseWriter, err error) {
 		controlAPIError(w, http.StatusConflict, "revision_conflict", "resource state changed concurrently")
 	case errors.Is(err, control.ErrNotFound):
 		controlAPIError(w, http.StatusNotFound, "not_found", "resource is not owned by the current user")
+	case errors.Is(err, control.ErrRateLimited):
+		controlAPIError(w, http.StatusTooManyRequests, "rate_limited", "дневной лимит платных действий исчерпан")
 	default:
 		log.Printf("cloud control error: %v", err)
 		controlAPIError(w, http.StatusServiceUnavailable, "control_unavailable", controlUnavailableMsg)
@@ -427,6 +429,19 @@ func (r *Registry) cloudCreateAccept(u control.User, connID int64, label string,
 	return createAck{OperationID: op.ID, State: control.OpPending, ResourceID: resRow.ID}, nil
 }
 
+// reserveCloudCreateAttempt — опциональный дневной лимит для HTTP-создания
+// облачного ресурса. Fleet резервирует весь пакет в handleFleetCreate и сюда
+// не попадает. Повтор с тем же Idempotency-Key лимит не тратит.
+func (r *Registry) reserveCloudCreateAttempt(u control.User, idemKey string) error {
+	opKey := fmt.Sprintf("cloud_create:%d:%s", u.ID, idemKey)
+	if _, err := r.control.OperationByIdemKey(opKey); err == nil {
+		return nil
+	} else if !errors.Is(err, control.ErrNotFound) {
+		return err
+	}
+	return r.control.ReservePaidAttempts(u.ID, 1, r.cfg.Provisioning.MaxPaidPerDay)
+}
+
 // POST /api/me/cloud-resources
 func (r *Registry) handleCloudCreate(w http.ResponseWriter, req *http.Request) {
 	if !r.requireMasterKey(w) {
@@ -447,6 +462,10 @@ func (r *Registry) handleCloudCreate(w http.ResponseWriter, req *http.Request) {
 	}
 	if utf8.RuneCountInString(label) > 100 {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", "label too long")
+		return
+	}
+	if err := r.reserveCloudCreateAttempt(sessionFrom(req).user, idemKey); err != nil {
+		cloudControlErr(w, err)
 		return
 	}
 	r.cloudCreateCore(w, req, body.ConnectionID, label, body.Configuration, idemKey, cloudBodyHash(body), 0)
@@ -480,6 +499,10 @@ func (r *Registry) handleCloudReplace(w http.ResponseWriter, req *http.Request) 
 	label := strings.TrimSpace(body.Label)
 	if label == "" {
 		label = old.Label
+	}
+	if err := r.reserveCloudCreateAttempt(sessionFrom(req).user, idemKey); err != nil {
+		cloudControlErr(w, err)
+		return
 	}
 	r.cloudCreateCore(w, req, old.ConnectionID, label, cfg, idemKey, cloudBodyHash(body), old.ID)
 }
@@ -567,7 +590,11 @@ func (r *Registry) handleCloudDelete(w http.ResponseWriter, req *http.Request) {
 		r.writeControlUnavailable(w)
 		return
 	}
-	r.launchCloudDelete(res.ID, conn, res.ExternalID, op.ID)
+	if err := r.control.SetCloudResourceOperation(res.ID, op.ID); err != nil {
+		r.writeControlUnavailable(w)
+		return
+	}
+	r.launchCloudDelete(res.ID, conn, res.ExternalID, res.NodeID, op.ID)
 	guarded = false // воркер владеет guard'ом и снимет его сам (или снимет launch при worker_busy)
 	writeCabinetJSON(w, http.StatusAccepted, createAck{OperationID: op.ID, State: control.OpPending, ResourceID: res.ID})
 }
@@ -1052,11 +1079,11 @@ func (r *Registry) launchCloudCreate(resID int64, conn control.HostingConnection
 	}
 }
 
-func (r *Registry) launchCloudDelete(resID int64, conn control.HostingConnection, externalID string, opID int64) {
+func (r *Registry) launchCloudDelete(resID int64, conn control.HostingConnection, externalID, nodeID string, opID int64) {
 	if !r.provisionWorkers().run(opID, cloudDeleteBudget+cloudPollInterval, func(ctx context.Context) {
 		defer r.cloudRecover(opID)
 		defer r.cloudGuardRelease(resID)
-		r.cloudDeleteDo(ctx, resID, conn, externalID, opID)
+		r.cloudDeleteDo(ctx, resID, conn, externalID, nodeID, opID)
 	}) {
 		_ = r.control.UpdateOperationState(opID, control.OpFailed, "", "worker_busy")
 		r.cloudGuardRelease(resID)
@@ -1367,7 +1394,137 @@ func (r *Registry) reconcileStuckCloudCreate(ctx context.Context, res control.Cl
 	}
 }
 
-func (r *Registry) cloudDeleteDo(ctx context.Context, resID int64, conn control.HostingConnection, externalID string, opID int64) {
+// resumeCloudDeletes — startup/periodic подтверждение удалений, застигнутых
+// в deleting. Никаких новых оплат: только Server/Delete по существующему
+// external_id. Если VPS уже отсутствует — локальная запись закрывается.
+func (r *Registry) resumeCloudDeletes(ctx context.Context) {
+	r.reconcileDeletingCloudResources(ctx)
+	t := time.NewTicker(cloudResumeInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.reconcileDeletingCloudResources(ctx)
+		}
+	}
+}
+
+func (r *Registry) reconcileDeletingCloudResources(ctx context.Context) {
+	if r.control == nil {
+		return
+	}
+	list, err := r.control.CloudResourcesDeleting()
+	if err != nil {
+		log.Printf("cloud delete resume: list: %v", err)
+		return
+	}
+	for _, res := range list {
+		if ctx.Err() != nil {
+			return
+		}
+		if r.cloudWorkerActive(res) || !r.cloudGuardAcquire(res.ID) {
+			continue
+		}
+		res := res
+		go func() {
+			defer r.cloudGuardRelease(res.ID)
+			r.reconcileCloudDelete(ctx, res)
+		}()
+	}
+}
+
+func (r *Registry) reconcileCloudDelete(ctx context.Context, res control.CloudResourceV2) {
+	op, err := r.control.Operation(res.LastOperationID)
+	if errors.Is(err, control.ErrNotFound) || (err == nil && op.Kind != control.OpKindCloudDelete) {
+		op, err = r.control.LatestCloudDeleteOperation(res.UserID, res.ExternalID)
+	}
+	if err != nil {
+		log.Printf("cloud delete resume: operation for resource %d: %v", res.ID, err)
+		return
+	}
+	if op.State == control.OpDeleted {
+		r.finalizeCloudDelete(res.ID, op.ID, res.NodeID)
+		return
+	}
+	conn, err := r.control.HostingConnectionOwned(res.ConnectionID, res.UserID)
+	if err != nil {
+		log.Printf("cloud delete resume: connection for resource %d: %v", res.ID, err)
+		return
+	}
+	prov, err := r.cloudProviderFor(conn)
+	if err != nil {
+		log.Printf("cloud delete resume: provider for resource %d: %v", res.ID, err)
+		return
+	}
+	// Read-only first: a delete might have completed before the restart.
+	srv, err := prov.Server(ctx, res.ExternalID)
+	var ne *nodehost.Error
+	if errors.As(err, &ne) && ne.Code == "not_found" {
+		r.finalizeCloudDelete(res.ID, op.ID, res.NodeID)
+		return
+	}
+	if err != nil {
+		log.Printf("cloud delete resume: read resource %d: %v", res.ID, err)
+		return
+	}
+	if srv == nil {
+		r.finalizeCloudDelete(res.ID, op.ID, res.NodeID)
+		return
+	}
+	// VPS still exists: continue the already-authorized delete. This is not a
+	// new paid action and uses the same external_id.
+	if _, err := prov.Delete(ctx, res.ExternalID); err != nil {
+		log.Printf("cloud delete resume: delete resource %d: %v", res.ID, err)
+		return
+	}
+	deadline := time.Now().Add(cloudDeleteBudget)
+	for {
+		_, err := prov.Server(ctx, res.ExternalID)
+		if errors.As(err, &ne) && ne.Code == "not_found" {
+			r.finalizeCloudDelete(res.ID, op.ID, res.NodeID)
+			return
+		}
+		if err != nil {
+			log.Printf("cloud delete resume: confirm resource %d: %v", res.ID, err)
+			return
+		}
+		if time.Now().After(deadline) {
+			_ = r.control.SetCloudResourceError(res.ID, "provider_timeout")
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cloudPollInterval):
+		}
+	}
+}
+
+func (r *Registry) finalizeCloudDelete(resID, opID int64, nodeID string) {
+	if err := r.control.UpdateCloudResourceState(resID, control.CloudResDeleting, control.CloudResDeleted, "", ""); err != nil {
+		return
+	}
+	_ = r.control.UpdateOperationState(opID, control.OpDeleted, "", "")
+	if n, err := r.control.ReleasePendingSecretsForCloudResource(resID); err != nil {
+		log.Printf("cloud delete: release pending secrets for resource %d: %v", resID, err)
+	} else if n > 0 {
+		log.Printf("cloud delete: released %d pending node secret(s) for resource %d", n, resID)
+	}
+	// Физический VPS удалён: владелец ноды больше не должен видеть её как
+	// вечно deleting. Освобождаем identity (переводим в legacy), чтобы строка
+	// не блокировала повторную установку и не висела в списке.
+	if nodeID != "" {
+		if released, err := r.control.ReleaseNode(nodeID); err != nil {
+			log.Printf("cloud delete: release node %s: %v", nodeID, err)
+		} else if released {
+			log.Printf("cloud delete: released node identity %s", nodeID)
+		}
+	}
+}
+
+func (r *Registry) cloudDeleteDo(ctx context.Context, resID int64, conn control.HostingConnection, externalID, nodeID string, opID int64) {
 	// ready|error → deleting (retry после провала разрешён).
 	if err := r.control.UpdateCloudResourceState(resID, control.CloudResReady, control.CloudResDeleting, "", ""); err != nil {
 		if err := r.control.UpdateCloudResourceState(resID, control.CloudResError, control.CloudResDeleting, "", ""); err != nil {
@@ -1393,17 +1550,7 @@ func (r *Registry) cloudDeleteDo(ctx context.Context, resID int64, conn control.
 		_, err := prov.Server(ctx, externalID)
 		var ne *nodehost.Error
 		if errors.As(err, &ne) && ne.Code == "not_found" {
-			if err := r.control.UpdateCloudResourceState(resID, control.CloudResDeleting, control.CloudResDeleted, "", ""); err != nil {
-				return
-			}
-			_ = r.control.UpdateOperationState(opID, control.OpDeleted, "", "")
-			// Удалённый ресурс больше не цель retry — pending install бронь
-			// освобождается, иначе она держала бы квоту вечно.
-			if n, err := r.control.ReleasePendingSecretsForCloudResource(resID); err != nil {
-				log.Printf("cloud delete: release pending secrets for resource %d: %v", resID, err)
-			} else if n > 0 {
-				log.Printf("cloud delete: released %d pending node secret(s) for resource %d", n, resID)
-			}
+			r.finalizeCloudDelete(resID, opID, nodeID)
 			return
 		}
 		if time.Now().After(deadline) {

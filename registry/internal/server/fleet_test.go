@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -265,6 +266,70 @@ func TestFleetPerItemFailureContinues(t *testing.T) {
 	if admitted != 2 || failed != 1 {
 		t.Fatalf("admitted=%d failed=%d items=%+v", admitted, failed, items)
 	}
+}
+
+func TestFleetResumeAfterRestart(t *testing.T) {
+	r, _ := newCloudRegistry(t)
+	prov := newMultiCloud()
+	r.cloudFactory = func(control.HostingConnection) (cloudProvider, error) { return prov, nil }
+	r.cfg.Security.NodeToken = testNodeToken
+	r.seedSystemGraphs()
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+	uid, connID, _, _ := cloudSession(t, r, "fleet-resume")
+	pv := fleetProfileVersion(t, r)
+
+	var cfg nodehost.CreateRequest
+	if err := json.Unmarshal([]byte(`{"name":"base","cpu":"AMD Ryzen 9 7950X","cores":2,"ram":4,"disk":40,"diskType":"SSD NVMe","os":"ubuntu-24.04","location":"DE","period":"1m"}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfgJSON, _ := json.Marshal(cfg)
+	f, created, err := r.control.CreateFleet(control.Fleet{
+		UserID: uid, ConnectionID: connID, Count: 1, ProfileVersionID: pv.ID,
+		ConfigurationJSON: string(cfgJSON), InstallationVarsJSON: "", FleetKey: "fleet-resume-key",
+		State: control.FleetRunning,
+	}, []string{"base-01"})
+	if err != nil || !created {
+		t.Fatalf("create fleet: created=%v err=%v", created, err)
+	}
+	r.resumeFleets(context.Background())
+	got := waitFleetTerminal(t, r, f.ID)
+	if got.State != control.FleetSucceeded {
+		items, _ := r.control.FleetItems(f.ID)
+		t.Fatalf("state=%s items=%+v", got.State, items)
+	}
+	if prov.createCalls() != 1 {
+		t.Fatalf("resume must create exactly once, got %d", prov.createCalls())
+	}
+}
+
+func TestFleetWaitsForHealthProof(t *testing.T) {
+	r, _ := newCloudRegistry(t)
+	r.fleetVerify = func(control.CloudResourceV2) error { return errors.New("not healthy yet") }
+	provider := newMultiCloud()
+	r.cloudFactory = func(control.HostingConnection) (cloudProvider, error) { return provider, nil }
+	r.cfg.Security.NodeToken = testNodeToken
+	r.seedSystemGraphs()
+	r.sshExec.(*fakeExec).runFn = verifyExecFn(r, true)
+	_, connID, cookies, csrf := cloudSession(t, r, "fleet-verifying")
+	pv := fleetProfileVersion(t, r)
+	rec := fleetPost(t, r, cookies, csrf, fleetBody(connID, 1, false, pv.ProfileID), "fleet-verify-key")
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	var ack struct {
+		FleetID int64 `json:"fleet_id"`
+	}
+	_ = json.Unmarshal([]byte(rec.Body), &ack)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		items, err := r.control.FleetItems(ack.FleetID)
+		if err == nil && len(items) == 1 && items[0].State == control.FleetItemVerifying {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	items, _ := r.control.FleetItems(ack.FleetID)
+	t.Fatalf("item must wait in verifying, got %+v", items)
 }
 
 func TestFleetReconcileCleansUncertainResources(t *testing.T) {

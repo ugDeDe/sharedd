@@ -3225,7 +3225,7 @@
     overflow: visible;
   }
 </style>
-  <meta name="sharedd-build" content="fcf6550488141dd9">
+  <meta name="sharedd-build" content="48a3b4adca5314ef">
 </head>
 <body>
 
@@ -3349,21 +3349,41 @@
             <legend>Установка и замена</legend>
             <div class="srv-grid">
               <div class="field">
+                <label for="ap-name">Имя нод</label>
+                <input id="ap-name" type="text" maxlength="7" value="fleet" autocomplete="off" spellcheck="false" aria-describedby="ap-name-help">
+                <span class="help" id="ap-name-help">1–7 символов. Итоговые имена: <span class="mono">fleet-01</span>…, технический ID добавит суффикс сам.</span>
+              </div>
+              <div class="field">
                 <label for="ap-prof">Профиль установки</label>
                 <select id="ap-prof"><option value="">Загрузка профилей…</option></select>
                 <span class="help" id="ap-prof-help">Только текстовые профили: опубликованные и ваши.</span>
               </div>
             </div>
+            <div id="ap-inst-vars" hidden style="margin-top:12px">
+              <label class="static-head">Параметры установки</label>
+              <div class="help" style="margin-bottom:8px">Ad tag и другие параметры применяются к каждой ноде этого заказа. Профиль при этом не меняется.</div>
+            </div>
+            <label class="check" id="ap-save-defaults-row" hidden style="margin-top:8px">
+              <input type="checkbox" id="ap-save-defaults" aria-describedby="ap-save-defaults-help">
+              <span class="box"></span> Запомнить эти параметры для профиля
+            </label>
+            <span class="help ap-help" id="ap-save-defaults-help" hidden>В следующий раз значения подставятся автоматически. Секреты не сохраняются.</span>
             <label class="check" style="margin-top:10px">
-              <input type="checkbox" id="ap-auto" checked aria-describedby="ap-auto-help">
+              <input type="checkbox" id="ap-auto" aria-describedby="ap-auto-help">
               <span class="box"></span> Заменять ноды при бане автоматически
             </label>
-            <span class="help ap-help" id="ap-auto-help">Включено: при бане автоматически создаётся замена (платно) ДО удаления старой. Выключено: ноды создаются и ставятся в пул, замена — вручную; бан сам по себе ничего не покупает.</span>
+            <span class="help ap-help" id="ap-auto-help">Выключено по умолчанию. Если включить, при подтверждённом бане автоматически создаётся платная замена ДО удаления старой. Выключено — бан сам по себе ничего не покупает, замена выполняется вручную.</span>
+            <label class="check" id="ap-consent-row" hidden>
+              <input type="checkbox" id="ap-consent" aria-describedby="ap-consent-help">
+              <span class="box"></span> Разрешаю будущие платные замены при подтверждённой блокировке
+            </label>
+            <span class="help ap-help" id="ap-consent-help" hidden>Это отдельное разрешение на будущие расходы, а не только на текущий заказ. Его можно отключить в карточке ноды.</span>
           </fieldset>
 
           <div class="banner info" id="ap-estimate" hidden aria-live="polite"></div>
           <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
             <button type="submit" class="btn primary" id="ap-submit">Развернуть 1 ноду</button>
+            <button type="button" class="btn sm ghost" id="ap-reset-pending" hidden>Начать новый заказ</button>
           </div>
         </form>
         <div class="card-body" id="ap-fleet" hidden></div>
@@ -3666,6 +3686,7 @@
             <div class="cr-batch" id="cr-batch" hidden aria-live="polite"></div>
             <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
               <button type="button" class="btn ghost" id="cr-cancel">Отмена</button>
+              <button type="button" class="btn sm ghost" id="cr-reset-pending" hidden>Начать новый заказ</button>
               <button type="submit" class="btn primary" id="cr-submit" disabled>Создать ресурс</button>
             </div>
           </form>
@@ -4260,6 +4281,8 @@
     replaceCloudResource: (id, key, body) => req(`/api/me/cloud-resources/${id}/replace`, "POST", body, { headers: { "Idempotency-Key": key } }),
     // FROZEN: {profile_id, vars} — профиль адресуется id, содержимое одно.
     installCloudResource: (id, key, body) => req(`/api/me/cloud-resources/${id}/install`, "POST", body, { headers: { "Idempotency-Key": key } }),
+    profileDefaults: (profileId) => req(`/api/me/profile-defaults?profile_id=${profileId}`),
+    saveProfileDefaults: (body) => req("/api/me/profile-defaults", "PUT", body),
     // FROZEN: 200 {ssh_ok,error}; 409 not_ready/ssh_unavailable; 501 beget.
     checkCloudResource: (id) => req(`/api/me/cloud-resources/${id}/check`, "POST"),
     // FROZEN: сверка инвентаря провайдера при неясном платном исходе.
@@ -4269,6 +4292,8 @@
     // ── управление нодой (cabinet_cloud.go §5) ──
     nodeManagement: (id) => req(`/api/me/nodes/${encodeURIComponent(id)}/management`),
     putNodeManagement: (id, body) => req(`/api/me/nodes/${encodeURIComponent(id)}/management`, "PUT", body),
+    nodeSettings: (id) => req(`/api/me/nodes/${encodeURIComponent(id)}/settings`),
+    patchNodeSettings: (id, body) => req(`/api/me/nodes/${encodeURIComponent(id)}/settings`, "PATCH", body),
     // ── флот/Autopilot ──
     createFleet: (body, key) => req("/api/me/fleets", "POST", body, { headers: { "Idempotency-Key": key } }),
     fleet: (id) => req(`/api/me/fleets/${id}`),
@@ -4280,6 +4305,92 @@
     const b = new Uint8Array(16);
     crypto.getRandomValues(b);
     return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
+  // ui/pages/cabinet/pending.ts
+  var PREFIX = "sharedd.pending.";
+  function stableStringify(value) {
+    var _a;
+    if (value === void 0) return "null";
+    if (value === null || typeof value !== "object") {
+      return (_a = JSON.stringify(value)) != null ? _a : "null";
+    }
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+    const obj = value;
+    const keys = Object.keys(obj).filter((k) => obj[k] !== void 0).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+  }
+  function bodyHash(body) {
+    return stableStringify(body);
+  }
+  function storage() {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
+  function loadPending(name) {
+    const s = storage();
+    if (!s) return null;
+    try {
+      const raw = s.getItem(PREFIX + name);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (!p || typeof p.key !== "string" || !p.key || typeof p.hash !== "string" || !p.body) return null;
+      return {
+        key: p.key,
+        body: p.body,
+        hash: p.hash,
+        state: p.state === "unknown" ? "unknown" : "submitting",
+        createdAt: typeof p.createdAt === "number" ? p.createdAt : 0
+      };
+    } catch {
+      return null;
+    }
+  }
+  function savePending(name, p) {
+    const s = storage();
+    if (!s) return;
+    try {
+      s.setItem(PREFIX + name, JSON.stringify(p));
+    } catch {
+    }
+  }
+  function clearPending(name) {
+    const s = storage();
+    if (!s) return;
+    try {
+      s.removeItem(PREFIX + name);
+    } catch {
+    }
+  }
+  function beginPending(name, key, body) {
+    const p = {
+      key,
+      body,
+      hash: bodyHash(body),
+      state: "submitting",
+      createdAt: Date.now()
+    };
+    savePending(name, p);
+    return p;
+  }
+  function markPendingUnknown(name, p) {
+    const next = { ...p, state: "unknown" };
+    savePending(name, next);
+    return next;
+  }
+  function clearAllPending() {
+    const s = storage();
+    if (!s) return;
+    try {
+      for (let i = s.length - 1; i >= 0; i--) {
+        const k = s.key(i);
+        if (k && k.startsWith(PREFIX)) s.removeItem(k);
+      }
+    } catch {
+    }
   }
 
   // ui/lib/chart.ts
@@ -4869,18 +4980,54 @@
   }
 
   // ui/pages/cabinet/blueprint-management.ts
+  var ACTION_LABELS = {
+    "server.create": "создать VPS",
+    "server.delete": "удалить VPS",
+    "server.ready": "дождаться готовности VPS",
+    "server.absent": "подтвердить удаление VPS",
+    "server.distinct_ip": "проверить новый IP",
+    "install.text": "установить профиль",
+    "pool.admit": "дождаться проверок и допустить в пул",
+    "observe.arm": "включить наблюдение",
+    "resource.fence": "зафиксировать новый ресурс",
+    "resource.switch": "переключить ноду на новый ресурс",
+    "ip.order": "заказать IP",
+    "ip.attach": "привязать IP",
+    "ip.switch_advertised": "переключить рекламируемый IP",
+    "ip.cleanup": "очистить старый IP",
+    "ip.verify": "проверить IP",
+    "event.ip_ban": "ждать подтверждённый IP-бан",
+    "policy.guard": "проверить разрешение политики",
+    "terminal.stop": "остановить выполнение"
+  };
+  function policyPreview(graph) {
+    const nodes = Array.isArray(graph == null ? void 0 : graph.nodes) ? graph.nodes : [];
+    const counts = /* @__PURE__ */ new Map();
+    for (const n of nodes) {
+      const label = ACTION_LABELS[String((n == null ? void 0 : n.type) || "")];
+      if (!label) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    if (!counts.size) return "";
+    const paid = nodes.some((n) => (n == null ? void 0 : n.type) === "server.create" || (n == null ? void 0 : n.type) === "ip.order");
+    const rows = [...counts.entries()].map(([label, n]) => `<li>${esc(label)}${n > 1 ? ` ×${n}` : ""}</li>`).join("");
+    return `<div class="banner ${paid ? "warn" : "info"}" role="note"><span><b>Что произойдёт при срабатывании:</b></span>
+    <ul style="margin:6px 0 0 18px">${rows}</ul>
+    ${paid ? `<span>Политика может создавать платные ресурсы. Остановка отменяет только дальнейшие шаги; уже отправленные действия и оплата существующих VPS не отменяются.</span>` : ""}
+  </div>`;
+  }
   function mountBlueprintManagement(root, nodeID, initial, resource, onSave) {
     if (root.dataset.mounted) return;
     root.dataset.mounted = nodeID;
     let current = initial, mode = initial.mode, selected = null, instance = null, busy = false, uncertain = false;
     const bound = () => resource;
-    root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound().id}">#${bound().id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? initial.profile_id ? `#${initial.profile_id}` : "назначен" : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
+    root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound().id}">#${bound().id}</a> — свяжется автоматически` : `не связан · <a href="#/beget?tab=resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? initial.profile_id ? `#${initial.profile_id}` : "назначен" : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
     <form><fieldset><legend>Режим управления</legend><label class="check"><input type="radio" name="blueprint-mode" value="manual"${mode === "manual" ? " checked" : ""}><span class="box"></span>Ручной</label><label class="check"><input type="radio" name="blueprint-mode" value="profile"${mode === "profile" ? " checked" : ""}><span class="box"></span>Профильный</label></fieldset>
-    <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-inputs></div>
+    <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-preview></div><div data-policy-inputs></div>
     <label class="check"><input type="checkbox" data-current-ban${initial.process_current_ban && initial.mode === "profile" ? " checked" : ""}><span class="box"></span>Обработать текущий эпизод блокировки</label><p class="help">По умолчанию выключено при новом включении. Разрешает действие сейчас для текущего эпизода; прошлые не переигрываются.</p>
     <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этого профиля при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
     <div class="banner bad" role="alert" id="bp-policy-error" hidden></div><div class="blueprint-toolbar"><button class="btn primary" type="submit">Сохранить режим</button><button class="btn" type="button" data-reload-policy>Обновить GET политики</button></div></form>`;
-    const profile = root.querySelector("[data-policy-profile]"), note = root.querySelector("[data-mode-note]"), gate = root.querySelector("[data-policy-gate]"), errorBox = root.querySelector("#bp-policy-error"), form = root.querySelector("form"), submit = form.querySelector('[type="submit"]');
+    const profile = root.querySelector("[data-policy-profile]"), note = root.querySelector("[data-mode-note]"), gate = root.querySelector("[data-policy-gate]"), preview = root.querySelector("[data-policy-preview]"), errorBox = root.querySelector("#bp-policy-error"), form = root.querySelector("form"), submit = form.querySelector('[type="submit"]');
     const consent = root.querySelector("[data-policy-consent]"), ban = root.querySelector("[data-current-ban]");
     const error = (text) => {
       errorBox.textContent = text;
@@ -4893,12 +5040,13 @@
       note.textContent = mode === "manual" ? "Ручной режим не разрешает автоматическую покупку при бане. Ресурсы не удаляются." : "Профильный режим разрешает действия выбранного профиля при новых блокировках, включая платную замену VPS. Обработка текущего эпизода может действовать сразу.";
       const graph = selected == null ? void 0 : selected.blueprint;
       const res = bound();
-      const reason = !res ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/resources">хостинг-ресурсов</a>.` : res.provider === "beget" ? BEGET_GATE : !graph ? "Выберите graph-профиль и разрешите его действия явно." : runtimeGate(graph);
+      const reason = !res ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/beget?tab=resources">хостинг-ресурсов</a>.` : res.provider === "beget" ? BEGET_GATE : !graph ? "Выберите graph-профиль и разрешите его действия явно." : runtimeGate(graph);
       const textPicked = !!((_a = instance == null ? void 0 : instance.installedTextProfile) == null ? void 0 : _a.call(instance));
       if (mode === "profile" && !reason && graph)
         gate.innerHTML = `Чек-лист · Подключение: из ресурса #${res.connection_id} ✓ · Конфигурация: ${((_b = root.querySelector("[data-config]")) == null ? void 0 : _b.value) ? "из формы ✓" : "заполните параметры VPS в форме"} · Профиль установки: ${textPicked ? "выбран ✓" : "выберите текстовый профиль"}`;
       else
         gate.textContent = reason || "Nodehost · профиль разрешён для настройки. Сохранение режима может разрешить платные действия при бане.";
+      preview.innerHTML = mode === "profile" && graph && !reason ? policyPreview(graph) : "";
       submit.textContent = mode === "profile" ? "Включить автоматизацию" : "Сохранить ручной режим";
       submit.disabled = busy || uncertain || mode === "profile" && (!!reason || !textPicked || !consent.checked);
     };
@@ -5025,7 +5173,8 @@
   var NODE_TYPE_META = {
     classic: { label: "Classic", cls: "", title: "классический telemt" },
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
   };
   var EV_LABEL = {
     node_registered: { label: "Регистрация ноды", dot: "info" },
@@ -5068,6 +5217,10 @@
   var MGMT_ERR = null;
   var NODE_RES = null;
   var NODE_OP = null;
+  var SETTINGS = null;
+  var SETTINGS_ERR = null;
+  var SETTINGS_DRAFT = null;
+  var SETTINGS_AD_DRAFT = null;
   var DETAIL_TAB = "overview";
   function openNodeDetail(id) {
     DETAIL_ID = id;
@@ -5078,6 +5231,10 @@
     MGMT_ERR = null;
     NODE_RES = null;
     NODE_OP = null;
+    SETTINGS = null;
+    SETTINGS_ERR = null;
+    SETTINGS_DRAFT = null;
+    SETTINGS_AD_DRAFT = null;
     DETAIL_TAB = parseTabHash();
     const el = $("node-detail");
     if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
@@ -5090,6 +5247,10 @@
     MGMT = null;
     NODE_RES = null;
     NODE_OP = null;
+    SETTINGS = null;
+    SETTINGS_ERR = null;
+    SETTINGS_DRAFT = null;
+    SETTINGS_AD_DRAFT = null;
   }
   function parseTabHash() {
     const m = /[?&]tab=([a-z]+)/.exec(location.hash || "");
@@ -5148,6 +5309,7 @@
     if (!DETAIL_ID) return;
     const id = DETAIL_ID;
     if (!poll || DETAIL_TAB === "management" || DETAIL_TAB === "actions") refreshMgmt(poll);
+    if (!poll || DETAIL_TAB === "management") refreshSettings();
     api.nodeDetail(id).then((d) => {
       if (id !== DETAIL_ID) return;
       DETAIL = d;
@@ -5188,6 +5350,21 @@
       render(poll);
     });
   }
+  function refreshSettings() {
+    const id = DETAIL_ID;
+    if (!id) return;
+    api.nodeSettings(id).then((s) => {
+      if (id !== DETAIL_ID) return;
+      SETTINGS = s;
+      SETTINGS_ERR = null;
+      render(false);
+    }).catch((e) => {
+      if (id !== DETAIL_ID) return;
+      if (e.message === "unauthorized") return;
+      SETTINGS_ERR = e.status === 404 ? "У ноды нет логического слота." : e.message;
+      render(false);
+    });
+  }
   function render(poll) {
     const el = $("node-detail");
     if (!el) return;
@@ -5205,6 +5382,63 @@
       }
       const management = document.getElementById("blueprint-management");
       el.innerHTML = detailHTML(DETAIL);
+      const renameBtn = el.querySelector("[data-slot-rename]");
+      const nameInp = el.querySelector("#nd-slot-name");
+      if (nameInp) nameInp.oninput = () => {
+        SETTINGS_DRAFT = nameInp.value;
+      };
+      if (renameBtn && SETTINGS) {
+        renameBtn.onclick = async () => {
+          const inp = el.querySelector("#nd-slot-name");
+          const msg = el.querySelector("[data-slot-msg]");
+          const name = ((inp == null ? void 0 : inp.value) || "").trim();
+          if (!name || !msg) return;
+          renameBtn.disabled = true;
+          msg.textContent = "Сохранение…";
+          try {
+            SETTINGS = await api.patchNodeSettings(DETAIL_ID, {
+              expected_revision: SETTINGS.revision,
+              name
+            });
+            SETTINGS_DRAFT = null;
+            if (inp) inp.value = SETTINGS.name;
+            msg.textContent = "Название сохранено. Технический ID не изменился.";
+          } catch (e) {
+            msg.textContent = e.code === "revision_conflict" ? "Настройки уже изменились — откройте карточку заново." : `Не удалось сохранить: ${e.message}`;
+          } finally {
+            renameBtn.disabled = false;
+          }
+        };
+      }
+      const adBtn = el.querySelector("[data-ad-save]");
+      const adInp = el.querySelector("#nd-ad-tag");
+      if (adInp) adInp.oninput = () => {
+        SETTINGS_AD_DRAFT = adInp.value;
+      };
+      if (adBtn && adInp && SETTINGS) {
+        adBtn.onclick = async () => {
+          const msg = el.querySelector("[data-ad-msg]");
+          if (!msg) return;
+          adBtn.disabled = true;
+          msg.textContent = "Сохранение…";
+          try {
+            SETTINGS = await api.patchNodeSettings(DETAIL_ID, {
+              expected_revision: SETTINGS.revision,
+              runtime: { ad_tag: adInp.value.trim() }
+            });
+            SETTINGS_AD_DRAFT = null;
+            const st = SETTINGS.runtime.ad_tag;
+            msg.textContent = (st == null ? void 0 : st.message) || "Сохранено. Ожидается подтверждение агента.";
+            if ((st == null ? void 0 : st.state) === "pending") msg.textContent = "Сохранено. Ожидается подтверждение агента.";
+            if ((st == null ? void 0 : st.state) === "failed") msg.textContent = `Не применено: ${st.message || "ошибка агента"}`;
+          } catch (e) {
+            const err = e;
+            msg.textContent = err.code === "unsupported_setting" ? "Эта нода не поддерживает изменение ad_tag на живой ноде. Задайте его при переустановке." : `Не удалось сохранить: ${err.message}`;
+          } finally {
+            adBtn.disabled = false;
+          }
+        };
+      }
       const target = document.getElementById("blueprint-management");
       if (target && (management == null ? void 0 : management.dataset.mounted) === DETAIL_ID) target.replaceWith(management);
       else if (target && MGMT) mountBlueprintManagement(target, DETAIL_ID, MGMT, NODE_RES, (m) => {
@@ -5245,12 +5479,13 @@
     const meta = STATUS_META[n.status] || STATUS_META.offline;
     const nt = n.node_type ? NODE_TYPE_META[n.node_type] : void 0;
     const q = n.quarantine;
+    const slot = SETTINGS && SETTINGS.node_id === n.node_id ? SETTINGS : null;
     const head = `
   <div class="card nd-head">
     <div>
       <div class="nd-ip-lead"><span class="mono">${esc(n.ip || "—")}${n.port ? ":" + n.port : ""}</span>
         · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
-      <div class="nd-ip">нода <span class="mono">${esc(n.node_id)}</span></div>
+      <div class="nd-ip">${slot ? `<b>${esc(slot.name)} · Нода №${slot.number}</b> · ` : ""}нода <span class="mono">${esc(n.node_id)}</span></div>
     </div>
     <div class="nd-chips">
       <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
@@ -5278,7 +5513,7 @@
       case "checks":
         return checksHTML(d);
       case "management":
-        return mgmtHTML() + resLinkageHTML();
+        return settingsHTML() + mgmtHTML() + resLinkageHTML();
       case "journal":
         return eventsHTML(d);
       case "actions":
@@ -5368,6 +5603,47 @@
     if (!banned && !quarantined) return "";
     if ((MGMT == null ? void 0 : MGMT.mode) === "profile") return `<div class="banner warn" role="note"><span>IP в блокировке. Включённый профильный режим разрешает действия закреплённого профиля, включая платные действия. Настройки и текущий эпизод — в разделе «Управление».</span></div>`;
     return `<div class="banner info" role="note"><span>IP в блокировке (ip_ban) — это вердикт регистратора, показан информационно. Он <b>не</b> запускает покупку или замену сервера: автопокупка при бане не выполняется. Замену можно инициировать только вручную.</span></div>`;
+  }
+  function settingsHTML() {
+    const head = `<div class="card-head"><h2>Название и параметры</h2><span class="hint">логическая нода</span></div>`;
+    if (!SETTINGS) {
+      return `<section class="card">${head}<div class="card-body"><div class="skeleton skel-block"></div>${SETTINGS_ERR ? `<div class="banner warn" role="status">${esc(SETTINGS_ERR)}</div>` : ""}</div></section>`;
+    }
+    const ad = SETTINGS.runtime.ad_tag;
+    const adValue = (ad == null ? void 0 : ad.value) || "";
+    const adDisabled = (ad == null ? void 0 : ad.state) === "unsupported";
+    return `<section class="card">${head}
+    <div class="card-body">
+      <div class="srv-grid">
+        <div class="field">
+          <label for="nd-slot-name">Название</label>
+          <input id="nd-slot-name" type="text" maxlength="10" value="${esc(SETTINGS_DRAFT != null ? SETTINGS_DRAFT : SETTINGS.name)}" autocomplete="off" spellcheck="false" aria-describedby="nd-slot-help">
+          <span class="help" id="nd-slot-help">1–10 символов — латиница, цифры, . _ -. Меняется только название в кабинете и имя будущих установок; технический ID, секрет и история остаются прежними.</span>
+        </div>
+        <div class="field">
+          <span class="static-head">Публичный номер</span>
+          <div class="kv-v">Нода №${SETTINGS.number}</div>
+          <span class="help">Постоянный номер логической ноды. Сохраняется при замене VPS.</span>
+        </div>
+      </div>
+      <div class="blueprint-toolbar">
+        <button type="button" class="btn primary" data-slot-rename>Сохранить название</button>
+        <span class="hint" data-slot-msg aria-live="polite"></span>
+      </div>
+      <div class="srv-grid" style="margin-top:14px">
+        <div class="field">
+          <label for="nd-ad-tag">Рекламный тег (ad_tag)</label>
+          <input id="nd-ad-tag" class="mono" type="text" maxlength="32" value="${esc(SETTINGS_AD_DRAFT != null ? SETTINGS_AD_DRAFT : adValue)}" autocomplete="off" spellcheck="false" aria-describedby="nd-ad-help" ${adDisabled ? "disabled" : ""}>
+          <span class="help" id="nd-ad-help">32 hex-символа. Пусто — снять тег. Применяется только на MTProxyL и подтверждается агентом; профиль не меняется.</span>
+        </div>
+      </div>
+      <div class="blueprint-toolbar">
+        <button type="button" class="btn" data-ad-save ${adDisabled ? "disabled" : ""}>Применить ad_tag</button>
+        <span class="hint" data-ad-msg aria-live="polite">${esc((ad == null ? void 0 : ad.message) || "")}</span>
+      </div>
+      ${(ad == null ? void 0 : ad.state) === "unsupported" ? `<div class="banner info" role="note"><span>${esc(ad.message || "Изменение ad_tag на этой ноде недоступно.")}</span></div>` : ""}
+    </div>
+  </section>`;
   }
   function mgmtHTML() {
     const head = `<div class="card-head"><h2>Управление</h2><span class="hint">режим обслуживания ноды</span></div>`;
@@ -8173,7 +8449,6 @@
   var CRES_HIGHLIGHT = 0;
   var OPEN_RES = /* @__PURE__ */ new Set();
   var HOSTING_TAB = "conns";
-  var CR_IDEM = "";
   var RES_PROGRESS = {};
   var BAL_ERR = {
     provider_error: "Провайдер вернул ошибку",
@@ -8870,13 +9145,38 @@
   var CR_PROF_ID = 0;
   var CR_EST_LAST = null;
   var CR_STEPS = ["Создание", "Установка", "Готово"];
+  var CR_PENDING_KEY = "cloud-create";
+  var CR_BATCH_PENDING_KEY = "cloud-batch";
+  function crShowPendingBlock() {
+    const errBox = $("cr-err");
+    const p = loadPending(CR_PENDING_KEY);
+    if (!p) return;
+    errBox.textContent = p.state === "unknown" ? "Результат предыдущего создания неизвестен: ресурс мог быть куплен. Проверьте список ресурсов и «Журнал», затем нажмите «Начать новый заказ» только если ресурса нет." : "Предыдущий заказ ещё не подтверждён. Дождитесь ответа или проверьте список ресурсов.";
+    errBox.hidden = false;
+    const reset = $("cr-reset-pending");
+    if (reset) reset.hidden = false;
+  }
+  function crClearPendingIntent() {
+    clearPending(CR_PENDING_KEY);
+    const b = $("cr-reset-pending");
+    if (b) b.hidden = true;
+  }
+  function crBatchPending() {
+    return loadPending(CR_BATCH_PENDING_KEY);
+  }
+  function crShowBatchBlock() {
+    const errBox = $("cr-err");
+    errBox.textContent = "Результат прошлой пакетной закупки неизвестен: часть серверов могла быть создана. Проверьте список ресурсов и «Журнал», затем нажмите «Начать новый заказ» только если лишних ресурсов нет.";
+    errBox.hidden = false;
+    const reset = $("cr-reset-pending");
+    if (reset) reset.hidden = false;
+  }
   function toggleCrForm(open) {
     const card = $("cr-form-card");
     card.hidden = !open;
     $("cr-add").setAttribute("aria-expanded", String(open));
     if (open) {
       fillCrConnections();
-      CR_IDEM = newIdemKey();
       CR_PROF_ID = 0;
       renderCrSteps(-1);
       $("cr-err").hidden = true;
@@ -8888,6 +9188,8 @@
       loadCrCatalog("");
       loadCrProfiles();
       $("cr-name").focus();
+      if (loadPending(CR_PENDING_KEY)) crShowPendingBlock();
+      else if (crBatchPending()) crShowBatchBlock();
     } else {
       window.clearTimeout(CR_EST_TIMER);
       renderCrSteps(-1);
@@ -9289,25 +9591,55 @@
       name: `${spec.name}-${String(i + 1).padStart(2, "0")}`,
       state: "pending"
     }));
+    const bodies = items.map((item, i) => {
+      const suffix = `-${String(i + 1).padStart(2, "0")}`;
+      return {
+        connection_id: spec.connID,
+        label: item.name,
+        configuration: {
+          ...spec.conf,
+          name: item.name,
+          ...spec.hostname ? { hostname: `${spec.hostname}${suffix}` } : {}
+        },
+        management: { mode: "manual" }
+      };
+    });
+    const persisted = {
+      name: spec.name,
+      items: bodies.map((body) => ({ key: newIdemKey(), body, state: "pending" })),
+      state: "running"
+    };
+    savePending(CR_BATCH_PENDING_KEY, {
+      key: newIdemKey(),
+      body: persisted,
+      hash: bodyHash(persisted),
+      state: "submitting",
+      createdAt: Date.now()
+    });
+    const saveBatch = () => {
+      savePending(CR_BATCH_PENDING_KEY, {
+        key: newIdemKey(),
+        body: persisted,
+        hash: bodyHash(persisted),
+        state: persisted.state === "unknown" ? "unknown" : "submitting",
+        createdAt: Date.now()
+      });
+    };
     renderCrBatch(items);
     btn.disabled = true;
     btn.textContent = "Создание…";
     renderCrSteps(0);
+    let unknown = false;
     for (let i = 0; i < items.length; i++) {
+      if (unknown) break;
       const item = items[i];
-      const suffix = `-${String(i + 1).padStart(2, "0")}`;
+      const rec = persisted.items[i];
       item.state = "creating";
       renderCrBatch(items);
-      const configuration = {
-        ...spec.conf,
-        name: item.name,
-        ...spec.hostname ? { hostname: `${spec.hostname}${suffix}` } : {}
-      };
       try {
-        const ack = await api.createCloudResource(
-          { connection_id: spec.connID, label: item.name, configuration, management: { mode: "manual" } },
-          newIdemKey()
-        );
+        const ack = await api.createCloudResource(rec.body, rec.key);
+        rec.state = "accepted";
+        saveBatch();
         if (ack.resource_id == null) {
           item.state = "error";
           item.reason = "нет id ресурса";
@@ -9325,13 +9657,26 @@
           }
         }
       } catch (e) {
-        item.state = "error";
-        item.reason = shortCrErr(e);
+        const err = e;
+        const definitive = !!err.status && err.status < 500 && err.status !== 429;
+        if (definitive && err.code !== "idempotency_conflict") {
+          rec.state = "failed";
+          saveBatch();
+          item.state = "error";
+          item.reason = shortCrErr(err);
+        } else {
+          rec.state = "unknown";
+          persisted.state = "unknown";
+          saveBatch();
+          item.state = "error";
+          item.reason = "результат неизвестен — проверьте список ресурсов";
+          unknown = true;
+        }
       }
       renderCrBatch(items);
       loadResources();
     }
-    if (spec.wantsInstall && spec.profileID) {
+    if (spec.wantsInstall && spec.profileID && !unknown) {
       for (const item of items) {
         if (item.state !== "ready" || item.resId == null) continue;
         item.state = "installing";
@@ -9360,6 +9705,12 @@
     const errors = items.filter((i) => i.state === "error").length;
     btn.textContent = errors ? `Создано ${created}, ошибок ${errors}` : `Создано ${created}`;
     btn.disabled = true;
+    if (unknown) {
+      crShowBatchBlock();
+    } else {
+      clearPending(CR_BATCH_PENDING_KEY);
+      resetCrSubmitBtn();
+    }
     showToast(errors ? `Создано ${created}, ошибок ${errors} — причины в списке` : `Создано ${created}`, errors > 0);
     announce(`Пачка ресурсов: создано ${created}, ошибок ${errors}`);
     loadResources();
@@ -9447,6 +9798,10 @@
     const hostname = crValue("cr-hostname");
     const btn = $("cr-submit");
     if (count > 1) {
+      if (crBatchPending()) {
+        crShowBatchBlock();
+        return;
+      }
       void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, profileID: CR_PROF_ID, vars });
       return;
     }
@@ -9455,13 +9810,26 @@
       name,
       ...hostname ? { hostname } : {}
     };
-    if (!CR_IDEM) CR_IDEM = newIdemKey();
+    const createBody = {
+      connection_id: connID,
+      label: name,
+      configuration,
+      management: { mode: "manual" }
+    };
+    const hash = bodyHash(createBody);
+    const prev = loadPending(CR_PENDING_KEY);
+    if (prev && prev.hash !== hash) {
+      crShowPendingBlock();
+      return;
+    }
+    const intent = prev ? { ...prev, state: "submitting" } : beginPending(CR_PENDING_KEY, newIdemKey(), createBody);
+    if (prev) savePending(CR_PENDING_KEY, intent);
     btn.disabled = true;
     btn.textContent = "Создание…";
     renderCrSteps(0);
-    api.createCloudResource({ connection_id: connID, label: name, configuration, management: { mode: "manual" } }, CR_IDEM).then((ack) => {
+    api.createCloudResource(createBody, intent.key).then((ack) => {
       announce(`Ресурс ${name}: создаётся · ожидание IP…`);
-      CR_IDEM = "";
+      crClearPendingIntent();
       if (ack.resource_id == null) {
         toggleCrForm(false);
         loadResources();
@@ -9488,19 +9856,23 @@
     }).catch((e2) => {
       resetCrSubmitBtn();
       renderCrSteps(-1);
-      if (e2.code === "idempotency_conflict") {
-        CR_IDEM = newIdemKey();
-        showErr("Запрос с этим ключом уже был с другим телом. Обновите страницу и повторите.");
-      } else if (e2.code === "resource_busy") {
-        showErr("По ресурсу уже выполняется команда.");
-      } else if (e2.code === "quota_exceeded") {
-        showErr("Квота исчерпана: освободите место или увеличьте лимит.");
-      } else if (e2.code === "not_implemented") {
-        errBox.innerHTML = BEGET_BANNER;
-        errBox.hidden = false;
-      } else {
-        showErr(e2.message);
+      const definitive = !!e2.status && e2.status < 500 && e2.status !== 429;
+      if (definitive && e2.code !== "idempotency_conflict") {
+        crClearPendingIntent();
+        if (e2.code === "resource_busy") {
+          showErr("По ресурсу уже выполняется команда.");
+        } else if (e2.code === "quota_exceeded") {
+          showErr("Квота исчерпана: освободите место или увеличьте лимит.");
+        } else if (e2.code === "not_implemented") {
+          errBox.innerHTML = BEGET_BANNER;
+          errBox.hidden = false;
+        } else {
+          showErr(e2.message);
+        }
+        return;
       }
+      markPendingUnknown(CR_PENDING_KEY, intent);
+      crShowPendingBlock();
     });
   }
   function installCreatedResource(resId, _opId, label, profileID, vars) {
@@ -10030,6 +10402,13 @@
     $("cr-form").addEventListener("submit", submitCreateResource);
     $("cr-add").addEventListener("click", () => toggleCrForm(!!$("cr-form-card").hidden));
     $("cr-cancel").addEventListener("click", () => toggleCrForm(false));
+    $("cr-reset-pending").addEventListener("click", () => {
+      crClearPendingIntent();
+      clearPending(CR_BATCH_PENDING_KEY);
+      $("cr-err").hidden = true;
+      resetCrSubmitBtn();
+      showToast("Предыдущее намерение сброшено. Создайте новый заказ только после проверки ресурсов.");
+    });
     $("hc-add").addEventListener("click", () => connEditor(null));
     $("cloud-reload").addEventListener("click", () => loadResources());
     $("srv-cloud-reload").addEventListener("click", () => loadResources());
@@ -10059,6 +10438,7 @@
     $("cr-prof").addEventListener("change", onCrProfileChange);
   }
   var AP_STORAGE_KEY = "sharedd.autopilot.fleet";
+  var AP_PENDING_KEY = "fleet";
   var AP_STATE_META = {
     running: { label: "выполняется", cls: "info" },
     succeeded: { label: "готово", cls: "ok" },
@@ -10069,6 +10449,7 @@
     pending: { label: "ожидает", cls: "" },
     creating: { label: "создаётся", cls: "info" },
     installing: { label: "установка", cls: "info" },
+    verifying: { label: "проверки", cls: "warn" },
     admitted: { label: "в пуле", cls: "ok" },
     error: { label: "ошибка", cls: "bad" }
   };
@@ -10089,9 +10470,11 @@
     resource_busy: "Сервис занят, повторите позже",
     provider_reconcile_required: "Платный исход неясен — проверьте ресурсы у провайдера",
     profile_unavailable: "Профиль недоступен для установки",
-    install_failed: "Ошибка установки профиля"
+    install_failed: "Ошибка установки профиля",
+    health_timeout: "Установлено, но нода не прошла проверки здоровья"
   };
   var AP_CATALOG = null;
+  var AP_PROFILES = null;
   var AP_CAT_SEQ = 0;
   var AP_EST_TIMER = 0;
   var AP_EST_SEQ = 0;
@@ -10103,6 +10486,8 @@
   var AP_POLL_ACTIVE = false;
   var AP_SUBMITTING = false;
   var AP_LOADED = false;
+  var AP_DEFAULTS_REV = 0;
+  var AP_NOTIFY_TERMINAL = false;
   var AP_SETTLED = /* @__PURE__ */ new Set();
   function apValue(id) {
     var _a;
@@ -10142,6 +10527,20 @@
     box.textContent = msg;
     box.hidden = false;
     if (focusId) (_a = $(focusId)) == null ? void 0 : _a.focus();
+  }
+  function apShowPendingBlock() {
+    const p = loadPending(AP_PENDING_KEY);
+    if (!p) return;
+    apShowError(
+      p.state === "unknown" ? "Результат предыдущей отправки неизвестен: заказ мог быть принят. Проверьте «Журнал» и «Хостинги», затем нажмите «Начать новый заказ» только если заказа нет." : "Предыдущая отправка ещё не подтверждена. Дождитесь ответа или проверьте «Журнал», прежде чем менять параметры."
+    );
+    const reset = $("ap-reset-pending");
+    if (reset) reset.hidden = false;
+  }
+  function apClearPendingIntent() {
+    clearPending(AP_PENDING_KEY);
+    const reset = $("ap-reset-pending");
+    if (reset) reset.hidden = true;
   }
   function apHideError() {
     const box = $("ap-err");
@@ -10374,11 +10773,13 @@
     const sel = $("ap-prof");
     const help = $("ap-prof-help");
     textProfiles().then((m) => {
+      AP_PROFILES = m;
       const pub = m.published || [];
       const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
       if (!pub.length && !own.length) {
         sel.innerHTML = `<option value="">Нет текстовых профилей</option>`;
         help.innerHTML = `Текстовых профилей нет — создайте их в разделе <a href="#/profiles">Мои профили</a>.`;
+        apRenderInstallVars();
         return;
       }
       const opts = [`<option value="">Выберите профиль…</option>`];
@@ -10386,12 +10787,67 @@
       for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
       sel.innerHTML = opts.join("");
       help.textContent = "Текстовые профили: опубликованные и ваши.";
+      apRenderInstallVars();
     }).catch((e) => {
       help.textContent = "Не удалось загрузить профили: " + e.message;
     });
   }
+  function apRenderInstallVars() {
+    var _a;
+    const box = $("ap-inst-vars");
+    const saveRow = $("ap-save-defaults-row");
+    const saveHelp = $("ap-save-defaults-help");
+    const sel = $("ap-prof");
+    const id = Number(sel == null ? void 0 : sel.value) || 0;
+    const all = AP_PROFILES ? [...AP_PROFILES.published || [], ...AP_PROFILES.profiles || []] : [];
+    const p = all.find((x) => x.id === id);
+    const saveDefaults = $("ap-save-defaults");
+    if (saveDefaults) saveDefaults.checked = false;
+    if (!id || !p) {
+      box.hidden = true;
+      (_a = box.querySelector(".vars-editor")) == null ? void 0 : _a.replaceChildren();
+      saveRow.hidden = true;
+      saveHelp.hidden = true;
+      AP_DEFAULTS_REV = 0;
+      return;
+    }
+    box.hidden = false;
+    saveRow.hidden = false;
+    saveHelp.hidden = false;
+    let ed = box.querySelector(".vars-editor");
+    if (!ed) {
+      ed = document.createElement("div");
+      ed.className = "vars-editor";
+      box.appendChild(ed);
+    }
+    const decls = parseVarsSchema(p.vars_schema);
+    renderVarsEditor(ed, decls, {
+      install: true,
+      defaults: loadInstallDefaults()
+    });
+    api.profileDefaults(id).then((d) => {
+      var _a2;
+      if ((Number((_a2 = $("ap-prof")) == null ? void 0 : _a2.value) || 0) !== id) return;
+      AP_DEFAULTS_REV = d.revision || 0;
+      const snapshot = Object.entries(d.vars || {}).map(([name, value]) => ({
+        name,
+        default: value,
+        override: true
+      }));
+      renderVarsEditor(ed, decls, {
+        install: true,
+        defaults: loadInstallDefaults(),
+        snapshot
+      });
+    }).catch(() => {
+      var _a2;
+      if ((Number((_a2 = $("ap-prof")) == null ? void 0 : _a2.value) || 0) === id) AP_DEFAULTS_REV = 0;
+    });
+  }
   function apSubmitErrorText(e) {
-    if (e.code === "idempotency_conflict") return "Запрос уже был отправлен с другим телом. Повторите развёртывание.";
+    if (e.code === "idempotency_conflict") {
+      return "Этот ключ заказа уже принят с другими параметрами. Не повторяйте с новым ключом: проверьте «Журнал» и «Хостинги», затем нажмите «Начать новый заказ».";
+    }
     if (e.code === "quota_exceeded") return "Квота исчерпана: освободите место или увеличьте лимит.";
     if (e.code === "insufficient_funds") return "Недостаточно средств на аккаунте провайдера.";
     if (e.code === "provider_timeout") return "Провайдер не ответил вовремя. Повторите позже.";
@@ -10454,15 +10910,47 @@
       apShowError("Выберите профиль установки.", "ap-prof");
       return;
     }
+    const baseName = apValue("ap-name") || "fleet";
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,5}[A-Za-z0-9])?$/.test(baseName)) {
+      apShowError("Имя нод: 1–7 символов — латиница, цифры, . _ - (без . _ - по краям).", "ap-name");
+      return;
+    }
+    const ed = document.querySelector("#ap-inst-vars .vars-editor");
+    const varsErr = ed ? validateVarsEditor(ed) : null;
+    if (varsErr) {
+      apShowError(varsErr);
+      return;
+    }
+    const installationVars = ed ? collectInstallVars(ed) : {};
+    const saveDefaults = $("ap-save-defaults").checked;
+    if (saveDefaults) {
+      try {
+        const saved = await api.saveProfileDefaults({
+          profile_id: pid,
+          vars: installationVars,
+          expected_revision: AP_DEFAULTS_REV
+        });
+        AP_DEFAULTS_REV = saved.revision;
+      } catch (e2) {
+        const err = e2;
+        apShowError(err.code === "revision_conflict" ? "Значения по умолчанию уже изменились в другой вкладке. Обновите профиль и повторите." : `Не удалось сохранить значения по умолчанию: ${err.message}`);
+        return;
+      }
+    }
+    const autoOn = $("ap-auto").checked;
+    if (autoOn && !$("ap-consent").checked) {
+      apShowError("Для автоматических замен нужно отдельно разрешить будущие платные операции.", "ap-consent");
+      return;
+    }
     const count = apCount();
     const period = apValue("ap-period");
     const networkSpeed = apValue("ap-net");
     const body = {
       connection_id: connID,
-      name: "fleet",
+      name: baseName,
       count,
       configuration: {
-        name: "fleet",
+        name: baseName,
         cpu,
         cores,
         ram,
@@ -10474,14 +10962,24 @@
         ...networkSpeed ? { networkSpeed } : {}
       },
       installation_profile_id: pid,
-      auto_replace: $("ap-auto").checked
+      ...Object.keys(installationVars).length ? { installation_vars: installationVars } : {},
+      auto_replace: autoOn
     };
-    const key = newIdemKey();
+    const hash = bodyHash(body);
+    const prev = loadPending(AP_PENDING_KEY);
+    if (prev && prev.hash !== hash) {
+      apShowPendingBlock();
+      return;
+    }
+    const intent = prev ? { ...prev, state: "submitting" } : beginPending(AP_PENDING_KEY, newIdemKey(), body);
+    if (prev) savePending(AP_PENDING_KEY, intent);
     AP_SUBMITTING = true;
     apUpdateSubmit();
     try {
-      const ack = await api.createFleet(body, key);
+      const ack = await api.createFleet(body, intent.key);
       AP_SUBMITTING = false;
+      apClearPendingIntent();
+      AP_NOTIFY_TERMINAL = true;
       apStoreFleetId(ack.fleet_id);
       AP_FLEET = null;
       AP_SETTLED.delete(ack.fleet_id);
@@ -10493,7 +10991,15 @@
       announce(`Автопилот запущен: ${count}`);
     } catch (err) {
       AP_SUBMITTING = false;
-      apShowError(apSubmitErrorText(err));
+      const e2 = err;
+      const definitive = !!e2.status && e2.status < 500 && e2.status !== 429;
+      if (definitive && e2.code !== "idempotency_conflict") {
+        apClearPendingIntent();
+        apShowError(apSubmitErrorText(e2));
+      } else {
+        markPendingUnknown(AP_PENDING_KEY, intent);
+        apShowPendingBlock();
+      }
     } finally {
       apUpdateSubmit();
     }
@@ -10508,7 +11014,7 @@
     const meta = AP_ITEM_META[it.state] || { label: it.state, cls: "info" };
     const reason = it.state === "error" ? apReasonText(it.last_error) : "";
     const ip = it.ip ? `<span class="mono">${esc(it.ip)}</span>` : `<span class="dim">${it.state === "error" ? "IP не получен" : "IP ожидается"}</span>`;
-    const node = it.node_id ? `<a class="node-open mono" href="#/nodes/${encodeURIComponent(it.node_id)}">${esc(it.node_id)}</a>` : it.resource_id != null ? `<span class="dim">ресурс #${it.resource_id}</span>` : `<span class="dim">ресурс ещё не создан</span>`;
+    const node = it.node_id ? `<a class="node-open mono" href="#/nodes/${encodeURIComponent(it.node_id)}">${esc(it.node_id)}</a>` : it.resource_id != null ? `<a class="mono" href="#/resources/${it.resource_id}">ресурс #${it.resource_id}</a>` : `<span class="dim">ресурс ещё не создан</span>`;
     return `<div class="node-card ap-item" role="listitem">
     <div class="node-main">
       <div class="node-top">
@@ -10523,10 +11029,11 @@
   function apSummary(f) {
     const items = f.items || [];
     const ok = items.filter((i) => i.state === "admitted").length;
+    const verifying = items.filter((i) => i.state === "verifying").length;
     if (f.state === "succeeded") return `${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`;
     if (f.state === "partial") return `${ok} из ${f.count}, ошибки по строкам`;
     if (f.state === "failed") return `0 из ${f.count}, ошибки по строкам`;
-    return `Готово ${ok} из ${f.count} · выполняется…`;
+    return `Готово ${ok} из ${f.count}${verifying ? ` · проверяются ${verifying}` : ""} · выполняется…`;
   }
   function apRenderFleet(f) {
     const box = $("ap-fleet");
@@ -10595,6 +11102,7 @@
     });
   }
   function apAfterTerminal(f) {
+    apClearFleetId();
     if (AP_SETTLED.has(f.id)) {
       apUpdateSubmit();
       return;
@@ -10602,12 +11110,15 @@
     AP_SETTLED.add(f.id);
     const items = f.items || [];
     const ok = items.filter((i) => i.state === "admitted").length;
-    if (f.state === "succeeded") {
-      showToast(`Автопилот: ${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`);
-    } else if (f.state === "partial") {
-      showToast(`Автопилот: ${ok} из ${f.count}, ошибки по строкам`, true);
-    } else {
-      showToast(`Автопилот: 0 из ${f.count}, ошибки по строкам`, true);
+    if (AP_NOTIFY_TERMINAL) {
+      AP_NOTIFY_TERMINAL = false;
+      if (f.state === "succeeded") {
+        showToast(`Автопилот: ${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`);
+      } else if (f.state === "partial") {
+        showToast(`Автопилот: ${ok} из ${f.count}, ошибки по строкам`, true);
+      } else {
+        showToast(`Автопилот: 0 из ${f.count}, ошибки по строкам`, true);
+      }
     }
     announce(apSummary(f));
     refresh().catch(() => {
@@ -10619,7 +11130,20 @@
     const id = apReadFleetId();
     if (!id) return;
     if (AP_POLL_ACTIVE && AP_POLL_ID === id) return;
-    apStartPoll(id);
+    api.fleet(id).then((f) => {
+      if (f.state !== "running") {
+        apClearFleetId();
+        AP_FLEET = null;
+        const box = $("ap-fleet");
+        box.hidden = true;
+        box.replaceChildren();
+        apUpdateSubmit();
+        return;
+      }
+      apStartPoll(id);
+    }).catch(() => {
+      apClearFleetId();
+    });
   }
   function enterAutopilot() {
     if (!AP_LOADED) {
@@ -10630,6 +11154,7 @@
       apLoadConnections();
     }
     apResumeLast();
+    if (loadPending(AP_PENDING_KEY)) apShowPendingBlock();
   }
   function initAutopilot() {
     $("ap-form").addEventListener("submit", (e) => {
@@ -10637,6 +11162,7 @@
     });
     $("ap-conn").addEventListener("change", () => apLoadCatalog(""));
     $("ap-loc").addEventListener("change", () => apLoadCatalog(apValue("ap-loc")));
+    $("ap-prof").addEventListener("change", apRenderInstallVars);
     for (const id of ["ap-cores", "ap-ram", "ap-disk"]) {
       $(id).addEventListener("input", () => {
         crClamp(id);
@@ -10653,6 +11179,20 @@
       else if (Number.isFinite(v) && v > 20) countEl.value = "20";
       apUpdateSubmit();
       apRenderEstimate();
+    });
+    const autoEl = $("ap-auto");
+    const consentRow = $("ap-consent-row");
+    const consentHelp = $("ap-consent-help");
+    const consentEl = $("ap-consent");
+    autoEl.addEventListener("change", () => {
+      consentRow.hidden = !autoEl.checked;
+      consentHelp.hidden = !autoEl.checked;
+      if (!autoEl.checked) consentEl.checked = false;
+    });
+    $("ap-reset-pending").addEventListener("click", () => {
+      apClearPendingIntent();
+      apHideError();
+      showToast("Предыдущее намерение сброшено. Создайте новый заказ только после проверки «Журнала».");
     });
     apUpdateSubmit();
   }
@@ -11298,24 +11838,32 @@
   }
   var refreshing = false;
   async function refresh() {
+    var _a;
     if (refreshing) return;
     refreshing = true;
     try {
-      const [me, nodes, ops, link] = await Promise.all([
+      const [meR, nodesR, opsR, linkR] = await Promise.allSettled([
         api.me(),
         api.nodes(),
         api.operations(),
         api.begetLink()
       ]);
-      ME = me;
-      NODES = nodes.nodes || [];
-      OPS = ops.operations || [];
-      begetOk = !!link.verified;
-      renderBeget(link, true);
+      if (meR.status === "rejected" && ((_a = meR.reason) == null ? void 0 : _a.message) === "unauthorized") return;
+      let failures = 0;
+      if (meR.status === "fulfilled") ME = meR.value;
+      else failures++;
+      if (nodesR.status === "fulfilled") NODES = nodesR.value.nodes || [];
+      else failures++;
+      if (opsR.status === "fulfilled") OPS = opsR.value.operations || [];
+      else failures++;
+      if (linkR.status === "fulfilled") {
+        begetOk = !!linkR.value.verified;
+        renderBeget(linkR.value, true);
+      } else failures++;
       loadAuthkey(true);
       $("last-upd").textContent = "обновлено " + (/* @__PURE__ */ new Date()).toLocaleTimeString("ru-RU");
-      $("live-text").textContent = "live";
-      $("live-pill").className = "status-pill live";
+      $("live-text").textContent = failures ? "частично" : "live";
+      $("live-pill").className = "status-pill " + (failures ? "off" : "live");
       renderAll(true);
       renderSection(document.getElementById("view-create"), true, () => wizard.render());
     } catch (e) {
@@ -11478,6 +12026,7 @@
     if (!await canLeaveBlueprint("logout")) return;
     if (!leaveRunReview()) return;
     leaveBlueprintEditor();
+    clearAllPending();
     api.logout().catch(() => {
     }).finally(() => location.replace("/signin"));
   });

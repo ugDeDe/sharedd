@@ -62,6 +62,13 @@ export interface ProfilePayload {
   name?: string; description?: string; steps?: string; vars_schema?: string;
 }
 
+export interface ProfileDefaults {
+  profile_id: number;
+  vars: Record<string, string>;
+  revision: number;
+  updated_at?: number;
+}
+
 // Frozen wire DTOs: blueprint/{model,registry}.go, blueprint_*_api.go.
 export type BlueprintType = "string" | "number" | "bool" | "config" | "server" | "operation" | "ssh_target" | "secretref";
 export interface BlueprintInput { type: BlueprintType; required: boolean; }
@@ -354,7 +361,7 @@ export interface CloudReplaceBody {
    FROZEN wire DTOs: создание принимает ровно один платный заказ на N нод,
    статус опрашивается по fleet_id. Секретов в ответах нет. */
 export type FleetState = "running" | "succeeded" | "partial" | "failed";
-export type FleetItemState = "pending" | "creating" | "installing" | "admitted" | "error";
+export type FleetItemState = "pending" | "creating" | "installing" | "verifying" | "admitted" | "error";
 
 export interface FleetItem {
   idx: number;
@@ -404,14 +411,36 @@ export interface FleetCreateBody {
   count: number;
   configuration: FleetConfiguration;
   installation_profile_id: number;
+  installation_vars?: Record<string, unknown>;
   auto_replace: boolean;
 }
 
 export interface FleetCreateAck { fleet_id: number; }
 
+export interface NodeRuntimeSetting {
+  state: "unmanaged" | "pending" | "applied" | "failed" | "unsupported";
+  message?: string;
+  mode?: "set" | "clear" | "unmanaged";
+  value?: string;
+  desired_revision?: number;
+  applied_revision?: number;
+}
+export interface NodeSettings {
+  node_id: string;
+  slot_id: number;
+  number: number;
+  name: string;
+  revision: number;
+  runtime: Record<string, NodeRuntimeSetting>;
+}
+export interface NodeSettingsPatch {
+  expected_revision: number;
+  name?: string;
+  runtime?: Record<string, unknown>;
+}
+
 export interface ManagementPolicy {
-  mode: "manual" | "profile"; profile_id: number | null;
-  inputs: Record<string, unknown>; process_current_ban: boolean;
+  mode: "manual" | "profile"; profile_id: number | null;  inputs: Record<string, unknown>; process_current_ban: boolean;
   revision: number; current_resource_id: number | null; active_run_id?: number | null;
 }
 
@@ -583,6 +612,9 @@ export const api = {
   // FROZEN: {profile_id, vars} — профиль адресуется id, содержимое одно.
   installCloudResource: (id: number, key: string, body: { profile_id?: number; vars?: Record<string, unknown> }) =>
     req<Operation>(`/api/me/cloud-resources/${id}/install`, "POST", body, { headers: { "Idempotency-Key": key } }),
+  profileDefaults: (profileId: number) => req<ProfileDefaults>(`/api/me/profile-defaults?profile_id=${profileId}`),
+  saveProfileDefaults: (body: { profile_id: number; vars: Record<string, string>; expected_revision: number }) =>
+    req<ProfileDefaults>("/api/me/profile-defaults", "PUT", body),
   // FROZEN: 200 {ssh_ok,error}; 409 not_ready/ssh_unavailable; 501 beget.
   checkCloudResource: (id: number) =>
     req<CloudCheckResult>(`/api/me/cloud-resources/${id}/check`, "POST"),
@@ -595,6 +627,9 @@ export const api = {
   nodeManagement: (id: string) => req<ManagementPolicy>(`/api/me/nodes/${encodeURIComponent(id)}/management`),
   putNodeManagement: (id: string, body: ManagementBody) =>
     req<ManagementPolicy>(`/api/me/nodes/${encodeURIComponent(id)}/management`, "PUT", body),
+  nodeSettings: (id: string) => req<NodeSettings>(`/api/me/nodes/${encodeURIComponent(id)}/settings`),
+  patchNodeSettings: (id: string, body: NodeSettingsPatch) =>
+    req<NodeSettings>(`/api/me/nodes/${encodeURIComponent(id)}/settings`, "PATCH", body),
   // ── флот/Autopilot ──
   createFleet: (body: FleetCreateBody, key: string) =>
     req<FleetCreateAck>("/api/me/fleets", "POST", body, { headers: { "Idempotency-Key": key } }),

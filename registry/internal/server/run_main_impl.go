@@ -119,6 +119,8 @@ type Registry struct {
 	fleetMu      sync.Mutex
 	fleetWorkers map[int64]bool
 	fleetWG      sync.WaitGroup
+	// fleetVerify is a test seam; nil → real blueprintResourceReady.
+	fleetVerify func(control.CloudResourceV2) error
 	// fleetReconcileAt throttles provider inventory scans per resource id.
 	fleetReconcileMu sync.Mutex
 	fleetReconcileAt map[int64]time.Time
@@ -202,7 +204,13 @@ func Run() {
 		startedAt:  time.Now(),
 		ttlOverdue: make(map[string]bool),
 	}
-	reg.loadState()
+	// A missing state file is a valid first start. An existing but unreadable
+	// or corrupt file must abort startup: continuing would persist an empty
+	// state over the only copy of assignments, DNS operations and bans.
+	if err := reg.loadState(); err != nil {
+		log.Fatalf("state load error: %v — refusing to start; restore %s from a backup instead of overwriting it",
+			err, cfg.State.File)
+	}
 	reg.mu.Lock()
 	reg.recoverDNSDesiredLocked()
 	reg.persistStateLocked()
@@ -242,9 +250,15 @@ func Run() {
 	// Resume cloud creates whose in-process worker died with a restart/deploy.
 	// Read-only provider reconcile (never a second Create).
 	go reg.cloudResumeLoop(ctx)
+	// Continue deletes that were interrupted by a restart. Read-only Server
+	// checks first; never a new paid action.
+	go reg.resumeCloudDeletes(ctx)
 	// Fleet autopilot: uncertain paid outcomes are reconciled against provider
 	// inventory once a minute (no button, no second Create).
 	go reg.fleetReconcileLoop(ctx)
+	// Continue fleets accepted before a restart. The in-process workers died
+	// with the old process; the persisted idempotency keys make the replay safe.
+	go reg.resumeFleets(ctx)
 	bpDone := make(chan struct{})
 	go func() {
 		defer close(bpDone)
@@ -507,6 +521,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 	})))
 
 	mux.Handle("POST /report", r.requireNodeAuth(http.HandlerFunc(r.handleHealthReport)))
+	mux.Handle("POST /api/node/settings/status", r.requireNodeAuth(http.HandlerFunc(r.handleNodeSettingsStatus)))
 
 	// GET /api/node/status — read-only подтверждение факта регистрации ноды
 	// (DEF-B): verify-шаг штатного профиля. Личный node_secret обязателен.
@@ -601,6 +616,18 @@ func (r *Registry) buildMux() *http.ServeMux {
 				c.LastGlobalpingRequestAt = now
 			}
 			r.mu.Unlock()
+			// Индивидуальные настройки — только персональному секрету
+			// владельца. Общий токен + подставной заголовок их не получает.
+			if info := machineAuthFrom(req); info.kind == machineAuthNode && info.ownerNodeID == nodeID && r.control != nil {
+				if rt, err := r.control.RuntimeSettingsForNode(nodeID); err == nil &&
+					rt.State != control.RuntimeUnmanaged && rt.AdTagMode != control.AdTagUnmanaged {
+					resp.NodeSettingsProtocol = 1
+					resp.NodeSettings = &machineapi.NodeSettings{
+						Revision: rt.DesiredRevision,
+						AdTag:    machineapi.AdTagSetting{Mode: rt.AdTagMode, Value: rt.AdTagValue},
+					}
+				}
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -623,6 +650,31 @@ func (r *Registry) buildMux() *http.ServeMux {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = fmt.Fprintln(w, "ok")
+	})
+
+	// Readiness отделён от liveness: внешние Cloudflare/Globalping не должны
+	// вызывать restart-loop, но обязательные локальные зависимости видны.
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		r.mu.RLock()
+		stateReady := r.state.Candidates != nil
+		r.mu.RUnlock()
+		if !stateReady {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprintln(w, "state not initialized")
+			return
+		}
+		if r.usersEnabled() && r.control == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprintln(w, "control database unavailable")
+			return
+		}
+		if r.usersEnabled() && len(r.masterKey) == 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprintln(w, "master key unavailable")
+			return
+		}
+		_, _ = fmt.Fprintln(w, "ready")
 	})
 
 	r.mountPanel(mux)
@@ -1144,16 +1196,16 @@ func (r *Registry) persistStateLocked() {
 	r.eventsDirty = false
 }
 
-func (r *Registry) loadState() {
+func (r *Registry) loadState() error {
 	st, err := state.Load(r.cfg.State.File)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("no existing state file, starting fresh")
-			return
+			return nil
 		}
-		log.Printf("failed to load state file: %v", err)
-		return
+		return fmt.Errorf("load state file: %w", err)
 	}
 	r.state = *st
 	log.Printf("loaded state: %d candidates, %d domain assignments", len(st.Candidates), len(st.Assignments))
+	return nil
 }

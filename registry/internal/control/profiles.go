@@ -12,6 +12,7 @@ package control
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -651,6 +652,9 @@ func MergeProfileVars(varsSchema string, userVars map[string]any) (map[string]an
 			merged[name] = d.Default
 		}
 	}
+	if v, ok := merged["ad_tag"].(string); ok {
+		merged["ad_tag"] = strings.ToLower(strings.TrimSpace(v))
+	}
 	if err := ValidateExtraVars(merged); err != nil {
 		return nil, err
 	}
@@ -690,6 +694,21 @@ func validateProxyVar(name string, value any) error {
 		sni, ok := value.(string)
 		if !ok || !config.ValidHostname(sni) || net.ParseIP(sni) != nil {
 			return fmt.Errorf("%w: proxy_sni must be a domain name without a path or port", ErrValidation)
+		}
+	case "ad_tag":
+		// MTProto ad tag: 32 hex characters. Empty is an explicit "no tag"
+		// and is allowed; absence is inheritance and handled by merge.
+		tag, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("%w: ad_tag must be a string", ErrValidation)
+		}
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			return nil
+		}
+		raw, err := hex.DecodeString(tag)
+		if err != nil || len(raw) != 16 || len(tag) != 32 {
+			return fmt.Errorf("%w: ad_tag must be 32 hex characters", ErrValidation)
 		}
 	}
 	return nil

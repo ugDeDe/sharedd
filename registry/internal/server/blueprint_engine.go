@@ -1132,7 +1132,7 @@ func (st *bpState) installText(ctx context.Context, node blueprint.Node) bpOutco
 	if st.run.VarsJSON != "" {
 		_ = json.Unmarshal([]byte(st.run.VarsJSON), &vars)
 	}
-	vars, err = control.MergeProfileVars(pv.VarsSchema, vars)
+	vars, err = st.r.mergeInstallVars(st.run.UserID, pv, vars)
 	if err != nil {
 		return bpOutcome{err: err}
 	}
@@ -1447,7 +1447,7 @@ func (st *bpState) deleteServer(ctx context.Context, node blueprint.Node) bpOutc
 	if err := st.readyReplacement(res.ReplacedByResourceID); err != nil {
 		return bpOutcome{err: err}
 	}
-	st.r.cloudDeleteDo(ctx, res.ID, conn, res.ExternalID, op.ID)
+	st.r.cloudDeleteDo(ctx, res.ID, conn, res.ExternalID, res.NodeID, op.ID)
 	if ctx.Err() != nil {
 		return bpOutcome{waiting: control.RunWaitingRetry, waitSecs: 30, outputs: map[string]any{"server": srv}}
 	}

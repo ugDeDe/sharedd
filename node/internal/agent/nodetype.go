@@ -5,6 +5,7 @@ package agent
 //
 //	/opt/mtpr-simple/ — фикс MEKO;
 //	/opt/mtproxyl/ — форк MTProxyL;
+//	/etc/mtdd/config.json — mtdd (C++-прокси, JSON-конфиг и API);
 //	иначе — классический telemt.
 //
 // Ноды-мастера всех типов в DNS пишутся A-записью на свой IP, SNI везде
@@ -26,6 +27,7 @@ const (
 	NodeTypeClassic  = "classic"
 	NodeTypeMTProxyL = "mtproxyl"
 	NodeTypeMEKO     = "meko"
+	NodeTypeMTDD     = "mtdd"
 )
 
 // detectNodeType — тип установленного менеджера. os.Stat дёшев, дёргается
@@ -37,6 +39,9 @@ func detectNodeType() string {
 	if fi, err := os.Stat(mtproxylInstallDir); err == nil && fi.IsDir() {
 		return NodeTypeMTProxyL
 	}
+	if fi, err := os.Stat(mtddConfigPath); err == nil && fi.Mode().IsRegular() {
+		return NodeTypeMTDD
+	}
 	return NodeTypeClassic
 }
 
@@ -47,6 +52,8 @@ func nodeTypeLabel(t string) string {
 		return "MTProxyL"
 	case NodeTypeMEKO:
 		return "MEKO"
+	case NodeTypeMTDD:
+		return "mtdd"
 	default:
 		return "Classic"
 	}

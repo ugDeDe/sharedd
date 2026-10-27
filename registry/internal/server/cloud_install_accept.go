@@ -68,7 +68,7 @@ func (r *Registry) startCloudInstall(u control.User, res control.CloudResourceV2
 		}
 	}()
 
-	vars, err := control.MergeProfileVars(pv.VarsSchema, userVars)
+	vars, err := r.mergeInstallVars(u.ID, pv, userVars)
 	if err != nil {
 		return control.Operation{}, err
 	}

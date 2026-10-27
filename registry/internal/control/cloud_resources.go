@@ -327,6 +327,42 @@ func (s *Store) CloudResourcesInFlight() ([]CloudResourceV2, error) {
 	return out, rows.Err()
 }
 
+// CloudResourcesDeleting — ресурсы, застигнутые в deleting после рестарта.
+// Восстановление только подтверждает фактическое отсутствие у провайдера и
+// завершает локальную запись; новый платный вызов не создаётся.
+func (s *Store) CloudResourcesDeleting() ([]CloudResourceV2, error) {
+	rows, err := s.sql.Query(`SELECT `+cloudResCols+` FROM cloud_resources2
+		WHERE state = ? AND external_id <> '' ORDER BY id ASC`, CloudResDeleting)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []CloudResourceV2{}
+	for rows.Next() {
+		r, err := scanCloudResource(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LatestCloudDeleteOperation — последняя операция удаления для пользователя
+// и внешнего id. Нужна для resume, если связь last_operation_id отсутствует.
+func (s *Store) LatestCloudDeleteOperation(userID int64, externalID string) (Operation, error) {
+	if userID <= 0 || externalID == "" {
+		return Operation{}, ErrValidation
+	}
+	op, err := scanOp(s.sql.QueryRow(`SELECT `+opCols+` FROM operations
+		WHERE user_id = ? AND kind = ? AND provider_vps_id = ?
+		ORDER BY id DESC LIMIT 1`, userID, OpKindCloudDelete, externalID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Operation{}, ErrNotFound
+	}
+	return op, err
+}
+
 // CloudResourcesUncertain — кандидаты фоновой auto-reconcile сверки:
 // planned/creating без внешнего id (исход create неизвестен) либо error с
 // provider_reconcile_required. Такие строки нельзя удалить локально, пока

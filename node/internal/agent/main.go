@@ -21,7 +21,7 @@ import (
 type registerPayload struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic / mtproxyl / meko — информационный бейдж в
+	// NodeType: classic / mtproxyl / meko / mtdd — информационный бейдж в
 	// панели (см. nodetype.go).
 	NodeType string `json:"node_type,omitempty"`
 	// AuthKey — персональный ключ регистрации из [registry] authkey
@@ -101,7 +101,7 @@ func kickGlobalping() {
 
 // lastNodeType — тип менеджера, с которым последний раз УСПЕШНО (HTTP 200)
 // регистрировались; heartbeat сверяет текущий с ним — переустановку ноды на
-// другой менеджер (classic ↔ mtproxyl ↔ meko) панель увидит без смены IP.
+// другой менеджер (classic ↔ mtproxyl ↔ meko ↔ mtdd) панель увидит без смены IP.
 var lastNodeType string
 var registrationMu sync.Mutex
 

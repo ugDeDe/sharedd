@@ -3114,7 +3114,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="128d0381e6a352eb">
+  <meta name="sharedd-build" content="d38b0bad3938f3ef">
 </head>
 <body>
 
@@ -3233,6 +3233,7 @@
         </div>
         <div id="masters-full"></div>
       </section>
+      <div id="dns-sync"></div>
     </section>
 
     <!-- ═══ СРМД ════════════════════════════════════════════════════ -->
@@ -3851,7 +3852,7 @@
     <td class="dim wrap" data-label="Причина">${esc(b.cause || "—")}</td>
   </tr>`).join("");
   }
-  var NODE_TYPE_LABEL = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO" };
+  var NODE_TYPE_LABEL = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd" };
   function domainSubtitle(m) {
     if (m.node_id) {
       let ttl = "";
@@ -4029,7 +4030,8 @@
   var NODE_TYPE_META = {
     classic: { label: "Classic", cls: "", title: "классический telemt" },
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
   };
   function nodeTypeLabel(t) {
     const m = NODE_TYPE_META[t];
@@ -4325,7 +4327,8 @@
   var NODE_TYPE_META2 = {
     classic: { label: "Classic", cls: "", title: "классический telemt" },
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
   };
   function nodeTypeBadge(t) {
     const m = NODE_TYPE_META2[t];
@@ -4505,7 +4508,8 @@
   var NODE_TYPE_META3 = {
     classic: { label: "Classic", cls: "", title: "классический telemt" },
     mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" }
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
   };
   function nodeTypeBadge2(t) {
     const m = NODE_TYPE_META3[t];
@@ -4529,6 +4533,33 @@
     </svg>
     <b>${esc(label)}</b>
   </span>`;
+  }
+  function dnsOpsHTML(dns) {
+    const items = (dns == null ? void 0 : dns.items) || [];
+    if (!items.length) return "";
+    const fmtTargets = (t) => Array.isArray(t) && t.length ? t.join(", ") : "—";
+    const when = (v) => {
+      if (!v) return "—";
+      const d = new Date(String(v));
+      return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("ru-RU");
+    };
+    return `<section class="card">
+    <div class="card-head"><h2>DNS-синхронизация</h2><span class="hint">${dns.drifted || 0} ожидает · ${dns.failed || 0} с ошибкой</span></div>
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Домен</th><th>Нужно</th><th>В Cloudflare</th><th>Состояние</th><th>Повтор</th></tr></thead>
+      <tbody>${items.map((it) => {
+      const err = it.last_error ? `<span class="badge bad" title="${esc(it.last_error)}">ошибка</span>` : "";
+      const drift = it.drifted ? `<span class="badge warn">ожидает</span>` : `<span class="badge ok">синхронизировано</span>`;
+      return `<tr>
+          <td class="mono" data-label="Домен">${esc(it.domain)}</td>
+          <td class="mono wrap" data-label="Нужно">${esc(fmtTargets(it.desired_targets))}</td>
+          <td class="mono wrap" data-label="В Cloudflare">${esc(fmtTargets(it.applied_targets))}</td>
+          <td data-label="Состояние">${drift}${err ? " " + err : ""}</td>
+          <td class="mono" data-label="Повтор">${it.next_attempt ? esc(when(it.next_attempt)) : "—"}</td>
+        </tr>`;
+    }).join("")}</tbody>
+    </table></div>
+  </section>`;
   }
   function pairHTML(m) {
     if (m.cname_target) {
@@ -4584,6 +4615,7 @@
     const ttlNote = (o.master_ttl_sec || 0) > 0 ? " · лимит мастера: " + fmtTtlMin(o.master_ttl_sec / 60) : " · лимит мастера: выкл";
     $("dns-hint").textContent = masters.length ? `${aliveMs}/${active.length} живых${folded ? " · свёрнуто СРМД: " + folded : ""}${ttlNote}` : "cloudflare.domains пуст";
     $("masters-full").innerHTML = masters.length === 0 ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>` : `<div class="pair-list">${masters.map(pairHTML).join("")}</div>`;
+    $("dns-sync").innerHTML = dnsOpsHTML(o.dns);
     $("s-dns-push2").onclick = dnsPush;
   }
 

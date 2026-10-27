@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,76 @@ import (
 // measurement id Globalping (по нему публичное API Globalping открыло бы
 // target = полный IP ноды) не покидает сервер ни в одном поле, тексты
 // событий санитизируются.
+
+func TestStatsListShowsOwnerLoginAndStableNumber(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	u, err := r.control.CreateUser("alice", "password-123", "user", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const nodeID = "alice-aaaaa"
+	if err := r.control.AuthorizeNode(nodeID, u); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	r.state.Candidates[nodeID] = &Candidate{
+		NodeID: nodeID, IP: "203.0.113.9", Port: 443, RegisteredAt: now,
+		LastHeartbeat: now, Healthy: true, MetricsHealthy: true,
+		GlobalpingOK: true, LastReportAt: now,
+	}
+	rec := httptest.NewRecorder()
+	r.handleStatsList(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/list", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Nodes []struct {
+			NodeID        string `json:"node_id"`
+			DisplayName   string `json:"display_name"`
+			OwnerUsername string `json:"owner_username"`
+			Number        int64  `json:"owner_node_number"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Nodes) != 1 {
+		t.Fatalf("nodes: %+v", body.Nodes)
+	}
+	n := body.Nodes[0]
+	if n.NodeID != nodeID || n.OwnerUsername != "alice" || n.Number <= 0 ||
+		n.DisplayName != "alice · Нода №"+fmt.Sprint(n.Number) {
+		t.Fatalf("public identity: %+v", n)
+	}
+}
+
+func TestStatsListLegacyKeepsRegistrationName(t *testing.T) {
+	r, _ := newCabinetRegistry(t)
+	const nodeID = "helsinki-abc12"
+	if err := r.control.BindLegacyNode(nodeID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	r.state.Candidates[nodeID] = &Candidate{
+		NodeID: nodeID, IP: "203.0.113.10", Port: 443, RegisteredAt: now,
+		LastHeartbeat: now, Healthy: true, MetricsHealthy: true,
+		GlobalpingOK: true, LastReportAt: now,
+	}
+	rec := httptest.NewRecorder()
+	r.handleStatsList(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/list", nil))
+	var body struct {
+		Nodes []struct {
+			DisplayName   string `json:"display_name"`
+			OwnerUsername string `json:"owner_username"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Nodes) != 1 || body.Nodes[0].OwnerUsername != "" || body.Nodes[0].DisplayName != nodeID {
+		t.Fatalf("legacy identity must keep registration name: %+v", body.Nodes)
+	}
+}
 
 func TestMaskPublicIP(t *testing.T) {
 	cases := map[string]string{

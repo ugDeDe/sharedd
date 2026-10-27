@@ -23,9 +23,14 @@ const (
 	FleetItemPending    = "pending"
 	FleetItemCreating   = "creating"
 	FleetItemInstalling = "installing"
+	FleetItemVerifying  = "verifying"
 	FleetItemAdmitted   = "admitted"
 	FleetItemError      = "error"
 )
+
+// FleetVerifyBudget — сколько ждём полного здоровья после установки, прежде
+// чем показать needs_attention/error. Не запускает новые покупки.
+const FleetVerifyBudget = 10 * time.Minute
 
 // Fleet is the persisted autopilot request + aggregate state.
 type Fleet struct {
@@ -33,13 +38,16 @@ type Fleet struct {
 	UserID            int64  `json:"user_id"`
 	ConnectionID      int64  `json:"connection_id"`
 	Count             int    `json:"count"`
+	Name              string `json:"name"`
 	AutoReplace       bool   `json:"auto_replace"`
 	ProfileVersionID  int64  `json:"profile_version_id"`
 	ConfigurationJSON string `json:"-"`
-	FleetKey          string `json:"-"`
-	State             string `json:"state"`
-	CreatedAt         int64  `json:"created_at"`
-	UpdatedAt         int64  `json:"updated_at"`
+	// InstallationVarsJSON — разрешённый снимок быстрых параметров установки.
+	InstallationVarsJSON string `json:"-"`
+	FleetKey             string `json:"-"`
+	State                string `json:"state"`
+	CreatedAt            int64  `json:"created_at"`
+	UpdatedAt            int64  `json:"updated_at"`
 }
 
 // FleetItem is one slot in a fleet. Idx is 1-based and matches the "-01"
@@ -66,7 +74,8 @@ func validFleetState(s string) bool {
 
 func validFleetItemState(s string) bool {
 	switch s {
-	case FleetItemPending, FleetItemCreating, FleetItemInstalling, FleetItemAdmitted, FleetItemError:
+	case FleetItemPending, FleetItemCreating, FleetItemInstalling, FleetItemVerifying,
+		FleetItemAdmitted, FleetItemError:
 		return true
 	}
 	return false
@@ -98,9 +107,9 @@ func (s *Store) CreateFleet(f Fleet, labels []string) (Fleet, bool, error) {
 	}
 	res, err := tx.Exec(
 		`INSERT INTO fleets
-		 (user_id, connection_id, count, auto_replace, profile_version_id, configuration_json, fleet_key, state, created_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		f.UserID, f.ConnectionID, f.Count, ban, f.ProfileVersionID, f.ConfigurationJSON, f.FleetKey, f.State, now, now)
+		 (user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		f.UserID, f.ConnectionID, f.Count, f.Name, ban, f.ProfileVersionID, f.ConfigurationJSON, f.InstallationVarsJSON, f.FleetKey, f.State, now, now)
 	if err != nil {
 		// Lost a race with a concurrent replay of the same Idempotency-Key.
 		if existing, lookupErr := s.FleetByKey(f.UserID, f.FleetKey); lookupErr == nil {
@@ -129,7 +138,7 @@ func (s *Store) CreateFleet(f Fleet, labels []string) (Fleet, bool, error) {
 // FleetByKey — usage of an Idempotency-Key in the user's namespace.
 func (s *Store) FleetByKey(userID int64, key string) (Fleet, error) {
 	f, err := scanFleet(s.sql.QueryRow(
-		`SELECT id, user_id, connection_id, count, auto_replace, profile_version_id, configuration_json, fleet_key, state, created_at, updated_at
+		`SELECT id, user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at
 		 FROM fleets WHERE user_id = ? AND fleet_key = ?`, userID, key))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Fleet{}, ErrNotFound
@@ -140,7 +149,7 @@ func (s *Store) FleetByKey(userID int64, key string) (Fleet, error) {
 // Fleet — fleet by id (worker-internal; user routes use FleetOwned).
 func (s *Store) Fleet(id int64) (Fleet, error) {
 	f, err := scanFleet(s.sql.QueryRow(
-		`SELECT id, user_id, connection_id, count, auto_replace, profile_version_id, configuration_json, fleet_key, state, created_at, updated_at
+		`SELECT id, user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at
 		 FROM fleets WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Fleet{}, ErrNotFound
@@ -151,7 +160,7 @@ func (s *Store) Fleet(id int64) (Fleet, error) {
 // FleetOwned — fleet of the caller; foreign/unknown → ErrNotFound.
 func (s *Store) FleetOwned(id, userID int64) (Fleet, error) {
 	f, err := scanFleet(s.sql.QueryRow(
-		`SELECT id, user_id, connection_id, count, auto_replace, profile_version_id, configuration_json, fleet_key, state, created_at, updated_at
+		`SELECT id, user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at
 		 FROM fleets WHERE id = ? AND user_id = ?`, id, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Fleet{}, ErrNotFound
@@ -162,8 +171,8 @@ func (s *Store) FleetOwned(id, userID int64) (Fleet, error) {
 func scanFleet(row interface{ Scan(...any) error }) (Fleet, error) {
 	var f Fleet
 	var ban int64
-	err := row.Scan(&f.ID, &f.UserID, &f.ConnectionID, &f.Count, &ban, &f.ProfileVersionID,
-		&f.ConfigurationJSON, &f.FleetKey, &f.State, &f.CreatedAt, &f.UpdatedAt)
+	err := row.Scan(&f.ID, &f.UserID, &f.ConnectionID, &f.Count, &f.Name, &ban, &f.ProfileVersionID,
+		&f.ConfigurationJSON, &f.InstallationVarsJSON, &f.FleetKey, &f.State, &f.CreatedAt, &f.UpdatedAt)
 	if err != nil {
 		return Fleet{}, err
 	}
@@ -174,7 +183,7 @@ func scanFleet(row interface{ Scan(...any) error }) (Fleet, error) {
 // FleetsByUser — newest first; deleted fleets are not a concept.
 func (s *Store) FleetsByUser(userID int64) ([]Fleet, error) {
 	rows, err := s.sql.Query(
-		`SELECT id, user_id, connection_id, count, auto_replace, profile_version_id, configuration_json, fleet_key, state, created_at, updated_at
+		`SELECT id, user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at
 		 FROM fleets WHERE user_id = ? ORDER BY id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -209,6 +218,26 @@ func (s *Store) FleetItems(fleetID int64) ([]FleetItem, error) {
 		}
 		it.ResourceID = resID.Int64
 		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// FleetsInProgress — незавершённые пакеты для startup-resume. Только чтение:
+// восстановление не создаёт нового платного заказа, а продолжает уже принятый.
+func (s *Store) FleetsInProgress() ([]Fleet, error) {
+	rows, err := s.sql.Query(`SELECT id, user_id, connection_id, count, name, auto_replace, profile_version_id, configuration_json, installation_vars_json, fleet_key, state, created_at, updated_at
+		FROM fleets WHERE state = ? ORDER BY id ASC`, FleetRunning)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []Fleet{}
+	for rows.Next() {
+		f, err := scanFleet(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
 	}
 	return out, rows.Err()
 }

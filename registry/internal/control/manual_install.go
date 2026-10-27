@@ -224,15 +224,24 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 	if disabled != 0 {
 		return 0, ErrUserDisabled
 	}
+	previousNodeID := op.NodeID
+	if previousNodeID == "" {
+		previousNodeID = previousNodeForReplacementTx(tx, op.ID)
+	}
 	var owner int64
 	var legacy int
+	var slotID int64
 	var ownerHash string
-	err = tx.QueryRow(`SELECT user_id, legacy, node_secret_hash FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy, &ownerHash)
+	err = tx.QueryRow(`SELECT user_id, legacy, COALESCE(slot_id, 0), node_secret_hash FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy, &slotID, &ownerHash)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		now := time.Now().Unix()
-		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy, node_secret_hash, node_secret_prefix, node_secret_enc)
-			VALUES (?,?,?,0,?,?,?)`, nodeID, uid, now, hashAuthkey(secret), nodeSecretPrefix(secret), enc); err != nil {
+		slotID, err = EnsureClaimSlotTx(tx, uid, nodeID, previousNodeID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy, slot_id, node_secret_hash, node_secret_prefix, node_secret_enc)
+			VALUES (?,?,?,0,?,?,?,?)`, nodeID, uid, now, slotID, hashAuthkey(secret), nodeSecretPrefix(secret), enc); err != nil {
 			return 0, err
 		}
 	case err != nil:
@@ -243,6 +252,15 @@ func (s *Store) ClaimPendingNodeSecret(secret, nodeID string) (int64, error) {
 		}
 		if op.Kind == OpKindCloudInstall && ownerHash != hashAuthkey(secret) {
 			return 0, ErrOwnerMismatch
+		}
+		if slotID == 0 {
+			slotID, err = EnsureClaimSlotTx(tx, uid, nodeID, previousNodeID)
+			if err != nil {
+				return 0, err
+			}
+			if _, err := tx.Exec(`UPDATE node_owners SET slot_id = ? WHERE node_id = ?`, slotID, nodeID); err != nil {
+				return 0, err
+			}
 		}
 		// Уже привязана этим пользователем — идемпотентно, секрет не ротируем
 		// (записываем ту же pending-копию, если хеш совпадает).

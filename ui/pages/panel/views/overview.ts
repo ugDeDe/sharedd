@@ -172,7 +172,7 @@ function renderGPStats(o: any): void {
    2 домена со связями и 3 ноды в очереди — остальное сводится в строку
    «ещё N…», иначе схема расползается на большом пуле. */
 
-const NODE_TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO" };
+const NODE_TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd" };
 
 function domainSubtitle(m: any): string {
   if (m.node_id) {

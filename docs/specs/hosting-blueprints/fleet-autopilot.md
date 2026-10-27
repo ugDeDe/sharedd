@@ -1,6 +1,6 @@
 # Fleet Autopilot
 
-Status: implemented (no UI).
+Status: implemented (cabinet autopilot UI + admin API).
 
 One request creates N nodehost servers, installs the chosen text profile,
 registers the agents, optionally enables the system nodehost replacement
@@ -34,6 +34,9 @@ failures are `404 not_found`.
     "networkSpeed": "..."
   },
   "installation_profile_id": 6,
+  "installation_vars": {
+    "ad_tag": "0123456789abcdef0123456789abcdef"
+  },
   "auto_replace": true
 }
 ```
@@ -72,7 +75,7 @@ Validation:
       "label": "base-01",
       "resource_id": 31,
       "node_id": "base-01-abcde",
-      "state": "pending|creating|installing|admitted|error",
+      "state": "pending|creating|installing|verifying|admitted|error",
       "last_error": "",
       "ip": "203.0.113.10"
     }
@@ -154,15 +157,14 @@ A failure records a safe code on the item and the loop continues. Fleet
 state becomes `succeeded` (all admitted), `failed` (all failed) or `partial`
 (mixed). Items that already succeeded are not redone.
 
-### Admitted predicate (deviation)
+### Admitted predicate
 
-The worker calls the existing queue-health accessor
-(`blueprintResourceReady`) after installation. Fresh Globalping/metrics/TCP
-proof is rarely available seconds after registration, so a successful install
-that is registered but not yet fully healthy is still marked `admitted`; the
-miss is logged and does not weaken any policy guard (destructive automation
-still re-checks health before acting). This is the documented fallback for
-"operation done + registered" when fresh health proof is not yet available.
+The worker calls the existing queue-health accessor (`blueprintResourceReady`)
+after installation. A registered node whose independent health proof is not
+fresh yet stays in `verifying`; the fleet remains `running` and is re-checked
+periodically. After `FleetVerifyBudget` (10 minutes) the item becomes `error`
+with `health_timeout`. This never triggers a new purchase. Destructive policy
+guards still re-check health before acting.
 
 ## Auto-reconcile (no button)
 

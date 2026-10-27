@@ -94,6 +94,43 @@ func TestCloudReconcileResumesCreateAfterRestart(t *testing.T) {
 	}
 }
 
+func TestCloudDeleteResumeConfirmsAbsentWithoutDelete(t *testing.T) {
+	r, fake := newCloudRegistry(t)
+	fake.serverNotFound = true
+	uid, connID, _, _ := cloudSession(t, r, "delete-resume")
+	res, err := r.control.CreateCloudResource(control.CloudResourceV2{
+		UserID: uid, ConnectionID: connID, Provider: control.ProviderNodehost,
+		Label: "gone", State: control.CloudResReady, ExternalID: "srv-gone", IP: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.control.UpdateCloudResourceState(res.ID, control.CloudResReady, control.CloudResDeleting, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	op, _, err := r.control.CreateOperation(control.Operation{
+		UserID: uid, Kind: control.OpKindCloudDelete, State: control.OpSent,
+		IdemKey: "delete-resume-key", ProviderVPSID: "srv-gone",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.control.SetCloudResourceOperation(res.ID, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	r.reconcileDeletingCloudResources(context.Background())
+	got := waitCloudResource(t, r, uid, res.ID, control.CloudResDeleted)
+	if got.ExternalID != "srv-gone" {
+		t.Fatalf("external id must survive: %+v", got)
+	}
+	if fake.deleteCalls() != 0 {
+		t.Fatalf("absent VPS must not be deleted again, calls=%d", fake.deleteCalls())
+	}
+	if gotOp, err := r.control.Operation(op.ID); err != nil || gotOp.State != control.OpDeleted {
+		t.Fatalf("delete op: %+v err=%v", gotOp, err)
+	}
+}
+
 func TestCloudReconcileConfirmedReadsServer(t *testing.T) {
 	r, fake := newCloudRegistry(t)
 	uid, connID, _, _ := cloudSession(t, r, "resume-confirmed")

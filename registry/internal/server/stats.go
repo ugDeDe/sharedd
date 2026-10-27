@@ -4,9 +4,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"sharedd/registry/internal/config"
+	"sharedd/registry/internal/control"
 	"slices"
 	"sort"
 	"strings"
@@ -67,6 +69,9 @@ func sanitizePublicDetail(s string) string {
 // publicNode — явный белый список полей карточки ноды для публичной выдачи.
 type publicNode struct {
 	NodeID            string    `json:"node_id"`
+	DisplayName       string    `json:"display_name,omitempty"`
+	OwnerUsername     string    `json:"owner_username,omitempty"`
+	OwnerNodeNumber   int64     `json:"owner_node_number,omitempty"`
 	IPMasked          string    `json:"ip"` // уже замаскирован — имя поля едино с приватным API
 	Port              int       `json:"port"`
 	IsMaster          bool      `json:"is_master"`
@@ -328,6 +333,40 @@ func (r *Registry) publicEventsLocked(nodeID string, limit int) []publicEvent {
 	return out
 }
 
+// publicIdentityMap — пакетная подпись владельцев. Ошибка БД/отсутствие
+// control-режима не ломает публичную статистику: остаётся node_id.
+func (r *Registry) publicIdentityMap(nodeIDs []string) map[string]control.PublicNodeIdentity {
+	if r.control == nil || len(nodeIDs) == 0 {
+		return nil
+	}
+	m, err := r.control.PublicNodeIdentities(nodeIDs)
+	if err != nil {
+		log.Printf("public statistics: node identities unavailable: %v", err)
+		return nil
+	}
+	return m
+}
+
+func applyNodeIdentity(n *publicNode, id control.PublicNodeIdentity) {
+	n.DisplayName = id.DisplayName()
+	n.OwnerUsername = id.Username
+	n.OwnerNodeNumber = id.OwnerNodeNumber
+}
+
+func applyListItemIdentity(n *publicNodeListItem, id control.PublicNodeIdentity) {
+	n.DisplayName = id.DisplayName()
+	n.OwnerUsername = id.Username
+	n.OwnerNodeNumber = id.OwnerNodeNumber
+}
+
+func applyQuarantineIdentity(q *publicQuarantineItem, id control.PublicNodeIdentity) {
+	q.DisplayName = id.DisplayName()
+}
+
+func applyMasterIdentity(m *publicDomainMaster, id control.PublicNodeIdentity) {
+	m.DisplayName = id.DisplayName()
+}
+
 // handleStatsNode — GET /statistics/api/node?id=<node_id|hex>:
 // публичная (обезличенная) копия ответа /panel/api/node.
 func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
@@ -369,6 +408,14 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 	}
 	r.mu.RUnlock()
 
+	node.DisplayName = node.NodeID
+	if idm := r.publicIdentityMap([]string{node.NodeID}); idm != nil {
+		if id, ok := idm[node.NodeID]; ok {
+			applyNodeIdentity(&node, id)
+		}
+	}
+	resp["node"] = node
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(resp)
@@ -376,11 +423,14 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 
 // publicNodeListItem — строка публичного списка нод.
 type publicNodeListItem struct {
-	NodeID        string   `json:"node_id"`
-	IPMasked      string   `json:"ip"`
-	Port          int      `json:"port"`
-	IsMaster      bool     `json:"is_master"`
-	MasterDomains []string `json:"master_domains,omitempty"`
+	NodeID          string   `json:"node_id"`
+	DisplayName     string   `json:"display_name,omitempty"`
+	OwnerUsername   string   `json:"owner_username,omitempty"`
+	OwnerNodeNumber int64    `json:"owner_node_number,omitempty"`
+	IPMasked        string   `json:"ip"`
+	Port            int      `json:"port"`
+	IsMaster        bool     `json:"is_master"`
+	MasterDomains   []string `json:"master_domains,omitempty"`
 	// MasterTTLRemainingSec — через сколько мастер будет
 	// переключён по таймеру (минимум по доменам ноды); <0 — лимит истёк,
 	// ждём здоровую замену; nil — TTL выключен/не назначен.
@@ -399,8 +449,9 @@ type publicNodeListItem struct {
 // IP уже замаскирован тем же маскировщиком, что nodes[].ip (maskPublicIP);
 // provider id/полный IP сюда не попадают.
 type publicDomainMaster struct {
-	NodeID   string `json:"node_id"`
-	IPMasked string `json:"ip_masked,omitempty"`
+	NodeID      string `json:"node_id"`
+	DisplayName string `json:"display_name,omitempty"`
+	IPMasked    string `json:"ip_masked,omitempty"`
 	// Healthy — слот жив (нода есть и не полностью нездорова).
 	Healthy bool `json:"healthy"`
 	// TTLRemainingSec — остаток TTL слота; nil — TTL выключен/не отсчитан.
@@ -418,6 +469,7 @@ type publicDomain struct {
 
 type publicQuarantineItem struct {
 	NodeID      string    `json:"node_id"`
+	DisplayName string    `json:"display_name,omitempty"`
 	IPMasked    string    `json:"ip"`
 	EnteredAt   time.Time `json:"entered_at"`
 	AgeSec      int64     `json:"age_sec"`
@@ -523,8 +575,58 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, it)
 	}
-	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": r.buildPublicDomainsLocked(now)}
+	domains := r.buildPublicDomainsLocked(now)
 	r.mu.RUnlock()
+
+	allIDs := make([]string, 0, len(out)+len(quarantine))
+	for i := range out {
+		allIDs = append(allIDs, out[i].NodeID)
+	}
+	for i := range quarantine {
+		allIDs = append(allIDs, quarantine[i].NodeID)
+	}
+	for i := range domains {
+		for j := range domains[i].Masters {
+			allIDs = append(allIDs, domains[i].Masters[j].NodeID)
+		}
+	}
+	if idm := r.publicIdentityMap(allIDs); idm != nil {
+		for i := range out {
+			if id, ok := idm[out[i].NodeID]; ok {
+				applyListItemIdentity(&out[i], id)
+			}
+		}
+		for i := range quarantine {
+			if id, ok := idm[quarantine[i].NodeID]; ok {
+				applyQuarantineIdentity(&quarantine[i], id)
+			}
+		}
+		for i := range domains {
+			for j := range domains[i].Masters {
+				if id, ok := idm[domains[i].Masters[j].NodeID]; ok {
+					applyMasterIdentity(&domains[i].Masters[j], id)
+				}
+			}
+		}
+	}
+	for i := range out {
+		if out[i].DisplayName == "" {
+			out[i].DisplayName = out[i].NodeID
+		}
+	}
+	for i := range quarantine {
+		if quarantine[i].DisplayName == "" {
+			quarantine[i].DisplayName = quarantine[i].NodeID
+		}
+	}
+	for i := range domains {
+		for j := range domains[i].Masters {
+			if domains[i].Masters[j].DisplayName == "" {
+				domains[i].Masters[j].DisplayName = domains[i].Masters[j].NodeID
+			}
+		}
+	}
+	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

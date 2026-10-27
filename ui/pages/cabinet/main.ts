@@ -12,7 +12,9 @@ import { initTheme } from "../../lib/theme";
 import { renderVarsEditor, collectVarsEditor, collectInstallVars, parseVarsSchema, serializeVarsSchema, validateVarsEditor, isSecretVar, PROFILE_VARS_HELP } from "../../lib/vars";
 import type { ProfileVar, InstallDefaults } from "../../lib/vars";
 import { api, newIdemKey } from "./api";
-import type { Authkey, BegetLink, CloudReplaceBody, CloudResource, Configuration, EstimateResult, Fleet, FleetCreateBody, FleetItem, FleetState, HostingBalance, HostingCatalog, HostingConnection, HostingConnectionInput, ManualServer, ManualServerPayload, Me, MyProfiles, NodehostConfiguration, NodeInfo, Operation, OperationStep, OwnProfile, Profile, ProfilePayload, Provider, Region } from "./api";
+import { beginPending, bodyHash, clearAllPending, clearPending, loadPending, markPendingUnknown, savePending } from "./pending";
+import type { PendingCommand } from "./pending";
+import type { Authkey, BegetLink, CloudCreateBody, CloudReplaceBody, CloudResource, Configuration, EstimateResult, Fleet, FleetCreateBody, FleetItem, FleetState, HostingBalance, HostingCatalog, HostingConnection, HostingConnectionInput, ManualServer, ManualServerPayload, Me, MyProfiles, NodehostConfiguration, NodeInfo, Operation, OperationStep, OwnProfile, Profile, ProfilePayload, Provider, Region } from "./api";
 import { openNodeDetail, closeNodeDetail, pollNodeDetail } from "./node-detail";
 import { canLeaveBlueprint, isBlueprintRoute, leaveBlueprintEditor, openBlueprintEditor } from "./blueprint-editor";
 import { closeBlueprintRun, leaveRunReview, openBlueprintRun } from "./blueprint-runs";
@@ -935,7 +937,6 @@ let CRES_RETRY = false;
 let CRES_HIGHLIGHT = 0;
 let OPEN_RES = new Set<number>();
 let HOSTING_TAB: "conns" | "resources" = "conns";
-let CR_IDEM = "";
 // Прогресс по ресурсу (принятая асинхронная команда) — рисуется внутри карточки.
 let RES_PROGRESS: Record<number, string> = {};
 
@@ -1634,6 +1635,45 @@ let CR_PROFILES: MyProfiles | null = null;
 let CR_PROF_ID = 0;
 let CR_EST_LAST: EstimateResult | null = null;
 const CR_STEPS = ["Создание", "Установка", "Готово"];
+/* Ключи платных команд переживают потерю ответа и перезагрузку вкладки:
+   повтор с тем же телом использует тот же ключ. */
+const CR_PENDING_KEY = "cloud-create";
+const CR_BATCH_PENDING_KEY = "cloud-batch";
+
+type CrBatchPersistItem = { key: string; body: CloudCreateBody; state: "pending" | "accepted" | "failed" | "unknown" };
+type CrBatchPersist = { name: string; items: CrBatchPersistItem[]; state: "running" | "unknown" };
+
+function crShowPendingBlock(): void {
+  const errBox = $("cr-err");
+  const p = loadPending<CloudCreateBody>(CR_PENDING_KEY);
+  if (!p) return;
+  errBox.textContent =
+    p.state === "unknown"
+      ? "Результат предыдущего создания неизвестен: ресурс мог быть куплен. Проверьте список ресурсов и «Журнал», затем нажмите «Начать новый заказ» только если ресурса нет."
+      : "Предыдущий заказ ещё не подтверждён. Дождитесь ответа или проверьте список ресурсов.";
+  errBox.hidden = false;
+  const reset = $("cr-reset-pending") as HTMLButtonElement | null;
+  if (reset) reset.hidden = false;
+}
+
+function crClearPendingIntent(): void {
+  clearPending(CR_PENDING_KEY);
+  const b = $("cr-reset-pending") as HTMLButtonElement | null;
+  if (b) b.hidden = true;
+}
+
+function crBatchPending(): PendingCommand<CrBatchPersist> | null {
+  return loadPending<CrBatchPersist>(CR_BATCH_PENDING_KEY);
+}
+
+function crShowBatchBlock(): void {
+  const errBox = $("cr-err");
+  errBox.textContent =
+    "Результат прошлой пакетной закупки неизвестен: часть серверов могла быть создана. Проверьте список ресурсов и «Журнал», затем нажмите «Начать новый заказ» только если лишних ресурсов нет.";
+  errBox.hidden = false;
+  const reset = $("cr-reset-pending") as HTMLButtonElement | null;
+  if (reset) reset.hidden = false;
+}
 
 type CrBatchState = "pending" | "creating" | "ready" | "installing" | "done" | "error";
 interface CrBatchItem { name: string; state: CrBatchState; resId?: number; reason?: string; }
@@ -1649,7 +1689,6 @@ function toggleCrForm(open: boolean): void {
   $("cr-add").setAttribute("aria-expanded", String(open));
   if (open) {
     fillCrConnections();
-    CR_IDEM = newIdemKey();
     CR_PROF_ID = 0;
     renderCrSteps(-1);
     ($("cr-err") as HTMLElement).hidden = true;
@@ -1661,6 +1700,8 @@ function toggleCrForm(open: boolean): void {
     loadCrCatalog("");
     loadCrProfiles();
     ($("cr-name") as HTMLInputElement).focus();
+    if (loadPending<CloudCreateBody>(CR_PENDING_KEY)) crShowPendingBlock();
+    else if (crBatchPending()) crShowBatchBlock();
   } else {
     // Фокус не оставляем на скрытом submit — возвращаем на инициатора.
     window.clearTimeout(CR_EST_TIMER);
@@ -2061,23 +2102,53 @@ async function runCrBatch(spec: CrBatchSpec): Promise<void> {
     name: `${spec.name}-${String(i + 1).padStart(2, "0")}`,
     state: "pending",
   }));
+  const bodies: CloudCreateBody[] = items.map((item, i) => {
+    const suffix = `-${String(i + 1).padStart(2, "0")}`;
+    return {
+      connection_id: spec.connID,
+      label: item.name,
+      configuration: {
+        ...spec.conf, name: item.name,
+        ...(spec.hostname ? { hostname: `${spec.hostname}${suffix}` } : {}),
+      },
+      management: { mode: "manual" },
+    };
+  });
+  const persisted: CrBatchPersist = {
+    name: spec.name,
+    items: bodies.map((body) => ({ key: newIdemKey(), body, state: "pending" })),
+    state: "running",
+  };
+  savePending(CR_BATCH_PENDING_KEY, {
+    key: newIdemKey(),
+    body: persisted,
+    hash: bodyHash(persisted),
+    state: "submitting",
+    createdAt: Date.now(),
+  });
+  const saveBatch = (): void => {
+    savePending(CR_BATCH_PENDING_KEY, {
+      key: newIdemKey(),
+      body: persisted,
+      hash: bodyHash(persisted),
+      state: persisted.state === "unknown" ? "unknown" : "submitting",
+      createdAt: Date.now(),
+    });
+  };
   renderCrBatch(items);
   btn.disabled = true; btn.textContent = "Создание…";
   renderCrSteps(0);
+  let unknown = false;
   for (let i = 0; i < items.length; i++) {
+    if (unknown) break; // не продолжаем закупку после неопределённого платного исхода
     const item = items[i];
-    const suffix = `-${String(i + 1).padStart(2, "0")}`;
+    const rec = persisted.items[i];
     item.state = "creating";
     renderCrBatch(items);
-    const configuration: NodehostConfiguration = {
-      ...spec.conf, name: item.name,
-      ...(spec.hostname ? { hostname: `${spec.hostname}${suffix}` } : {}),
-    };
     try {
-      const ack = await api.createCloudResource(
-        { connection_id: spec.connID, label: item.name, configuration, management: { mode: "manual" } },
-        newIdemKey(),
-      );
+      const ack = await api.createCloudResource(rec.body, rec.key);
+      rec.state = "accepted";
+      saveBatch();
       if (ack.resource_id == null) {
         item.state = "error"; item.reason = "нет id ресурса";
       } else {
@@ -2092,13 +2163,26 @@ async function runCrBatch(spec: CrBatchSpec): Promise<void> {
         else { item.state = "error"; item.reason = rr.reason || "не готов"; }
       }
     } catch (e) {
-      item.state = "error";
-      item.reason = shortCrErr(e as Error & { code?: string; status?: number });
+      const err = e as Error & { code?: string; status?: number };
+      const definitive = !!err.status && err.status < 500 && err.status !== 429;
+      if (definitive && err.code !== "idempotency_conflict") {
+        rec.state = "failed";
+        saveBatch();
+        item.state = "error";
+        item.reason = shortCrErr(err);
+      } else {
+        rec.state = "unknown";
+        persisted.state = "unknown";
+        saveBatch();
+        item.state = "error";
+        item.reason = "результат неизвестен — проверьте список ресурсов";
+        unknown = true;
+      }
     }
     renderCrBatch(items);
     loadResources();
   }
-  if (spec.wantsInstall && spec.profileID) {
+  if (spec.wantsInstall && spec.profileID && !unknown) {
     for (const item of items) {
       if (item.state !== "ready" || item.resId == null) continue;
       item.state = "installing"; renderCrBatch(items);
@@ -2123,6 +2207,13 @@ async function runCrBatch(spec: CrBatchSpec): Promise<void> {
   const errors = items.filter((i) => i.state === "error").length;
   btn.textContent = errors ? `Создано ${created}, ошибок ${errors}` : `Создано ${created}`;
   btn.disabled = true;
+  if (unknown) {
+    // Keep the batch intent: a retry must not silently buy the same slots again.
+    crShowBatchBlock();
+  } else {
+    clearPending(CR_BATCH_PENDING_KEY);
+    resetCrSubmitBtn();
+  }
   showToast(errors ? `Создано ${created}, ошибок ${errors} — причины в списке` : `Создано ${created}`, errors > 0);
   announce(`Пачка ресурсов: создано ${created}, ошибок ${errors}`);
   loadResources();
@@ -2186,6 +2277,7 @@ function submitCreateResource(e: Event): void {
   const btn = $("cr-submit") as HTMLButtonElement;
   if (count > 1) {
     // Последовательная пачка: по одному create на элемент с собственным ключом.
+    if (crBatchPending()) { crShowBatchBlock(); return; }
     void runCrBatch({ connID, count, name, hostname, conf, wantsInstall, profileID: CR_PROF_ID, vars });
     return;
   }
@@ -2193,13 +2285,22 @@ function submitCreateResource(e: Event): void {
     ...conf, name,
     ...(hostname ? { hostname } : {}),
   };
-  if (!CR_IDEM) CR_IDEM = newIdemKey();
+  const createBody: CloudCreateBody = {
+    connection_id: connID, label: name, configuration, management: { mode: "manual" },
+  };
+  const hash = bodyHash(createBody);
+  const prev = loadPending<CloudCreateBody>(CR_PENDING_KEY);
+  if (prev && prev.hash !== hash) { crShowPendingBlock(); return; }
+  const intent = prev
+    ? { ...prev, state: "submitting" as const }
+    : beginPending(CR_PENDING_KEY, newIdemKey(), createBody);
+  if (prev) savePending(CR_PENDING_KEY, intent);
   btn.disabled = true; btn.textContent = "Создание…";
   renderCrSteps(0);
-  api.createCloudResource({ connection_id: connID, label: name, configuration, management: { mode: "manual" } }, CR_IDEM)
+  api.createCloudResource(createBody, intent.key)
     .then((ack) => {
       announce(`Ресурс ${name}: создаётся · ожидание IP…`);
-      CR_IDEM = "";
+      crClearPendingIntent();
       if (ack.resource_id == null) { toggleCrForm(false); loadResources(); loadConnections(); return; }
       const resId: number = ack.resource_id; // сужение не живёт внутри колбэка
       RES_PROGRESS[resId] =
@@ -2225,19 +2326,25 @@ function submitCreateResource(e: Event): void {
     .catch((e: Error & { code?: string; status?: number }) => {
       resetCrSubmitBtn();
       renderCrSteps(-1);
-      if (e.code === "idempotency_conflict") {
-        CR_IDEM = newIdemKey();
-        showErr("Запрос с этим ключом уже был с другим телом. Обновите страницу и повторите.");
-      } else if (e.code === "resource_busy") {
-        showErr("По ресурсу уже выполняется команда.");
-      } else if (e.code === "quota_exceeded") {
-        showErr("Квота исчерпана: освободите место или увеличьте лимит.");
-      } else if (e.code === "not_implemented") {
-        errBox.innerHTML = BEGET_BANNER;
-        errBox.hidden = false;
-      } else {
-        showErr(e.message);
+      const definitive = !!e.status && e.status < 500 && e.status !== 429;
+      if (definitive && e.code !== "idempotency_conflict") {
+        crClearPendingIntent();
+        if (e.code === "resource_busy") {
+          showErr("По ресурсу уже выполняется команда.");
+        } else if (e.code === "quota_exceeded") {
+          showErr("Квота исчерпана: освободите место или увеличьте лимит.");
+        } else if (e.code === "not_implemented") {
+          errBox.innerHTML = BEGET_BANNER;
+          errBox.hidden = false;
+        } else {
+          showErr(e.message);
+        }
+        return;
       }
+      // Network/timeout/5xx or a key conflict: outcome is not a rejection.
+      // Keep the original key/body and make the user inspect resources first.
+      markPendingUnknown(CR_PENDING_KEY, intent);
+      crShowPendingBlock();
     });
 }
 
@@ -2672,6 +2779,13 @@ function initHosting(): void {
   ($("cr-form") as HTMLFormElement).addEventListener("submit", submitCreateResource);
   $("cr-add").addEventListener("click", () => toggleCrForm(!!($("cr-form-card") as HTMLElement).hidden));
   $("cr-cancel").addEventListener("click", () => toggleCrForm(false));
+  ($("cr-reset-pending") as HTMLButtonElement).addEventListener("click", () => {
+    crClearPendingIntent();
+    clearPending(CR_BATCH_PENDING_KEY);
+    ($("cr-err") as HTMLElement).hidden = true;
+    resetCrSubmitBtn();
+    showToast("Предыдущее намерение сброшено. Создайте новый заказ только после проверки ресурсов.");
+  });
   $("hc-add").addEventListener("click", () => connEditor(null));
   $("cloud-reload").addEventListener("click", () => loadResources());
   $("srv-cloud-reload").addEventListener("click", () => loadResources());
@@ -2703,6 +2817,9 @@ function initHosting(): void {
    затем GET статуса раз в 5 с (single-flight). В localStorage — только id
    последнего флота, чтобы после перезагрузки продолжить просмотр. */
 const AP_STORAGE_KEY = "sharedd.autopilot.fleet";
+/* Один незавершённый заказ: ключ+тело живут до определённого ответа.
+   Потеря ответа не должна превращаться в новую покупку. */
+const AP_PENDING_KEY = "fleet";
 
 const AP_STATE_META: Record<FleetState, { label: string; cls: string }> = {
   running:   { label: "выполняется", cls: "info" },
@@ -2715,6 +2832,7 @@ const AP_ITEM_META: Record<string, { label: string; cls: string }> = {
   pending:    { label: "ожидает", cls: "" },
   creating:   { label: "создаётся", cls: "info" },
   installing: { label: "установка", cls: "info" },
+  verifying:  { label: "проверки", cls: "warn" },
   admitted:   { label: "в пуле", cls: "ok" },
   error:      { label: "ошибка", cls: "bad" },
 };
@@ -2738,9 +2856,11 @@ const AP_REASON: Record<string, string> = {
   provider_reconcile_required: "Платный исход неясен — проверьте ресурсы у провайдера",
   profile_unavailable: "Профиль недоступен для установки",
   install_failed: "Ошибка установки профиля",
+  health_timeout: "Установлено, но нода не прошла проверки здоровья",
 };
 
 let AP_CATALOG: HostingCatalog | null = null;
+let AP_PROFILES: MyProfiles | null = null;
 let AP_CAT_SEQ = 0;
 let AP_EST_TIMER = 0;
 let AP_EST_SEQ = 0;
@@ -2752,6 +2872,8 @@ let AP_POLL_BUSY = false;
 let AP_POLL_ACTIVE = false;
 let AP_SUBMITTING = false;
 let AP_LOADED = false;
+let AP_DEFAULTS_REV = 0;
+let AP_NOTIFY_TERMINAL = false;
 const AP_SETTLED = new Set<number>();
 
 function apValue(id: string): string {
@@ -2798,6 +2920,24 @@ function apShowError(msg: string, focusId?: string): void {
   box.textContent = msg;
   box.hidden = false;
   if (focusId) ($(focusId) as HTMLElement | null)?.focus();
+}
+
+function apShowPendingBlock(): void {
+  const p = loadPending<FleetCreateBody>(AP_PENDING_KEY);
+  if (!p) return;
+  apShowError(
+    p.state === "unknown"
+      ? "Результат предыдущей отправки неизвестен: заказ мог быть принят. Проверьте «Журнал» и «Хостинги», затем нажмите «Начать новый заказ» только если заказа нет."
+      : "Предыдущая отправка ещё не подтверждена. Дождитесь ответа или проверьте «Журнал», прежде чем менять параметры.",
+  );
+  const reset = $("ap-reset-pending") as HTMLButtonElement | null;
+  if (reset) reset.hidden = false;
+}
+
+function apClearPendingIntent(): void {
+  clearPending(AP_PENDING_KEY);
+  const reset = $("ap-reset-pending") as HTMLButtonElement | null;
+  if (reset) reset.hidden = true;
 }
 
 function apHideError(): void {
@@ -3029,11 +3169,13 @@ function apLoadProfiles(): void {
   const sel = $("ap-prof") as HTMLSelectElement;
   const help = $("ap-prof-help");
   textProfiles().then((m) => {
+    AP_PROFILES = m;
     const pub = m.published || [];
     const own = (m.profiles || []).filter((p) => !pub.some((x) => x.id === p.id));
     if (!pub.length && !own.length) {
       sel.innerHTML = `<option value="">Нет текстовых профилей</option>`;
       help.innerHTML = `Текстовых профилей нет — создайте их в разделе <a href="#/profiles">Мои профили</a>.`;
+      apRenderInstallVars();
       return;
     }
     const opts = [`<option value="">Выберите профиль…</option>`];
@@ -3041,14 +3183,69 @@ function apLoadProfiles(): void {
     for (const p of own) opts.push(`<option value="${p.id}">${esc(p.name)} (мой)</option>`);
     sel.innerHTML = opts.join("");
     help.textContent = "Текстовые профили: опубликованные и ваши.";
+    apRenderInstallVars();
   }).catch((e: Error) => {
     help.textContent = "Не удалось загрузить профили: " + e.message;
   });
 }
 
+/* Быстрые параметры выбранного профиля: имя вводится отдельно, а ad_tag и
+   остальные объявленные переменные — здесь, без редактирования профиля. */
+function apRenderInstallVars(): void {
+  const box = $("ap-inst-vars");
+  const saveRow = $("ap-save-defaults-row") as HTMLElement;
+  const saveHelp = $("ap-save-defaults-help") as HTMLElement;
+  const sel = $("ap-prof") as HTMLSelectElement | null;
+  const id = Number(sel?.value) || 0;
+  const all = AP_PROFILES ? [...(AP_PROFILES.published || []), ...(AP_PROFILES.profiles || [])] : [];
+  const p = all.find((x) => x.id === id);
+  const saveDefaults = $("ap-save-defaults") as HTMLInputElement | null;
+  if (saveDefaults) saveDefaults.checked = false;
+  if (!id || !p) {
+    box.hidden = true;
+    box.querySelector(".vars-editor")?.replaceChildren();
+    saveRow.hidden = true;
+    saveHelp.hidden = true;
+    AP_DEFAULTS_REV = 0;
+    return;
+  }
+  box.hidden = false;
+  saveRow.hidden = false;
+  saveHelp.hidden = false;
+  let ed = box.querySelector<HTMLElement>(".vars-editor");
+  if (!ed) {
+    ed = document.createElement("div");
+    ed.className = "vars-editor";
+    box.appendChild(ed);
+  }
+  const decls = parseVarsSchema(p.vars_schema);
+  renderVarsEditor(ed, decls, {
+    install: true,
+    defaults: loadInstallDefaults(),
+  });
+  // Подставляем сохранённые личные значения; сервер всё равно применяет их
+  // сам, это только предпросмотр/редактирование.
+  api.profileDefaults(id).then((d) => {
+    if ((Number(($("ap-prof") as HTMLSelectElement | null)?.value) || 0) !== id) return;
+    AP_DEFAULTS_REV = d.revision || 0;
+    const snapshot: ProfileVar[] = Object.entries(d.vars || {}).map(([name, value]) => ({
+      name, default: value, override: true,
+    }));
+    renderVarsEditor(ed!, decls, {
+      install: true,
+      defaults: loadInstallDefaults(),
+      snapshot,
+    });
+  }).catch(() => {
+    if ((Number(($("ap-prof") as HTMLSelectElement | null)?.value) || 0) === id) AP_DEFAULTS_REV = 0;
+  });
+}
+
 /* ── отправка ────────────────────────────────────────────────────────── */
 function apSubmitErrorText(e: Error & { code?: string; status?: number }): string {
-  if (e.code === "idempotency_conflict") return "Запрос уже был отправлен с другим телом. Повторите развёртывание.";
+  if (e.code === "idempotency_conflict") {
+    return "Этот ключ заказа уже принят с другими параметрами. Не повторяйте с новым ключом: проверьте «Журнал» и «Хостинги», затем нажмите «Начать новый заказ».";
+  }
   if (e.code === "quota_exceeded") return "Квота исчерпана: освободите место или увеличьте лимит.";
   if (e.code === "insufficient_funds") return "Недостаточно средств на аккаунте провайдера.";
   if (e.code === "provider_timeout") return "Провайдер не ответил вовремя. Повторите позже.";
@@ -3096,28 +3293,73 @@ async function apSubmit(e: Event): Promise<void> {
   }
   const pid = Number(($("ap-prof") as HTMLSelectElement)?.value) || 0;
   if (!pid) { apShowError("Выберите профиль установки.", "ap-prof"); return; }
+  const baseName = apValue("ap-name") || "fleet";
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,5}[A-Za-z0-9])?$/.test(baseName)) {
+    apShowError("Имя нод: 1–7 символов — латиница, цифры, . _ - (без . _ - по краям).", "ap-name");
+    return;
+  }
+  const ed = document.querySelector<HTMLElement>("#ap-inst-vars .vars-editor");
+  const varsErr = ed ? validateVarsEditor(ed) : null;
+  if (varsErr) { apShowError(varsErr); return; }
+  const installationVars = ed ? collectInstallVars(ed) : {};
+  const saveDefaults = ($("ap-save-defaults") as HTMLInputElement).checked;
+  if (saveDefaults) {
+    try {
+      const saved = await api.saveProfileDefaults({
+        profile_id: pid,
+        vars: installationVars,
+        expected_revision: AP_DEFAULTS_REV,
+      });
+      AP_DEFAULTS_REV = saved.revision;
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      apShowError(err.code === "revision_conflict"
+        ? "Значения по умолчанию уже изменились в другой вкладке. Обновите профиль и повторите."
+        : `Не удалось сохранить значения по умолчанию: ${err.message}`);
+      return;
+    }
+  }
+  const autoOn = ($("ap-auto") as HTMLInputElement).checked;
+  if (autoOn && !($("ap-consent") as HTMLInputElement).checked) {
+    apShowError("Для автоматических замен нужно отдельно разрешить будущие платные операции.", "ap-consent");
+    return;
+  }
   const count = apCount();
   const period = apValue("ap-period");
   const networkSpeed = apValue("ap-net");
   const body: FleetCreateBody = {
     connection_id: connID,
-    name: "fleet",
+    name: baseName,
     count,
     configuration: {
-      name: "fleet",
+      name: baseName,
       cpu, cores, ram, disk, diskType, os, location,
       ...(period ? { period } : {}),
       ...(networkSpeed ? { networkSpeed } : {}),
     },
     installation_profile_id: pid,
-    auto_replace: ($("ap-auto") as HTMLInputElement).checked,
+    ...(Object.keys(installationVars).length ? { installation_vars: installationVars } : {}),
+    auto_replace: autoOn,
   };
-  const key = newIdemKey();
+  const hash = bodyHash(body);
+  const prev = loadPending<FleetCreateBody>(AP_PENDING_KEY);
+  if (prev && prev.hash !== hash) {
+    // Parameters changed while a previous paid command may still be in flight:
+    // never turn this into a second purchase silently.
+    apShowPendingBlock();
+    return;
+  }
+  const intent = prev
+    ? { ...prev, state: "submitting" as const }
+    : beginPending(AP_PENDING_KEY, newIdemKey(), body);
+  if (prev) savePending(AP_PENDING_KEY, intent);
   AP_SUBMITTING = true;
   apUpdateSubmit();
   try {
-    const ack = await api.createFleet(body, key);
+    const ack = await api.createFleet(body, intent.key);
     AP_SUBMITTING = false;
+    apClearPendingIntent();
+    AP_NOTIFY_TERMINAL = true;
     apStoreFleetId(ack.fleet_id);
     AP_FLEET = null;
     AP_SETTLED.delete(ack.fleet_id);
@@ -3129,7 +3371,17 @@ async function apSubmit(e: Event): Promise<void> {
     announce(`Автопилот запущен: ${count}`);
   } catch (err) {
     AP_SUBMITTING = false;
-    apShowError(apSubmitErrorText(err as Error & { code?: string; status?: number }));
+    const e = err as Error & { code?: string; status?: number };
+    // A definitive 4xx (except a key conflict) means the command was not
+    // accepted. Network/timeout/5xx mean the paid outcome is unknown.
+    const definitive = !!e.status && e.status < 500 && e.status !== 429;
+    if (definitive && e.code !== "idempotency_conflict") {
+      apClearPendingIntent();
+      apShowError(apSubmitErrorText(e));
+    } else {
+      markPendingUnknown(AP_PENDING_KEY, intent);
+      apShowPendingBlock();
+    }
   } finally {
     apUpdateSubmit();
   }
@@ -3152,7 +3404,7 @@ function apItemHTML(it: FleetItem): string {
   const node = it.node_id
     ? `<a class="node-open mono" href="#/nodes/${encodeURIComponent(it.node_id)}">${esc(it.node_id)}</a>`
     : it.resource_id != null
-      ? `<span class="dim">ресурс #${it.resource_id}</span>`
+      ? `<a class="mono" href="#/resources/${it.resource_id}">ресурс #${it.resource_id}</a>`
       : `<span class="dim">ресурс ещё не создан</span>`;
   return `<div class="node-card ap-item" role="listitem">
     <div class="node-main">
@@ -3169,10 +3421,11 @@ function apItemHTML(it: FleetItem): string {
 function apSummary(f: Fleet): string {
   const items = f.items || [];
   const ok = items.filter((i) => i.state === "admitted").length;
+  const verifying = items.filter((i) => i.state === "verifying").length;
   if (f.state === "succeeded") return `${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`;
   if (f.state === "partial") return `${ok} из ${f.count}, ошибки по строкам`;
   if (f.state === "failed") return `0 из ${f.count}, ошибки по строкам`;
-  return `Готово ${ok} из ${f.count} · выполняется…`;
+  return `Готово ${ok} из ${f.count}${verifying ? ` · проверяются ${verifying}` : ""} · выполняется…`;
 }
 
 function apRenderFleet(f: Fleet): void {
@@ -3246,16 +3499,21 @@ function apTick(): void {
 }
 
 function apAfterTerminal(f: Fleet): void {
+  apClearFleetId();
   if (AP_SETTLED.has(f.id)) { apUpdateSubmit(); return; }
   AP_SETTLED.add(f.id);
   const items = f.items || [];
   const ok = items.filter((i) => i.state === "admitted").length;
-  if (f.state === "succeeded") {
-    showToast(`Автопилот: ${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`);
-  } else if (f.state === "partial") {
-    showToast(`Автопилот: ${ok} из ${f.count}, ошибки по строкам`, true);
-  } else {
-    showToast(`Автопилот: 0 из ${f.count}, ошибки по строкам`, true);
+  // Фоновый/старый флот не должен здороваться тостом при каждом входе.
+  if (AP_NOTIFY_TERMINAL) {
+    AP_NOTIFY_TERMINAL = false;
+    if (f.state === "succeeded") {
+      showToast(`Автопилот: ${ok} ${plural(ok, "нода", "ноды", "нод")} в пуле`);
+    } else if (f.state === "partial") {
+      showToast(`Автопилот: ${ok} из ${f.count}, ошибки по строкам`, true);
+    } else {
+      showToast(`Автопилот: 0 из ${f.count}, ошибки по строкам`, true);
+    }
   }
   announce(apSummary(f));
   refresh().catch(() => {});
@@ -3267,7 +3525,22 @@ function apResumeLast(): void {
   const id = apReadFleetId();
   if (!id) return;
   if (AP_POLL_ACTIVE && AP_POLL_ID === id) return;
-  apStartPoll(id);
+  // Не показываем старый завершённый флот при каждом входе в ЛК: тихо
+  // проверяем статус и возобновляем только реально выполняющийся заказ.
+  api.fleet(id).then((f) => {
+    if (f.state !== "running") {
+      apClearFleetId();
+      AP_FLEET = null;
+      const box = $("ap-fleet");
+      box.hidden = true;
+      box.replaceChildren();
+      apUpdateSubmit();
+      return;
+    }
+    apStartPoll(id);
+  }).catch(() => {
+    apClearFleetId();
+  });
 }
 
 function enterAutopilot(): void {
@@ -3280,6 +3553,7 @@ function enterAutopilot(): void {
     apLoadConnections();
   }
   apResumeLast();
+  if (loadPending<FleetCreateBody>(AP_PENDING_KEY)) apShowPendingBlock();
 }
 
 /* ── события формы ───────────────────────────────────────────────────── */
@@ -3287,6 +3561,7 @@ function initAutopilot(): void {
   ($("ap-form") as HTMLFormElement).addEventListener("submit", (e) => { void apSubmit(e); });
   ($("ap-conn") as HTMLSelectElement).addEventListener("change", () => apLoadCatalog(""));
   ($("ap-loc") as HTMLSelectElement).addEventListener("change", () => apLoadCatalog(apValue("ap-loc")));
+  ($("ap-prof") as HTMLSelectElement).addEventListener("change", apRenderInstallVars);
   for (const id of ["ap-cores", "ap-ram", "ap-disk"]) {
     ($(id) as HTMLInputElement).addEventListener("input", () => { crClamp(id); apScheduleEstimate(); });
   }
@@ -3300,6 +3575,20 @@ function initAutopilot(): void {
     else if (Number.isFinite(v) && v > 20) countEl.value = "20";
     apUpdateSubmit();
     apRenderEstimate();
+  });
+  const autoEl = $("ap-auto") as HTMLInputElement;
+  const consentRow = $("ap-consent-row") as HTMLElement;
+  const consentHelp = $("ap-consent-help") as HTMLElement;
+  const consentEl = $("ap-consent") as HTMLInputElement;
+  autoEl.addEventListener("change", () => {
+    consentRow.hidden = !autoEl.checked;
+    consentHelp.hidden = !autoEl.checked;
+    if (!autoEl.checked) consentEl.checked = false;
+  });
+  ($("ap-reset-pending") as HTMLButtonElement).addEventListener("click", () => {
+    apClearPendingIntent();
+    apHideError();
+    showToast("Предыдущее намерение сброшено. Создайте новый заказ только после проверки «Журнала».");
   });
   apUpdateSubmit();
 }
@@ -3926,18 +4215,24 @@ async function refresh(): Promise<void> {
   if (refreshing) return;
   refreshing = true;
   try {
-    const [me, nodes, ops, link] = await Promise.all([
+    // Один вторичный API не должен блокировать обновление остальных
+    // разделов: Beget может быть недоступен, а ноды и журнал — живы.
+    const [meR, nodesR, opsR, linkR] = await Promise.allSettled([
       api.me(), api.nodes(), api.operations(), api.begetLink(),
     ]);
-    ME = me;
-    NODES = nodes.nodes || [];
-    OPS = ops.operations || [];
-    begetOk = !!link.verified;
-    renderBeget(link, true);
+    if (meR.status === "rejected" && (meR.reason as Error)?.message === "unauthorized") return;
+    let failures = 0;
+    if (meR.status === "fulfilled") ME = meR.value; else failures++;
+    if (nodesR.status === "fulfilled") NODES = nodesR.value.nodes || []; else failures++;
+    if (opsR.status === "fulfilled") OPS = opsR.value.operations || []; else failures++;
+    if (linkR.status === "fulfilled") {
+      begetOk = !!linkR.value.verified;
+      renderBeget(linkR.value, true);
+    } else failures++;
     loadAuthkey(true); // независимо: сбой ключа не роняет обзор и не прячет контролы
     $("last-upd").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
-    $("live-text").textContent = "live";
-    $("live-pill").className = "status-pill live";
+    $("live-text").textContent = failures ? "частично" : "live";
+    $("live-pill").className = "status-pill " + (failures ? "off" : "live");
     renderAll(true);
     // Опрос раз в 5 с не должен сбрасывать фокус/каретку/скролл в визарде:
     // renderSection пропускает отрисовку, пока фокус внутри раздела шага.
@@ -4064,6 +4359,7 @@ $("logout-btn").addEventListener("click", async () => {
   if (!await canLeaveBlueprint("logout")) return;
   if (!leaveRunReview()) return;
   leaveBlueprintEditor();
+  clearAllPending();
   api.logout().catch(() => {}).finally(() => location.replace("/signin"));
 });
 

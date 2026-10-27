@@ -219,7 +219,7 @@ func TestProvisionStandardAliasesRenderMaskAndSharedPort(t *testing.T) {
 	r.cfg.SharedProxy.TLSDomain = "front.example.com"
 	const sharedSecret = "0123456789abcdef0123456789abcdef"
 	r.cfg.SharedProxy.Users = map[string]string{"test": sharedSecret}
-	const schema = `{"vars":[{"name":"ad_tag","default":"tag'$(no-command)"}]}`
+	const schema = `{"vars":[{"name":"ad_tag","default":"0123456789abcdef0123456789abcdef"},{"name":"custom","default":"tag'$(no-command)"}]}`
 	merged, err := control.MergeProfileVars(schema, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -254,11 +254,11 @@ func TestProvisionStandardAliasesRenderMaskAndSharedPort(t *testing.T) {
 		exec.reset()
 		return p.ApplyProfile(context.Background(), profile.ID, target, values)
 	}
-	result, err := run("tool --port={{ port }} --canonical={{.proxy_port}} --sni={{ sni }} --secret={{ secret }} --registry={{ registry_url }} --tag={{ ad_tag }}", vars)
+	result, err := run("tool --port={{ port }} --canonical={{.proxy_port}} --sni={{ sni }} --secret={{ secret }} --registry={{ registry_url }} --tag={{ ad_tag }} --custom={{ custom }}", vars)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "tool --port='9443' --canonical='9443' --sni='front.example.com' --secret='" + sharedSecret + "' --registry='https://registry.example.com' --tag='tag'\\''$(no-command)'"
+	want := "tool --port='9443' --canonical='9443' --sni='front.example.com' --secret='" + sharedSecret + "' --registry='https://registry.example.com' --tag='0123456789abcdef0123456789abcdef' --custom='tag'\\''$(no-command)'"
 	if !strings.Contains(exec.allCommands(), want) || strings.Contains(result.Output, sharedSecret) {
 		t.Fatal("aliases were empty/double-quoted or the secret escaped masking")
 	}

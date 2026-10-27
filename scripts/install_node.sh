@@ -22,7 +22,7 @@
 #                                            fail-fast с подсказкой про --preset)
 #   ничего нет, но MTProxyL установлен     → включаем superexpert (файл родится
 #                                            копией текущего рабочего конфига)
-# Явные переопределения: --preset classic|mtproxyl, --telemt-config PATH
+# Явные переопределения: --preset classic|mtproxyl|mtdd, --telemt-config PATH
 # (env TELEMT_CONFIG). Патчить генерируемый /opt/mtproxyl/mtproxy/config.toml
 # БЕССМЫСЛЕННО — MTProxyL пересобирает его из настроек; в superexpert-режиме
 # источником правды становится superexpert.toml (копируется в config.toml
@@ -69,6 +69,7 @@ NONINTERACTIVE=0
 
 # автоопределяемые пути к конфигу telemt
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
+TELEMT_MTDD="/etc/mtdd/config.json"   # mtdd: JSON-конфиг, юнит mtdd.service
 MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
 detect_mtproxyl_config() {
@@ -92,7 +93,7 @@ while [ $# -gt 0 ]; do
 		--registry-token=*) REGISTRY_TOKEN="${1#*=}"; shift ;;
 		--name)           NODE_NAME="${2:?--name требует имя}"; shift 2 ;;
 		--name=*)         NODE_NAME="${1#*=}"; shift ;;
-        --preset)         PRESET="${2:?--preset classic|mtproxyl}"; shift 2 ;;
+        --preset)         PRESET="${2:?--preset classic|mtproxyl|mtdd}"; shift 2 ;;
         --preset=*)       PRESET="${1#*=}"; shift ;;
         --telemt-config)  TELEMT_CONFIG="${2:?}"; shift 2 ;;
         --telemt-config=*) TELEMT_CONFIG="${1#*=}"; shift ;;
@@ -116,7 +117,8 @@ case "$PRESET" in
     "") ;;
     classic)  [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_CLASSIC" ;;
     mtproxyl) [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_MTPROXYL" ;;
-    *) die "--preset: ожидается classic|mtproxyl, получено: $PRESET" ;;
+    mtdd)     [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_MTDD" ;;
+    *) die "--preset: ожидается classic|mtproxyl|mtdd, получено: $PRESET" ;;
 esac
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -277,6 +279,12 @@ apply_mtproxyl_from_registry() {
     ok "MTProxyL: параметры успешно применены через CLI"
 }
 
+# mtdd — только если других менеджеров на хосте нет (иначе выбор неоднозначен:
+# указывайте --preset mtdd / --telemt-config явно)
+if [ -z "$TELEMT_CONFIG" ] && [ -f "$TELEMT_MTDD" ] && [ ! -f "$TELEMT_CLASSIC" ] \
+    && [ ! -f "$TELEMT_MTPROXYL" ] && [ ! -d "$MTPROXYL_DIR" ] && ! mtproxyl_cli; then
+    TELEMT_CONFIG="$TELEMT_MTDD"
+fi
 if [ -z "$TELEMT_CONFIG" ]; then
     have_classic=0; have_mtproxyl=0
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
@@ -313,7 +321,7 @@ fi
 
 # mtproxyl-режим — по фактическому пути (покрывает и --telemt-config, и --preset)
 if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
-    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ]; then
+    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ] && [ "$TELEMT_CONFIG" != "$TELEMT_MTDD" ]; then
         MTPROXYL_MODE=1
         disable_superexpert_if_active
         TELEMT_CONFIG="$(detect_mtproxyl_config)"
@@ -436,7 +444,7 @@ fi
 cat > /etc/systemd/system/sharedd-node-agent.service <<'NODE_UNIT'
 [Unit]
 Description=sharedd — агент HA-ноды (MTProto proxy pool)
-After=network-online.target telemt.service
+After=network-online.target telemt.service mtdd.service
 Wants=network-online.target
 
 [Service]
@@ -481,7 +489,7 @@ systemctl enable sharedd-node-agent.service >>"$INSTALL_LOG" 2>&1
 # telemt.service; list-units его не видит, если юнит ещё не загружен):
 detect_proxy_unit() {
     local unit d luf
-    for unit in telemt.service mtproxy.service mtproxyl-telemt.service; do
+    for unit in telemt.service mtproxy.service mtproxyl-telemt.service mtdd.service; do
         # 1) юнит известен менеджеру (cat читает и незагруженные юнит-файлы)
         if systemctl cat "$unit" >/dev/null 2>&1; then
             printf '%s' "$unit"; return 0
@@ -534,6 +542,8 @@ fi
 PROXY_UNIT=""
 if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     [ "$MTPROXYL_MODE" -eq 0 ] && PROXY_UNIT="$(detect_proxy_unit || true)"
+    # на mtdd-ноде юнит известен точно (рядом может лежать чужой telemt.service)
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then PROXY_UNIT="mtdd.service"; fi
     [ -n "$PROXY_UNIT" ] && say "юнит прокси: ${BOLD}${PROXY_UNIT}${NC}"
 
     if ! grep -aq 'APPLY-ONCE:' /usr/local/bin/sharedd-node-agent 2>/dev/null; then

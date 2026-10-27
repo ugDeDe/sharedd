@@ -12,10 +12,15 @@ function chip(flag: boolean | null | undefined, okText?: string, noText?: string
 }
 function availClass(p: number): string { return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad"; }
 
+/* Публичная подпись приходит с сервера: для пользовательской ноды —
+   "login · Нода №N", для legacy/общей регистрации — прежний node_id. */
+function nodeName(n: any): string { return String(n?.display_name || n?.node_id || "—"); }
+
 const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
   classic:  { label: "Classic",  cls: "",        title: "классический telemt" },
   mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
   meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
+  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
 };
 function nodeTypeBadge(t: string): string {
   const m = NODE_TYPE_META[t];
@@ -81,7 +86,7 @@ function listRowHTML(n: any): string {
     : "";
   const clients = n.clients_unique_ips ?? null;
   return `<tr class="clickable${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}" title="открыть публичную статистику ноды">
-    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+    <td data-label="Нода" title="${esc(n.node_id)}">${esc(nodeName(n))}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
     <td data-label="Роль">${role}${ttlRem}</td>
     <td data-label="Проверки">${checksHTML(n)}</td>
@@ -98,7 +103,7 @@ function listRowHTML(n: any): string {
    прежняя). Пустой массив — карточка с пустым состоянием. */
 
 function masterChip(m: any): string {
-  const uid = esc(m.node_id ?? "—");
+  const uid = esc(nodeName(m));
   const live = m.healthy !== false; // отсутствие поля трактуем как «жив»
   const ip = m.ip_masked ? `<span class="mono dim">${esc(m.ip_masked)}</span>` : "";
   const st = live ? `<span class="badge ok">жив</span>` : `<span class="badge warn">мёртв</span>`;
@@ -174,7 +179,7 @@ async function renderListView(): Promise<void> {
   const domainsCard = Array.isArray(d.domains) ? domainsCardHTML(d.domains) : "";
   const rows = (d.nodes || []).map(listRowHTML).join("");
   const quarantineRows = (d.quarantine || []).map((n: any) => `<tr>
-    <td class="mono" data-label="Нода">${esc(n.node_id)}</td>
+    <td data-label="Нода" title="${esc(n.node_id)}">${esc(nodeName(n))}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}</td>
     <td data-label="Причина"><span class="badge warn">${n.stale ? "ожидает свежий GP" : n.reverify ? "перепроверка IP" : "GP карантин"}</span></td>
     <td class="mono" data-label="Попытки">${n.attempts}/${n.max_attempts}</td>
@@ -274,7 +279,7 @@ function renderPubEvents(list: any[]): string {
 async function renderNodeView(id: string): Promise<void> {
   const d = await pubApi("/statistics/api/node?id=" + encodeURIComponent(id));
   const n = d.node || {};
-  $("view-title").textContent = "Нода · " + (n.node_id || id);
+  $("view-title").textContent = "Нода · " + nodeName(n);
   const mdoms = n.master_domains || [];
   const clients = n.clients_unique_ips ?? null;
   const roleChip = n.is_master
@@ -381,8 +386,8 @@ async function renderNodeView(id: string): Promise<void> {
     <div class="banner info">${icon(ICONS.info, 16)}<span><a href="/statistics">← все ноды пула</a> · IP-адрес замаскирован.</span></div>
     <div class="card node-head">
       <div>
-        <div class="node-id">${esc(n.node_id)}</div>
-        <div class="node-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        <div class="node-id" title="${esc(n.node_id)}">${esc(nodeName(n))}</div>
+        <div class="node-ip">${n.display_name && n.display_name !== n.node_id ? `<span class="mono">${esc(n.node_id)}</span> · ` : ""}${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
       </div>
       <div class="node-chips">${chips}</div>
       ${reason}

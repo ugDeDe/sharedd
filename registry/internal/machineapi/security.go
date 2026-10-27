@@ -77,10 +77,10 @@ func ValidatePublicIPv4(s string) error {
 
 func ValidateNodeType(nodeType string) error {
 	switch nodeType {
-	case "classic", "mtproxyl", "meko":
+	case "classic", "mtproxyl", "meko", "mtdd":
 		return nil
 	default:
-		return fmt.Errorf("node_type must be classic, mtproxyl, or meko")
+		return fmt.Errorf("node_type must be classic, mtproxyl, meko, or mtdd")
 	}
 }
 
@@ -120,7 +120,7 @@ func ValidateHealthReport(payload HealthReportPayload, now time.Time) error {
 type RegisterRequest struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic/mtproxyl/meko — информационный бейдж в панели.
+	// NodeType: classic/mtproxyl/meko/mtdd — информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
 	// AuthKey — персональный ключ регистрации (sda_…, user-режим
 	// [users] enabled=true). В legacy-режиме поле игнорируется; agents
@@ -143,6 +143,34 @@ type SharedConfigResponse struct {
 	Users           map[string]string `json:"users"`
 	Intervals       Intervals         `json:"intervals"`
 	ForceGlobalping bool              `json:"force_globalping,omitempty"`
+	// NodeSettingsProtocol > 0 сообщает агенту, что он может присылать
+	// подтверждение применённых настроек на /api/node/settings/status.
+	NodeSettingsProtocol int           `json:"node_settings_protocol,omitempty"`
+	NodeSettings         *NodeSettings `json:"node_settings,omitempty"`
+}
+
+// NodeSettings — индивидуальные runtime-настройки ноды. Передаются только
+// агенту, аутентифицированному персональным секретом владельца.
+type NodeSettings struct {
+	Revision int64        `json:"revision"`
+	AdTag    AdTagSetting `json:"ad_tag"`
+}
+
+type AdTagSetting struct {
+	// Mode: unmanaged | set | clear. unmanaged означает «не трогать».
+	Mode  string `json:"mode"`
+	Value string `json:"value,omitempty"`
+}
+
+// NodeSettingsStatus — подтверждение применения от агента.
+type NodeSettingsStatus struct {
+	NodeID            string   `json:"node_id"`
+	ProtocolVersion   int      `json:"protocol_version"`
+	Capabilities      []string `json:"capabilities,omitempty"`
+	AttemptedRevision int64    `json:"attempted_revision"`
+	AppliedRevision   int64    `json:"applied_revision"`
+	State             string   `json:"state"`
+	ErrorCode         string   `json:"error_code,omitempty"`
 }
 
 // HealthReportPayload — тело POST /report (отчёт ноды о здоровье).

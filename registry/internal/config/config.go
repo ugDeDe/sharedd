@@ -221,6 +221,7 @@ type RegistryConfig struct {
 	// Креды/секреты реестра из SSH-сессии недостижимы (в шаги не инъектятся).
 	Provisioning struct {
 		MaxCreatesPerDay    int   `toml:"max_creates_per_day"`
+		MaxPaidPerDay       int   `toml:"max_paid_per_day"`
 		CooldownMinutes     int   `toml:"cooldown_minutes"`
 		MaxUserProfiles     int   `toml:"max_user_profiles"`
 		InstallTimeoutMin   int   `toml:"install_timeout_min"`
@@ -323,6 +324,9 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	}
 	if cfg.Provisioning.MaxCreatesPerDay < 0 || cfg.Provisioning.MaxCreatesPerDay > 1000 {
 		return fmt.Errorf("provisioning.max_creates_per_day must be 0..1000")
+	}
+	if cfg.Provisioning.MaxPaidPerDay < 0 || cfg.Provisioning.MaxPaidPerDay > 1000 {
+		return fmt.Errorf("provisioning.max_paid_per_day must be 0..1000")
 	}
 	if cfg.Provisioning.CooldownMinutes < 0 || cfg.Provisioning.CooldownMinutes > 1440 {
 		return fmt.Errorf("provisioning.cooldown_minutes must be 0..1440")

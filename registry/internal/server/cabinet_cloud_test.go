@@ -33,27 +33,28 @@ func fastCloudPoll(t *testing.T) {
 // fakeCloud — мок nodehost-провайдера: счётчики внешних вызовов, управляемые
 // ошибки и результаты (как fakeHosting, но для cloudProvider-поверхности).
 type fakeCloud struct {
-	mu           sync.Mutex
-	creates      int
-	operations   int
-	servers      int
-	deletes      int
-	changeIPs    int
-	opStatus     string // статус операции, отдаваемый Operation()
-	serverID     string
-	serverIP     string
-	serverStatus string
-	password     string
-	changeIPTo   string
-	serverErr    error // не nil → Server() отвечает ошибкой
-	opErr        error // не nil → Operation() отвечает ошибкой
-	opFailure    *nodehost.OperationError
-	changeIPErr  error
-	createPanic  bool              // тест H6: паника в платном вызове
-	createErr    error             // тест H1: ошибка провайдера после dispatch
-	deleteFails  int               // тест H3: сколько первых Delete вернут ошибку
-	inventory    []nodehost.Server // reconcile: одна страница инвентаря
-	serversErr   error             // reconcile: ошибка листинга инвентаря
+	mu             sync.Mutex
+	creates        int
+	operations     int
+	servers        int
+	deletes        int
+	changeIPs      int
+	opStatus       string // статус операции, отдаваемый Operation()
+	serverID       string
+	serverIP       string
+	serverStatus   string
+	password       string
+	changeIPTo     string
+	serverErr      error // не nil → Server() отвечает ошибкой
+	opErr          error // не nil → Operation() отвечает ошибкой
+	opFailure      *nodehost.OperationError
+	changeIPErr    error
+	createPanic    bool              // тест H6: паника в платном вызове
+	createErr      error             // тест H1: ошибка провайдера после dispatch
+	deleteFails    int               // тест H3: сколько первых Delete вернут ошибку
+	inventory      []nodehost.Server // reconcile: одна страница инвентаря
+	serversErr     error             // reconcile: ошибка листинга инвентаря
+	serverNotFound bool              // Server() → not_found (delete resume)
 }
 
 func (f *fakeCloud) Create(_ context.Context, _ nodehost.CreateRequest, _ string) (*nodehost.CreateResult, error) {
@@ -85,6 +86,9 @@ func (f *fakeCloud) Server(_ context.Context, id string) (*nodehost.Server, erro
 	f.servers++
 	if f.serverErr != nil {
 		return nil, f.serverErr
+	}
+	if f.serverNotFound {
+		return nil, &nodehost.Error{Code: "not_found", HTTPStatus: http.StatusNotFound}
 	}
 	return &nodehost.Server{ID: id, Status: f.serverStatus, IP: f.serverIP, Password: f.password}, nil
 }
@@ -143,6 +147,9 @@ func newCloudRegistry(t *testing.T) (*Registry, *fakeCloud) {
 	fastCloudPoll(t)
 	fake := &fakeCloud{opStatus: "succeeded", serverID: "srv-ext-1", serverIP: "203.0.113.10", serverStatus: "ACTIVE", password: "root-pw-secret-123", changeIPTo: "203.0.113.99"}
 	r.cloudFactory = func(control.HostingConnection) (cloudProvider, error) { return fake, nil }
+	// Fleet tests do not create live candidates; admission is a separate
+	// health test. Production uses blueprintResourceReady.
+	r.fleetVerify = func(control.CloudResourceV2) error { return nil }
 	return r, fake
 }
 

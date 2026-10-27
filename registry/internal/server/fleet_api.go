@@ -25,7 +25,10 @@ type fleetCreateBody struct {
 	// installation_profile_version_id is resolved to its ProfileID.
 	InstallationProfileID        int64 `json:"installation_profile_id"`
 	InstallationProfileVersionID int64 `json:"installation_profile_version_id"`
-	AutoReplace                  bool  `json:"auto_replace"`
+	// InstallationVars — быстрые параметры установки (имя отдельно: Name).
+	// Сервер мержит их со схемой профиля и сохраняет снимок в fleet.
+	InstallationVars map[string]any `json:"installation_vars"`
+	AutoReplace      bool           `json:"auto_replace"`
 }
 
 func (r *Registry) mountFleets(mux *http.ServeMux) {
@@ -126,6 +129,10 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", "name must be 1..7 characters and yield valid node labels")
 		return
 	}
+	baseName := strings.TrimSpace(body.Name)
+	if baseName == "" {
+		baseName = "fleet"
+	}
 	u := sessionFrom(req).user
 	conn, err := r.control.HostingConnectionOwned(body.ConnectionID, u.ID)
 	if err != nil {
@@ -150,6 +157,18 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 		writeFleetProfileErr(w, err)
 		return
 	}
+	// Разрешаем значения сейчас и сохраняем снимок: замена не должна
+	// внезапно использовать другой ad_tag из изменённого профиля.
+	mergedVars, err := r.mergeInstallVars(u.ID, pv, body.InstallationVars)
+	if err != nil {
+		controlAPIError(w, http.StatusBadRequest, "validation_failed", "invalid installation variables: "+err.Error())
+		return
+	}
+	varsJSON, err := json.Marshal(mergedVars)
+	if err != nil {
+		controlAPIError(w, http.StatusBadRequest, "validation_failed", "installation variables are not JSON-serialisable")
+		return
+	}
 	cfgJSON, err := json.Marshal(body.Configuration)
 	if err != nil {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", "configuration is not JSON-serialisable")
@@ -157,7 +176,7 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if prev, err := r.control.FleetByKey(u.ID, idemKey); err == nil {
-		if !fleetReplayMatches(prev, body, pv.ID, string(cfgJSON)) {
+		if !fleetReplayMatches(prev, body, pv.ID, string(cfgJSON), string(varsJSON), baseName) {
 			controlAPIError(w, http.StatusConflict, "idempotency_conflict", "idempotency key was reused with a different request body")
 			return
 		}
@@ -171,11 +190,21 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Optional daily cap on paid attempts. Replays return before this point.
+	if err := r.control.ReservePaidAttempts(u.ID, body.Count, r.cfg.Provisioning.MaxPaidPerDay); err != nil {
+		if errors.Is(err, control.ErrRateLimited) {
+			controlAPIError(w, http.StatusTooManyRequests, "rate_limited", "дневной лимит платных действий исчерпан")
+			return
+		}
+		r.writeControlUnavailable(w)
+		return
+	}
+
 	f, created, err := r.control.CreateFleet(control.Fleet{
-		UserID: u.ID, ConnectionID: conn.ID, Count: body.Count, AutoReplace: body.AutoReplace,
+		UserID: u.ID, ConnectionID: conn.ID, Count: body.Count, Name: baseName, AutoReplace: body.AutoReplace,
 		// With in-place edits the content row ID is stable, so it identifies
 		// the profile for the fleet worker.
-		ProfileVersionID: pv.ID, ConfigurationJSON: string(cfgJSON), FleetKey: idemKey,
+		ProfileVersionID: pv.ID, ConfigurationJSON: string(cfgJSON), InstallationVarsJSON: string(varsJSON), FleetKey: idemKey,
 		State: control.FleetRunning,
 	}, labels)
 	if err != nil {
@@ -183,7 +212,7 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if !created {
-		if !fleetReplayMatches(f, body, pv.ID, string(cfgJSON)) {
+		if !fleetReplayMatches(f, body, pv.ID, string(cfgJSON), string(varsJSON), baseName) {
 			controlAPIError(w, http.StatusConflict, "idempotency_conflict", "idempotency key was reused with a different request body")
 			return
 		}
@@ -193,10 +222,15 @@ func (r *Registry) handleFleetCreate(w http.ResponseWriter, req *http.Request) {
 	writeCabinetJSON(w, http.StatusAccepted, map[string]int64{"fleet_id": f.ID})
 }
 
-func fleetReplayMatches(f control.Fleet, body fleetCreateBody, pvID int64, cfgJSON string) bool {
+func fleetReplayMatches(f control.Fleet, body fleetCreateBody, pvID int64, cfgJSON, varsJSON, name string) bool {
+	storedName := f.Name
+	if storedName == "" {
+		// Fleets accepted before the name column existed used the default.
+		storedName = "fleet"
+	}
 	return f.ConnectionID == body.ConnectionID && f.Count == body.Count &&
 		f.AutoReplace == body.AutoReplace && f.ProfileVersionID == pvID &&
-		f.ConfigurationJSON == cfgJSON
+		storedName == name && f.ConfigurationJSON == cfgJSON && f.InstallationVarsJSON == varsJSON
 }
 
 // fleetIP — current IP of the item's resource (empty when missing/deleted).

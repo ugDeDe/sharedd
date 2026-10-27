@@ -377,7 +377,7 @@ func (r *Registry) handleMeServerInstall(w http.ResponseWriter, req *http.Reques
 		writeProfileSelectErr(w, err)
 		return
 	}
-	vars, err := control.MergeProfileVars(pv.VarsSchema, body.Vars)
+	vars, err := r.mergeInstallVars(u.ID, pv, body.Vars)
 	if err != nil {
 		controlAPIError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return

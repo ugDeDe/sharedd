@@ -17,6 +17,10 @@ token = "PASTE_THE_REGISTRY_NODE_API_TOKEN"
 # ванильный telemt: /etc/telemt/telemt.toml
 # MTProxyL: /opt/mtproxyl/mtproxy/config.toml (или telemt.toml)
 # Изменения применяются при 'mtproxyl restart'.
+# mtdd (https://github.com/ugDeDe/mtdd): /etc/mtdd/config.json — JSON-конфиг;
+# порт прокси и /metrics берутся из него, API-токен — из /etc/mtdd/credentials.env.
+# Пользователи синхронизируются через API mtdd (без рестарта), tls_domain — правкой
+# JSON с рестартом mtdd.service.
 config_path = "/etc/telemt/telemt.toml"
 # ключ mode удалён — интеграция только через файл (telemt REST API не используется).
 

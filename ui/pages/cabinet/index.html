@@ -133,21 +133,41 @@
             <legend>Установка и замена</legend>
             <div class="srv-grid">
               <div class="field">
+                <label for="ap-name">Имя нод</label>
+                <input id="ap-name" type="text" maxlength="7" value="fleet" autocomplete="off" spellcheck="false" aria-describedby="ap-name-help">
+                <span class="help" id="ap-name-help">1–7 символов. Итоговые имена: <span class="mono">fleet-01</span>…, технический ID добавит суффикс сам.</span>
+              </div>
+              <div class="field">
                 <label for="ap-prof">Профиль установки</label>
                 <select id="ap-prof"><option value="">Загрузка профилей…</option></select>
                 <span class="help" id="ap-prof-help">Только текстовые профили: опубликованные и ваши.</span>
               </div>
             </div>
+            <div id="ap-inst-vars" hidden style="margin-top:12px">
+              <label class="static-head">Параметры установки</label>
+              <div class="help" style="margin-bottom:8px">Ad tag и другие параметры применяются к каждой ноде этого заказа. Профиль при этом не меняется.</div>
+            </div>
+            <label class="check" id="ap-save-defaults-row" hidden style="margin-top:8px">
+              <input type="checkbox" id="ap-save-defaults" aria-describedby="ap-save-defaults-help">
+              <span class="box"></span> Запомнить эти параметры для профиля
+            </label>
+            <span class="help ap-help" id="ap-save-defaults-help" hidden>В следующий раз значения подставятся автоматически. Секреты не сохраняются.</span>
             <label class="check" style="margin-top:10px">
-              <input type="checkbox" id="ap-auto" checked aria-describedby="ap-auto-help">
+              <input type="checkbox" id="ap-auto" aria-describedby="ap-auto-help">
               <span class="box"></span> Заменять ноды при бане автоматически
             </label>
-            <span class="help ap-help" id="ap-auto-help">Включено: при бане автоматически создаётся замена (платно) ДО удаления старой. Выключено: ноды создаются и ставятся в пул, замена — вручную; бан сам по себе ничего не покупает.</span>
+            <span class="help ap-help" id="ap-auto-help">Выключено по умолчанию. Если включить, при подтверждённом бане автоматически создаётся платная замена ДО удаления старой. Выключено — бан сам по себе ничего не покупает, замена выполняется вручную.</span>
+            <label class="check" id="ap-consent-row" hidden>
+              <input type="checkbox" id="ap-consent" aria-describedby="ap-consent-help">
+              <span class="box"></span> Разрешаю будущие платные замены при подтверждённой блокировке
+            </label>
+            <span class="help ap-help" id="ap-consent-help" hidden>Это отдельное разрешение на будущие расходы, а не только на текущий заказ. Его можно отключить в карточке ноды.</span>
           </fieldset>
 
           <div class="banner info" id="ap-estimate" hidden aria-live="polite"></div>
           <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
             <button type="submit" class="btn primary" id="ap-submit">Развернуть 1 ноду</button>
+            <button type="button" class="btn sm ghost" id="ap-reset-pending" hidden>Начать новый заказ</button>
           </div>
         </form>
         <div class="card-body" id="ap-fleet" hidden></div>
@@ -450,6 +470,7 @@
             <div class="cr-batch" id="cr-batch" hidden aria-live="polite"></div>
             <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
               <button type="button" class="btn ghost" id="cr-cancel">Отмена</button>
+              <button type="button" class="btn sm ghost" id="cr-reset-pending" hidden>Начать новый заказ</button>
               <button type="submit" class="btn primary" id="cr-submit" disabled>Создать ресурс</button>
             </div>
           </form>

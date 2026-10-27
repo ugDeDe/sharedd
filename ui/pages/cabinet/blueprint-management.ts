@@ -1,8 +1,47 @@
+import { esc } from "../../lib/dom";
 import { api } from "./api";
 import type { APIError, CloudResource, ManagementBody, ManagementPolicy, Profile } from "./api";
 import { BEGET_GATE, bytes, runtimeGate } from "./blueprint-model";
 import { mountInstance, mountProfilePicker } from "./blueprint-instance";
 import type { InstanceForm } from "./blueprint-instance";
+
+const ACTION_LABELS: Record<string, string> = {
+  "server.create": "создать VPS",
+  "server.delete": "удалить VPS",
+  "server.ready": "дождаться готовности VPS",
+  "server.absent": "подтвердить удаление VPS",
+  "server.distinct_ip": "проверить новый IP",
+  "install.text": "установить профиль",
+  "pool.admit": "дождаться проверок и допустить в пул",
+  "observe.arm": "включить наблюдение",
+  "resource.fence": "зафиксировать новый ресурс",
+  "resource.switch": "переключить ноду на новый ресурс",
+  "ip.order": "заказать IP",
+  "ip.attach": "привязать IP",
+  "ip.switch_advertised": "переключить рекламируемый IP",
+  "ip.cleanup": "очистить старый IP",
+  "ip.verify": "проверить IP",
+  "event.ip_ban": "ждать подтверждённый IP-бан",
+  "policy.guard": "проверить разрешение политики",
+  "terminal.stop": "остановить выполнение",
+};
+
+function policyPreview(graph: any): string {
+  const nodes: any[] = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    const label = ACTION_LABELS[String(n?.type || "")];
+    if (!label) continue;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  if (!counts.size) return "";
+  const paid = nodes.some((n) => n?.type === "server.create" || n?.type === "ip.order");
+  const rows = [...counts.entries()].map(([label, n]) => `<li>${esc(label)}${n > 1 ? ` ×${n}` : ""}</li>`).join("");
+  return `<div class="banner ${paid ? "warn" : "info"}" role="note"><span><b>Что произойдёт при срабатывании:</b></span>
+    <ul style="margin:6px 0 0 18px">${rows}</ul>
+    ${paid ? `<span>Политика может создавать платные ресурсы. Остановка отменяет только дальнейшие шаги; уже отправленные действия и оплата существующих VPS не отменяются.</span>` : ""}
+  </div>`;
+}
 
 export function mountBlueprintManagement(
   root: HTMLElement,
@@ -23,15 +62,16 @@ export function mountBlueprintManagement(
      — источник префиллов, даже когда политика ещё не связана (current_resource_id
      = null). PUT management свяжет его автоматически (backend-компаньон). */
   const bound = (): CloudResource | null => resource;
-  root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound()!.id}">#${bound()!.id}</a> — свяжется автоматически` : `не связан · <a href="#/resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? (initial.profile_id ? `#${initial.profile_id}` : "назначен") : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
+  root.innerHTML = `<div class="blueprint-facts"><p>Текущий ресурс: ${initial.current_resource_id ? `<a href="#/resources/${initial.current_resource_id}">#${initial.current_resource_id}</a>` : bound() ? `не связан · по узлу найден <a href="#/resources/${bound()!.id}">#${bound()!.id}</a> — свяжется автоматически` : `не связан · <a href="#/beget?tab=resources">хостинг-ресурсы</a>`}</p><p>Активный запуск: не предоставляется API. <a href="#/profiles">Открыть запуск по известному ID</a></p><p>Сохранённый профиль: ${initial.mode === "profile" ? (initial.profile_id ? `#${initial.profile_id}` : "назначен") : "нет"} · ревизия <span data-policy-revision>${initial.revision}</span></p></div>
     <form><fieldset><legend>Режим управления</legend><label class="check"><input type="radio" name="blueprint-mode" value="manual"${mode === "manual" ? " checked" : ""}><span class="box"></span>Ручной</label><label class="check"><input type="radio" name="blueprint-mode" value="profile"${mode === "profile" ? " checked" : ""}><span class="box"></span>Профильный</label></fieldset>
-    <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-inputs></div>
+    <p data-mode-note class="banner info"></p><fieldset data-policy-profile${mode === "manual" ? " hidden disabled" : ""}><legend>Профиль и входы политики</legend><div data-policy-picker></div><div data-policy-gate class="banner warn"></div><div data-policy-preview></div><div data-policy-inputs></div>
     <label class="check"><input type="checkbox" data-current-ban${initial.process_current_ban && initial.mode === "profile" ? " checked" : ""}><span class="box"></span>Обработать текущий эпизод блокировки</label><p class="help">По умолчанию выключено при новом включении. Разрешает действие сейчас для текущего эпизода; прошлые не переигрываются.</p>
     <label class="check"><input type="checkbox" data-policy-consent><span class="box"></span>Разрешить действия этого профиля при новых блокировках, включая платную замену VPS, если она есть в схеме.</label><p class="help">Сохранение самого профиля этого не делает. Политика не принимает vars: используются значения текстового профиля/регистратора, а не переопределения первоначального запуска. Допуск — ограниченная проверка реестра, не обещание независимых GP/metrics/TCP-постусловий.</p></fieldset>
     <div class="banner bad" role="alert" id="bp-policy-error" hidden></div><div class="blueprint-toolbar"><button class="btn primary" type="submit">Сохранить режим</button><button class="btn" type="button" data-reload-policy>Обновить GET политики</button></div></form>`;
   const profile = root.querySelector<HTMLElement>("[data-policy-profile]")!,
     note = root.querySelector<HTMLElement>("[data-mode-note]")!,
     gate = root.querySelector<HTMLElement>("[data-policy-gate]")!,
+    preview = root.querySelector<HTMLElement>("[data-policy-preview]")!,
     errorBox = root.querySelector<HTMLElement>("#bp-policy-error")!,
     form = root.querySelector<HTMLFormElement>("form")!,
     submit = form.querySelector<HTMLButtonElement>('[type="submit"]')!;
@@ -54,7 +94,7 @@ export function mountBlueprintManagement(
        beget, не загружен graph или runtime-гейт. Связь с ресурсом — не блокер:
        префиллы из resource + автосвязь на PUT. */
     const reason = !res
-      ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/resources">хостинг-ресурсов</a>.`
+      ? `Узел не связан с облачным ресурсом Nodehost — автоматизировать нечего. Добавьте ресурс и установите на него узел либо привяжите текущий в разделе <a href="#/beget?tab=resources">хостинг-ресурсов</a>.`
       : res.provider === "beget"
         ? BEGET_GATE
         : !graph
@@ -71,6 +111,7 @@ export function mountBlueprintManagement(
       gate.textContent =
         reason ||
         "Nodehost · профиль разрешён для настройки. Сохранение режима может разрешить платные действия при бане.";
+    preview.innerHTML = mode === "profile" && graph && !reason ? policyPreview(graph) : "";
     submit.textContent = mode === "profile" ? "Включить автоматизацию" : "Сохранить ручной режим";
     submit.disabled =
       busy || uncertain || (mode === "profile" && (!!reason || !textPicked || !consent.checked));

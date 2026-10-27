@@ -49,21 +49,39 @@ func (s *Store) BindNodeOwnership(nodeID string, u User) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy) VALUES (?,?,?,0)
-		ON CONFLICT(node_id) DO NOTHING`, nodeID, u.ID, time.Now().Unix()); err != nil {
-		return err
-	}
 	var owner int64
 	var legacy int
-	err = tx.QueryRow(`SELECT user_id, legacy FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrOwnerMismatch
-	}
-	if err != nil {
+	var boundSlot int64
+	err = tx.QueryRow(`SELECT user_id, legacy, COALESCE(slot_id, 0) FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &legacy, &boundSlot)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		var slotArg any
+		if u.ID != s.legacyUserID {
+			slot, serr := ensureSlotTx(tx, u.ID, slotNameFromNodeID(nodeID))
+			if serr != nil {
+				return serr
+			}
+			slotArg = slot.ID
+		}
+		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy, slot_id) VALUES (?,?,?,0,?)`,
+			nodeID, u.ID, time.Now().Unix(), slotArg); err != nil {
+			return err
+		}
+	case err != nil:
 		return err
-	}
-	if owner != u.ID || legacy != 0 {
-		return ErrOwnerMismatch
+	default:
+		if owner != u.ID || legacy != 0 {
+			return ErrOwnerMismatch
+		}
+		if boundSlot == 0 && u.ID != s.legacyUserID {
+			slot, serr := ensureSlotTx(tx, u.ID, slotNameFromNodeID(nodeID))
+			if serr != nil {
+				return serr
+			}
+			if _, err := tx.Exec(`UPDATE node_owners SET slot_id = ? WHERE node_id = ?`, slot.ID, nodeID); err != nil {
+				return err
+			}
+		}
 	}
 	// Новая установка по этому же node_id снимает отметку удаления.
 	if _, err := tx.Exec(`UPDATE node_owners SET deleting = 0 WHERE node_id = ?`, nodeID); err != nil {
@@ -118,13 +136,24 @@ func (s *Store) AuthorizeNode(nodeID string, u User) error {
 	now := time.Now().Unix()
 	checkQuota := false
 	var owner int64
-	var deleting int
-	err = tx.QueryRow(`SELECT user_id, deleting FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &deleting)
+	var deleting, slotID int64
+	err = tx.QueryRow(`SELECT user_id, deleting, COALESCE(slot_id, 0) FROM node_owners WHERE node_id = ?`, nodeID).Scan(&owner, &deleting, &slotID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		// свободна — захватываем место ниже
-		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy) VALUES (?,?,?,0)`,
-			nodeID, u.ID, now); err != nil {
+		if u.ID != s.legacyUserID {
+			slot, serr := ensureSlotTx(tx, u.ID, slotNameFromNodeID(nodeID))
+			if serr != nil {
+				return serr
+			}
+			slotID = slot.ID
+		}
+		var slotArg any
+		if slotID > 0 {
+			slotArg = slotID
+		}
+		if _, err := tx.Exec(`INSERT INTO node_owners (node_id, user_id, registered_at, legacy, slot_id) VALUES (?,?,?,0,?)`,
+			nodeID, u.ID, now, slotArg); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`INSERT INTO quota_reservations (node_id, user_id, created_at) VALUES (?,?,?)`,
@@ -142,6 +171,15 @@ func (s *Store) AuthorizeNode(nodeID string, u User) error {
 			// Владелец удалил ноду: пул её больше не принимает. Вернуть
 			// можно только новой установкой с новой identity.
 			return ErrNodeDeleting
+		}
+		if slotID == 0 && u.ID != s.legacyUserID {
+			slot, serr := ensureSlotTx(tx, u.ID, slotNameFromNodeID(nodeID))
+			if serr != nil {
+				return serr
+			}
+			if _, err := tx.Exec(`UPDATE node_owners SET slot_id = ? WHERE node_id = ?`, slot.ID, nodeID); err != nil {
+				return err
+			}
 		}
 		// Своя нода: резерв восстанавливаем, если нода была вне пула.
 		res, err := tx.Exec(`INSERT OR IGNORE INTO quota_reservations (node_id, user_id, created_at) VALUES (?,?,?)`,

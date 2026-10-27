@@ -3,6 +3,18 @@
 Все заметные изменения проекта. Формат — Keep a Changelog; версии
 соответствуют тегам релизов.
 
+## [Unreleased]
+
+### Added
+
+- **Поддержка mtdd** (https://github.com/ugDeDe/mtdd) как типа ноды `mtdd`:
+  агент читает порт и `/metrics` из `/etc/mtdd/config.json`, ходит в API с
+  Bearer-токеном из `credentials.env`, переводит `mtdd_*` метрики в ключи
+  регистратора (здоровье — сумма `mtdd_me_pool_ready`), синхронизирует
+  пользователей через `/v1/users` и меняет `tls_domain` с рестартом
+  `mtdd.service` и откатом. Установщики: `--preset mtdd` и автодетект.
+  Runtime-смена `ad_tag` для mtdd пока не поддерживается.
+
 ## [1.0.3] - 2026-10-05
 
 ### Added

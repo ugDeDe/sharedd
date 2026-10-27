@@ -13,7 +13,7 @@ import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
 import { barChart, chartTop, donutChart, liveLineChart } from "../../lib/chart";
 import type { LiveSeries } from "../../lib/chart";
 import { api } from "./api";
-import type { CloudResource, ManagementPolicy, NodeDetail, Operation } from "./api";
+import type { CloudResource, ManagementPolicy, NodeDetail, NodeSettings, Operation } from "./api";
 import { mountBlueprintManagement } from "./blueprint-management";
 
 const EMPTY_SVG =
@@ -31,6 +31,7 @@ const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string
   classic:  { label: "Classic",  cls: "",        title: "классический telemt" },
   mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
   meko:     { label: "MEKO",     cls: "info",    title: "фикс MEKO (/opt/mtpr-simple/)" },
+  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
 };
 
 // Подписи типов событий ноды (как в панели, core set). Неизвестный тип
@@ -81,6 +82,10 @@ let MGMT: ManagementPolicy | null = null;
 let MGMT_ERR: string | null = null;
 let NODE_RES: CloudResource | null = null;
 let NODE_OP: Operation | null = null;
+let SETTINGS: NodeSettings | null = null;
+let SETTINGS_ERR: string | null = null;
+let SETTINGS_DRAFT: string | null = null;
+let SETTINGS_AD_DRAFT: string | null = null;
 // Активный таб. Живёт между опросами (5 с); сбрасывается в openNodeDetail.
 let DETAIL_TAB = "overview";
 
@@ -96,6 +101,10 @@ export function openNodeDetail(id: string): void {
   MGMT_ERR = null;
   NODE_RES = null;
   NODE_OP = null;
+  SETTINGS = null;
+  SETTINGS_ERR = null;
+  SETTINGS_DRAFT = null;
+  SETTINGS_AD_DRAFT = null;
   DETAIL_TAB = parseTabHash(); // дефолт «Обзор»; валидный #?tab= восстанавливаем
   const el = $("node-detail");
   if (el) el.innerHTML = `<div class="skeleton skel-block"></div>`;
@@ -109,6 +118,10 @@ export function closeNodeDetail(): void {
   MGMT = null;
   NODE_RES = null;
   NODE_OP = null;
+  SETTINGS = null;
+  SETTINGS_ERR = null;
+  SETTINGS_DRAFT = null;
+  SETTINGS_AD_DRAFT = null;
 }
 
 /* ── табы: hash-навигация и переключение панелей ──────────────────────
@@ -180,6 +193,7 @@ function load(poll: boolean): void {
   // Политику/ресурс опрашиваем всегда при первом входе и далее — только на
   // сегментах, которые их показывают (не множим запросы на каждом такте).
   if (!poll || DETAIL_TAB === "management" || DETAIL_TAB === "actions") refreshMgmt(poll);
+  if (!poll || DETAIL_TAB === "management") refreshSettings();
   api.nodeDetail(id)
     .then((d) => {
       if (id !== DETAIL_ID) return; // ушли на другую ноду
@@ -231,6 +245,26 @@ function refreshMgmt(poll: boolean): void {
     });
 }
 
+/* Параметры логической ноды: имя/номер слота. Runtime-ad_tag пока
+   unsupported; не показываем ложное «применено». */
+function refreshSettings(): void {
+  const id = DETAIL_ID;
+  if (!id) return;
+  api.nodeSettings(id)
+    .then((s) => {
+      if (id !== DETAIL_ID) return;
+      SETTINGS = s;
+      SETTINGS_ERR = null;
+      render(false);
+    })
+    .catch((e: Error & { status?: number }) => {
+      if (id !== DETAIL_ID) return;
+      if (e.message === "unauthorized") return;
+      SETTINGS_ERR = e.status === 404 ? "У ноды нет логического слота." : e.message;
+      render(false);
+    });
+}
+
 function render(poll: boolean): void {
   const el = $("node-detail");
   if (!el) return;
@@ -245,6 +279,63 @@ function render(poll: boolean): void {
     if (!DETAIL) { el.innerHTML = `<div class="skeleton skel-block"></div>`; return; }
     const management = document.getElementById("blueprint-management");
     el.innerHTML = detailHTML(DETAIL);
+    const renameBtn = el.querySelector<HTMLButtonElement>("[data-slot-rename]");
+    const nameInp = el.querySelector<HTMLInputElement>("#nd-slot-name");
+    if (nameInp) nameInp.oninput = () => { SETTINGS_DRAFT = nameInp.value; };
+    if (renameBtn && SETTINGS) {
+      renameBtn.onclick = async () => {
+        const inp = el.querySelector<HTMLInputElement>("#nd-slot-name");
+        const msg = el.querySelector<HTMLElement>("[data-slot-msg]");
+        const name = (inp?.value || "").trim();
+        if (!name || !msg) return;
+        renameBtn.disabled = true;
+        msg.textContent = "Сохранение…";
+        try {
+          SETTINGS = await api.patchNodeSettings(DETAIL_ID, {
+            expected_revision: SETTINGS!.revision,
+            name,
+          });
+          SETTINGS_DRAFT = null;
+          if (inp) inp.value = SETTINGS.name;
+          msg.textContent = "Название сохранено. Технический ID не изменился.";
+        } catch (e) {
+          msg.textContent = (e as Error & { code?: string }).code === "revision_conflict"
+            ? "Настройки уже изменились — откройте карточку заново."
+            : `Не удалось сохранить: ${(e as Error).message}`;
+        } finally {
+          renameBtn.disabled = false;
+        }
+      };
+    }
+    const adBtn = el.querySelector<HTMLButtonElement>("[data-ad-save]");
+    const adInp = el.querySelector<HTMLInputElement>("#nd-ad-tag");
+    if (adInp) adInp.oninput = () => { SETTINGS_AD_DRAFT = adInp.value; };
+    if (adBtn && adInp && SETTINGS) {
+      adBtn.onclick = async () => {
+        const msg = el.querySelector<HTMLElement>("[data-ad-msg]");
+        if (!msg) return;
+        adBtn.disabled = true;
+        msg.textContent = "Сохранение…";
+        try {
+          SETTINGS = await api.patchNodeSettings(DETAIL_ID, {
+            expected_revision: SETTINGS!.revision,
+            runtime: { ad_tag: adInp.value.trim() },
+          });
+          SETTINGS_AD_DRAFT = null;
+          const st = SETTINGS.runtime.ad_tag;
+          msg.textContent = st?.message || "Сохранено. Ожидается подтверждение агента.";
+          if (st?.state === "pending") msg.textContent = "Сохранено. Ожидается подтверждение агента.";
+          if (st?.state === "failed") msg.textContent = `Не применено: ${st.message || "ошибка агента"}`;
+        } catch (e) {
+          const err = e as Error & { code?: string };
+          msg.textContent = err.code === "unsupported_setting"
+            ? "Эта нода не поддерживает изменение ad_tag на живой ноде. Задайте его при переустановке."
+            : `Не удалось сохранить: ${err.message}`;
+        } finally {
+          adBtn.disabled = false;
+        }
+      };
+    }
     const target = document.getElementById("blueprint-management");
     // Preserve the complete policy form/input snapshot across statistics polls.
     if (target && management?.dataset.mounted === DETAIL_ID) target.replaceWith(management);
@@ -291,6 +382,7 @@ function detailHTML(d: NodeDetail): string {
   const meta = STATUS_META[n.status] || STATUS_META.offline;
   const nt = n.node_type ? NODE_TYPE_META[n.node_type] : undefined;
   const q = n.quarantine;
+  const slot = SETTINGS && SETTINGS.node_id === n.node_id ? SETTINGS : null;
 
   // Шапка со статусом — всегда над табами.
   const head = `
@@ -298,7 +390,7 @@ function detailHTML(d: NodeDetail): string {
     <div>
       <div class="nd-ip-lead"><span class="mono">${esc(n.ip || "—")}${n.port ? ":" + n.port : ""}</span>
         · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
-      <div class="nd-ip">нода <span class="mono">${esc(n.node_id)}</span></div>
+      <div class="nd-ip">${slot ? `<b>${esc(slot.name)} · Нода №${slot.number}</b> · ` : ""}нода <span class="mono">${esc(n.node_id)}</span></div>
     </div>
     <div class="nd-chips">
       <span class="badge ${meta.cls}"><i></i>${esc(meta.label)}</span>
@@ -328,7 +420,7 @@ function panelHTML(key: string, d: NodeDetail): string {
   switch (key) {
     case "metrics": return chartCHTML(d) + hostingHTML(d) + telemtHTML(d) + controlApiHTML(d);
     case "checks":  return checksHTML(d);
-    case "management": return mgmtHTML() + resLinkageHTML();
+    case "management": return settingsHTML() + mgmtHTML() + resLinkageHTML();
     case "journal": return eventsHTML(d);
     case "actions": return actionsHTML(d);
     default:        return paramsHTML(d) + chartAHTML(d) + ipHistoryHTML(d);
@@ -430,8 +522,49 @@ function banNoteHTML(d: NodeDetail): string {
   return `<div class="banner info" role="note"><span>IP в блокировке (ip_ban) — это вердикт регистратора, показан информационно. Он <b>не</b> запускает покупку или замену сервера: автопокупка при бане не выполняется. Замену можно инициировать только вручную.</span></div>`;
 }
 
-function mgmtHTML(): string {
-  const head = `<div class="card-head"><h2>Управление</h2><span class="hint">режим обслуживания ноды</span></div>`;
+function settingsHTML(): string {
+  const head = `<div class="card-head"><h2>Название и параметры</h2><span class="hint">логическая нода</span></div>`;
+  if (!SETTINGS) {
+    return `<section class="card">${head}<div class="card-body"><div class="skeleton skel-block"></div>${SETTINGS_ERR ? `<div class="banner warn" role="status">${esc(SETTINGS_ERR)}</div>` : ""}</div></section>`;
+  }
+  const ad = SETTINGS.runtime.ad_tag;
+  const adValue = ad?.value || "";
+  const adDisabled = ad?.state === "unsupported";
+  return `<section class="card">${head}
+    <div class="card-body">
+      <div class="srv-grid">
+        <div class="field">
+          <label for="nd-slot-name">Название</label>
+          <input id="nd-slot-name" type="text" maxlength="10" value="${esc(SETTINGS_DRAFT ?? SETTINGS.name)}" autocomplete="off" spellcheck="false" aria-describedby="nd-slot-help">
+          <span class="help" id="nd-slot-help">1–10 символов — латиница, цифры, . _ -. Меняется только название в кабинете и имя будущих установок; технический ID, секрет и история остаются прежними.</span>
+        </div>
+        <div class="field">
+          <span class="static-head">Публичный номер</span>
+          <div class="kv-v">Нода №${SETTINGS.number}</div>
+          <span class="help">Постоянный номер логической ноды. Сохраняется при замене VPS.</span>
+        </div>
+      </div>
+      <div class="blueprint-toolbar">
+        <button type="button" class="btn primary" data-slot-rename>Сохранить название</button>
+        <span class="hint" data-slot-msg aria-live="polite"></span>
+      </div>
+      <div class="srv-grid" style="margin-top:14px">
+        <div class="field">
+          <label for="nd-ad-tag">Рекламный тег (ad_tag)</label>
+          <input id="nd-ad-tag" class="mono" type="text" maxlength="32" value="${esc(SETTINGS_AD_DRAFT ?? adValue)}" autocomplete="off" spellcheck="false" aria-describedby="nd-ad-help" ${adDisabled ? "disabled" : ""}>
+          <span class="help" id="nd-ad-help">32 hex-символа. Пусто — снять тег. Применяется только на MTProxyL и подтверждается агентом; профиль не меняется.</span>
+        </div>
+      </div>
+      <div class="blueprint-toolbar">
+        <button type="button" class="btn" data-ad-save ${adDisabled ? "disabled" : ""}>Применить ad_tag</button>
+        <span class="hint" data-ad-msg aria-live="polite">${esc(ad?.message || "")}</span>
+      </div>
+      ${ad?.state === "unsupported" ? `<div class="banner info" role="note"><span>${esc(ad.message || "Изменение ad_tag на этой ноде недоступно.")}</span></div>` : ""}
+    </div>
+  </section>`;
+}
+
+function mgmtHTML(): string {  const head = `<div class="card-head"><h2>Управление</h2><span class="hint">режим обслуживания ноды</span></div>`;
   if (MGMT_ERR) {
     return `<section class="card">${head}<div class="banner bad" role="alert">${esc(MGMT_ERR)} · Последние полученные настройки не считаются обновлёнными. <button type="button" class="btn sm" data-mgmt-retry>Повторить GET</button></div>${MGMT ? '<div class="card-body" id="blueprint-management"></div>' : ""}</section>`;
   }

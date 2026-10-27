@@ -69,6 +69,28 @@ func fleetErrCode(err error) string {
 	}
 }
 
+// resumeFleets — startup-подхват пакетов, застигнутых в running. Элементы
+// продолжаются с сохранённых этапов: paid create replay идёт по тому же
+// Idempotency-Key, поэтому второй покупки не возникает.
+func (r *Registry) resumeFleets(ctx context.Context) {
+	if r.control == nil {
+		return
+	}
+	list, err := r.control.FleetsInProgress()
+	if err != nil {
+		log.Printf("fleet resume: list: %v", err)
+		return
+	}
+	for _, f := range list {
+		if ctx.Err() != nil {
+			return
+		}
+		if r.startFleetWorker(f.ID) {
+			log.Printf("fleet %d resumed after restart", f.ID)
+		}
+	}
+}
+
 // startFleetWorker — one in-flight worker per fleet id (dedicated namespace;
 // fleet ids never collide with operation-id worker keys). false = already
 // running.
@@ -121,6 +143,14 @@ func (r *Registry) runFleet(ctx context.Context, fleetID int64) {
 		r.failFleetItems(f.ID, "bad_configuration")
 		return
 	}
+	var installVars map[string]any
+	if f.InstallationVarsJSON != "" {
+		if err := json.Unmarshal([]byte(f.InstallationVarsJSON), &installVars); err != nil {
+			_ = r.control.SetFleetState(f.ID, control.FleetFailed)
+			r.failFleetItems(f.ID, "bad_configuration")
+			return
+		}
+	}
 	graphVersionID := int64(0)
 	if f.AutoReplace {
 		graphVersionID, err = r.systemGraphVersionID(blueprint.SystemNodehostReplacement)
@@ -144,7 +174,7 @@ func (r *Registry) runFleet(ctx context.Context, fleetID int64) {
 		if it.State == control.FleetItemAdmitted || it.State == control.FleetItemError {
 			continue
 		}
-		r.runFleetItem(ctx, f, it, pv, cfg, graphVersionID)
+		r.runFleetItem(ctx, f, it, pv, cfg, installVars, graphVersionID)
 	}
 	r.finalizeFleet(f.ID)
 }
@@ -190,8 +220,12 @@ func (r *Registry) finalizeFleet(fleetID int64) {
 
 // runFleetItem is one slot: create → ready → install → optional policy. Every
 // failure is recorded and returns; the caller continues with the next item.
-func (r *Registry) runFleetItem(ctx context.Context, f control.Fleet, it control.FleetItem, pv control.ProfileVersion, cfg nodehost.CreateRequest, graphVersionID int64) {
+func (r *Registry) runFleetItem(ctx context.Context, f control.Fleet, it control.FleetItem, pv control.ProfileVersion, cfg nodehost.CreateRequest, installVars map[string]any, graphVersionID int64) {
 	u := control.User{ID: f.UserID}
+	if it.State == control.FleetItemVerifying {
+		r.verifyFleetItem(f, it)
+		return
+	}
 	// Каждый элемент получает собственное имя/хостнейм из label: configuration
 	// во флоте общая, а пустое name из формы — норма.
 	cfg.Name = it.Label
@@ -227,7 +261,7 @@ func (r *Registry) runFleetItem(ctx context.Context, f control.Fleet, it control
 	if op, err := r.control.OperationByIdemKey(control.CloudInstallIdem(res.ID)); err == nil && op.State == control.OpDone && op.NodeID != "" {
 		done = op
 	} else {
-		op, err := r.startCloudInstall(u, res, pv, nil)
+		op, err := r.startCloudInstall(u, res, pv, installVars)
 		if err != nil {
 			r.fleetItemError(f.ID, it.Idx, "install", err)
 			return
@@ -267,14 +301,42 @@ func (r *Registry) runFleetItem(ctx context.Context, f control.Fleet, it control
 		r.fleetItemError(f.ID, it.Idx, "policy", err)
 		return
 	}
-	// Admission: the install operation is done and the node registered. Full
-	// queue health is checked when available; right after registration it may
-	// still be warming up, which must not turn a successful install into an
-	// error (documented deviation in fleet-autopilot.md).
-	if err := r.blueprintResourceReady(res); err != nil {
-		log.Printf("fleet %d item %d: admitted after registration without full health proof: %v", f.ID, it.Idx, err)
+	// Admission: full independent health proof. If the node is installed and
+	// registered but the proof is not fresh yet, keep it in verifying and
+	// retry later; never turn that into a new purchase.
+	if err := r.verifyFleetResource(res); err != nil {
+		_ = r.control.SetFleetItemState(f.ID, it.Idx, control.FleetItemVerifying, done.NodeID, "")
+		log.Printf("fleet %d item %d: installed and registered, awaiting health proof: %v", f.ID, it.Idx, err)
+		return
 	}
 	_ = r.control.SetFleetItemState(f.ID, it.Idx, control.FleetItemAdmitted, done.NodeID, "")
+}
+
+// verifyFleetItem — повторная проверка полностью установленной ноды. Не
+// запускает create/install. По истечении бюджета фиксирует error, а не
+// бесконечный running.
+func (r *Registry) verifyFleetItem(f control.Fleet, it control.FleetItem) {
+	res, err := r.control.CloudResourceOwned(it.ResourceID, f.UserID)
+	if err != nil {
+		r.fleetItemError(f.ID, it.Idx, "control", err)
+		return
+	}
+	if err := r.verifyFleetResource(res); err == nil {
+		_ = r.control.SetFleetItemState(f.ID, it.Idx, control.FleetItemAdmitted, it.NodeID, "")
+		return
+	}
+	if it.UpdatedAt > 0 && time.Since(time.Unix(it.UpdatedAt, 0)) >= control.FleetVerifyBudget {
+		_ = r.control.SetFleetItemState(f.ID, it.Idx, control.FleetItemError, it.NodeID, "health_timeout")
+		return
+	}
+	log.Printf("fleet %d item %d: still verifying (%s)", f.ID, it.Idx, res.NodeID)
+}
+
+func (r *Registry) verifyFleetResource(res control.CloudResourceV2) error {
+	if r.fleetVerify != nil {
+		return r.fleetVerify(res)
+	}
+	return r.blueprintResourceReady(res)
 }
 
 func (r *Registry) fleetItemError(fleetID int64, idx int, stage string, err error) {
@@ -439,6 +501,7 @@ func (r *Registry) fleetReconcileLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			r.reconcileUncertainCloudResources(ctx)
+			r.resumeFleets(ctx)
 		}
 	}
 }

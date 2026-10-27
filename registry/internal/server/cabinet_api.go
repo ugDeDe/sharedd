@@ -321,6 +321,8 @@ func (r *Registry) mountCabinet(mux *http.ServeMux) {
 	r.mountCloudResources(mux)
 	r.mountFleets(mux)
 	r.mountBlueprintRuns(mux)
+	r.mountNodeSettings(mux)
+	r.mountProfileDefaults(mux)
 }
 
 func decodeCabinetJSON(w http.ResponseWriter, req *http.Request, dst any) error {

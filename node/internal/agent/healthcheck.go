@@ -33,6 +33,13 @@ type TelemtConfig struct {
 }
 
 func loadTelemtConfig(path string) (*TelemtConfig, error) {
+	if isMtddConfigPath(path) {
+		mc, err := loadMtddConfig(path)
+		if err != nil {
+			return nil, err
+		}
+		return mc.asTelemt(), nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read telemt config at %s: %w", path, err)
@@ -756,13 +763,17 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 	metricsErr := ""
 	url := metricsURLFromTelemt(telemtCfg.Server.MetricsPort, telemtCfg.Server.MetricsListen)
 	client := &http.Client{Timeout: dc2APITimeout} // тот же клиент и для Control API
-	resp, err := client.Get(url)
+	resp, err := metricsGet(client, cfg, url)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		samples := parsePrometheusSamples(string(body))
+		if isMtddConfigPath(cfg.Telemt.ConfigPath) {
+			samples = translateMtddSamples(samples)
+		}
 		// Клиенты считаются только по общему секрету — в агрегат
 		// входят лишь пользователи из shared-конфига регистратора.
-		snapshot, values := buildMetricsSnapshot(parsePrometheusSamples(string(body)), sharedConfigCache.Get().Users)
+		snapshot, values := buildMetricsSnapshot(samples, sharedConfigCache.Get().Users)
 		report.MetricsSnapshot = snapshot
 
 		// Хостовые метрики (CPU/RAM) не влияют на вердикты — только для панели.

@@ -99,6 +99,50 @@ CREATE TABLE IF NOT EXISTS node_owners (
  legacy INTEGER NOT NULL DEFAULT 0,
  deleting INTEGER NOT NULL DEFAULT 0
 );
+-- Логическая нода пользователя: постоянный номер, переживающий замену VPS.
+CREATE TABLE IF NOT EXISTS node_slots (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ number INTEGER NOT NULL,
+ name TEXT NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1,
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL,
+ archived_at INTEGER,
+ UNIQUE(user_id, number)
+);
+CREATE TABLE IF NOT EXISTS user_node_counters (
+ user_id INTEGER PRIMARY KEY REFERENCES users(id),
+ next_number INTEGER NOT NULL DEFAULT 1
+);
+-- Личные значения по умолчанию для профиля (ad_tag и обычные переменные).
+CREATE TABLE IF NOT EXISTS user_profile_defaults (
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ profile_id INTEGER NOT NULL REFERENCES profiles(id),
+ vars_json TEXT NOT NULL DEFAULT '',
+ revision INTEGER NOT NULL DEFAULT 1,
+ updated_at INTEGER NOT NULL,
+ PRIMARY KEY(user_id, profile_id)
+);
+-- Желаемые/применённые runtime-настройки ноды (ad_tag).
+CREATE TABLE IF NOT EXISTS node_runtime_settings (
+ node_id TEXT PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ ad_tag_mode TEXT NOT NULL DEFAULT 'unmanaged',
+ ad_tag_value TEXT NOT NULL DEFAULT '',
+ desired_revision INTEGER NOT NULL DEFAULT 0,
+ applied_revision INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL DEFAULT 'unmanaged',
+ error_code TEXT NOT NULL DEFAULT '',
+ last_report_at INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);
+-- Учёт платных попыток для опционального дневного лимита.
+CREATE TABLE IF NOT EXISTS paid_action_attempts (
+ id INTEGER PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES users(id),
+ created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS quota_reservations (
  node_id TEXT UNIQUE,
  user_id INTEGER NOT NULL REFERENCES users(id),
@@ -295,9 +339,11 @@ CREATE TABLE IF NOT EXISTS fleets (
  user_id INTEGER NOT NULL REFERENCES users(id),
  connection_id INTEGER NOT NULL REFERENCES hosting_connections(id),
  count INTEGER NOT NULL,
+ name TEXT NOT NULL DEFAULT '',
  auto_replace INTEGER NOT NULL DEFAULT 0,
  profile_version_id INTEGER NOT NULL,
  configuration_json TEXT NOT NULL DEFAULT '',
+ installation_vars_json TEXT NOT NULL DEFAULT '',
  fleet_key TEXT NOT NULL,
  state TEXT NOT NULL,
  created_at INTEGER NOT NULL,
@@ -418,6 +464,12 @@ CREATE TABLE IF NOT EXISTS ban_deliveries (
 		_ = db.Close()
 		return nil, fmt.Errorf("control: migrate node_owners.node_secret_enc: %w", err)
 	}
+	// Постоянная логическая нода (node_slots): nullable, чтобы legacy-строки
+	// и старые установки не получали владельца/номер задним числом.
+	if err := ensureColumn(db, "node_owners", "slot_id", "INTEGER"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate node_owners.slot_id: %w", err)
+	}
 	// Приглашения на N регистраций (addendum-profiles-vps.md §2):
 	// максимум использований + счётчик; для существующих строк дефолт 1/0.
 	if err := ensureColumn(db, "invites", "max_uses", "INTEGER NOT NULL DEFAULT 1"); err != nil {
@@ -494,6 +546,16 @@ CREATE TABLE IF NOT EXISTS ban_deliveries (
 	if err := ensureColumn(db, "cloud_resources2", "last_operation_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("control: migrate cloud_resources2.last_operation_id: %w", err)
+	}
+	// Быстрые параметры установки автопилота: снимок на момент принятия
+	// заказа, чтобы замена не зависела от последующей правки профиля.
+	if err := ensureColumn(db, "fleets", "installation_vars_json", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate fleets.installation_vars_json: %w", err)
+	}
+	if err := ensureColumn(db, "fleets", "name", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("control: migrate fleets.name: %w", err)
 	}
 	s := &Store{sql: db}
 	if err := s.ensureLegacyUser(legacyMaxNodes); err != nil {

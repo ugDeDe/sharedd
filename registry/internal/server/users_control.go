@@ -72,6 +72,13 @@ func (r *Registry) openControl() {
 		}
 	}
 	r.setupProvisioning()
+	// Постоянные номера для уже привязанных неlegacy-нод. Идемпотентно:
+	// повторный запуск не перенумеровывает существующие слоты.
+	if n, err := s.BackfillNodeSlots(); err != nil {
+		log.Printf("control: backfill node slots: %v", err)
+	} else if n > 0 {
+		log.Printf("control: assigned permanent node slots to %d node(s)", n)
+	}
 }
 
 // setupProvisioning — штатный профиль sharedd-node (addendum-profiles-vps.md
