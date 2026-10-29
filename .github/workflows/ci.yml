@@ -144,24 +144,27 @@ jobs:
           git push -f origin refs/tags/dev:refs/tags/dev
       - name: Сборка dev
         run: VERSION="${{ steps.ver.outputs.version }}" bash scripts/build_all.sh
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev
-          name: dev ${{ steps.ver.outputs.version }}
-          prerelease: true
-          make_latest: false
-          files: |
-            dist/*.tar.gz
-            dist/*.sha256
-            dist/sharedd-registry
-            dist/sharedd-node-agent
+      # gh вместо action-gh-release: перед публикацией удаляем ВСЕ релизы с
+      # тегом dev, включая черновики от оборванных прогонов (иначе финализация
+      # падает с already_exists), и создаём заново с актуальными ассетами.
+      - name: Публикация dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          for id in $(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name=="dev") | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done
+          gh release create dev dist/*.tar.gz dist/*.sha256 dist/sharedd-registry dist/sharedd-node-agent \
+            --title "dev $VERSION" --prerelease --latest=false \
+            --notes "Движущаяся сборка ветки dev ($GITHUB_SHA)."
 
   # Ветка main → автоматический stable-релиз: следующая версия считается по
   # коммитам с прошлого тега (scripts/next_version.sh: feat → minor,
   # type!: / BREAKING CHANGE → major, иначе patch), ставится тег vX.Y.Z и
   # создаётся release с make_latest — web-установщики (канал main) качают
-  # releases/latest. Если у HEAD уже есть тег версии (ручной релиз) —
-  # job ничего не делает.
+  # releases/latest. Идемпотентен: тег на HEAD уже есть — берём его, а
+  # если и релиз по нему есть, job ничего не делает.
   release-main:
     if: github.ref == 'refs/heads/main'
     needs: [go, golangci, scripts, ui-check]
@@ -177,18 +180,26 @@ jobs:
           fetch-depth: 0
       - name: Версия и тег
         id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if git tag --points-at HEAD | grep -qE '^[vV][0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "HEAD уже помечен версией — релиз пропущен"
+          # Повторный прогон: тег уже стоит на HEAD — берём его, а релиз
+          # создаём, только если его ещё нет (упавший прогон не теряет релиз).
+          tag="$(git tag --points-at HEAD | grep -E '^[vV][0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [ -z "$tag" ]; then
+            tag="v$(bash scripts/next_version.sh)"
+            git tag "$tag"
+            # Явный refspec: не зависеть от одноимённых веток.
+            git push origin "refs/tags/$tag:refs/tags/$tag"
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "релиз $tag уже существует — пропуск"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          version="$(bash scripts/next_version.sh)"
-          git tag "v$version"
-          # Явный refspec: не зависеть от одноимённых веток.
-          git push origin "refs/tags/v$version:refs/tags/v$version"
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#[vV]}" >> "$GITHUB_OUTPUT"
       - if: steps.ver.outputs.skip != 'true'
         uses: actions/setup-go@v5
         with:
@@ -200,15 +211,10 @@ jobs:
         name: Сборка stable
         run: VERSION="${{ steps.ver.outputs.version }}" bash scripts/build_all.sh
       - if: steps.ver.outputs.skip != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.ver.outputs.version }}
-          name: v${{ steps.ver.outputs.version }}
-          generate_release_notes: true
-          prerelease: false
-          make_latest: true
-          files: |
-            dist/*.tar.gz
-            dist/*.sha256
-            dist/sharedd-registry
-            dist/sharedd-node-agent
+        name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          gh release create "$TAG" dist/*.tar.gz dist/*.sha256 dist/sharedd-registry dist/sharedd-node-agent \
+            --title "$TAG" --generate-notes --latest
