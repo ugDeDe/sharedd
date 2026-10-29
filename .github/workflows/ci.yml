@@ -78,8 +78,10 @@ jobs:
       - name: Проверка актуальности собранных страниц (ui/ -> registry/*.html)
         run: cd tools/uigen && go run . -root "$GITHUB_WORKSPACE" -check
 
-  # Публикация релиза по тегу vX.Y.Z / VX.Y.Z (в репо исторически теги
-  # с заглавной V): GitHub-hosted раннер собирает
+  # Ручной релиз по тегу vX.Y.Z / VX.Y.Z (в репо исторически теги
+  # с заглавной V). Обычно тег ставит сам job release-main (токен workflow
+  # не триггерит повторный запуск, дубля нет); этот job нужен для тегов,
+  # которые поставили руками. GitHub-hosted раннер собирает
   # статические бинарники и кладёт их в release. Сделанный (не draft)
   # релиз сразу же резолвится по releases/latest/download/... — на этом
   # построены web-установщики; make_latest гарантирует, что свежий тег
@@ -111,13 +113,17 @@ jobs:
 
   # Ветка dev → движущийся prerelease-тег dev. Web-установщики качают его
   # через --channel=dev (releases/download/dev/...). make_latest:false —
-  # dev никогда не перехватывает releases/latest (stable-канал).
+  # dev никогда не перехватывает releases/latest (стабильный канал).
+  # Версия сборки: <следующая>-dev.<sha7>, например 1.1.0-dev.abc1234.
   release-dev:
     if: github.ref == 'refs/heads/dev'
     needs: [go, golangci, scripts, ui-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: release-dev
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,17 +134,20 @@ jobs:
           cache-dependency-path: |
             registry/go.sum
             node/go.sum
+      - name: Версия сборки
+        id: ver
+        run: echo "version=$(bash scripts/next_version.sh --dev)" >> "$GITHUB_OUTPUT"
       - name: Переместить dev-тег на текущий коммит
         run: |
           git tag -f dev
           # Явный refspec: короткое `dev` неоднозначно (есть ветка dev).
           git push -f origin refs/tags/dev:refs/tags/dev
       - name: Сборка dev
-        run: VERSION="dev-${GITHUB_SHA::8}" bash scripts/build_all.sh
+        run: VERSION="${{ steps.ver.outputs.version }}" bash scripts/build_all.sh
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: dev
-          name: dev (${GITHUB_SHA::8})
+          name: dev ${{ steps.ver.outputs.version }}
           prerelease: true
           make_latest: false
           files: |
@@ -147,35 +156,55 @@ jobs:
             dist/sharedd-registry
             dist/sharedd-node-agent
 
-  # Ветка main → обычный stable-релиз (движущийся тег stable + latest).
-  # Тег-релизы vX.Y.Z остаются рабочими; ветка даёт "текущий стабильный"
-  # билд без ручного тега. Web-установщики по умолчанию качают latest.
+  # Ветка main → автоматический stable-релиз: следующая версия считается по
+  # коммитам с прошлого тега (scripts/next_version.sh: feat → minor,
+  # type!: / BREAKING CHANGE → major, иначе patch), ставится тег vX.Y.Z и
+  # создаётся release с make_latest — web-установщики (канал main) качают
+  # releases/latest. Если у HEAD уже есть тег версии (ручной релиз) —
+  # job ничего не делает.
   release-main:
     if: github.ref == 'refs/heads/main'
     needs: [go, golangci, scripts, ui-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - name: Версия и тег
+        id: ver
+        run: |
+          if git tag --points-at HEAD | grep -qE '^[vV][0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "HEAD уже помечен версией — релиз пропущен"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="$(bash scripts/next_version.sh)"
+          git tag "v$version"
+          # Явный refspec: не зависеть от одноимённых веток.
+          git push origin "refs/tags/v$version:refs/tags/v$version"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - if: steps.ver.outputs.skip != 'true'
+        uses: actions/setup-go@v5
         with:
           go-version-file: registry/go.mod
           cache-dependency-path: |
             registry/go.sum
             node/go.sum
-      - name: Переместить stable-тег на текущий коммит
-        run: |
-          git tag -f stable
-          git push -f origin refs/tags/stable:refs/tags/stable
-      - name: Сборка stable
-        run: VERSION="stable-${GITHUB_SHA::8}" bash scripts/build_all.sh
-      - uses: softprops/action-gh-release@v2
+      - if: steps.ver.outputs.skip != 'true'
+        name: Сборка stable
+        run: VERSION="${{ steps.ver.outputs.version }}" bash scripts/build_all.sh
+      - if: steps.ver.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: stable
-          name: stable (${GITHUB_SHA::8})
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
           prerelease: false
           make_latest: true
           files: |

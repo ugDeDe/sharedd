@@ -2,8 +2,9 @@
 
 
 BINARY_URL="${BINARY_URL:-}"
-# Канал сборки: stable (releases/latest) или dev (moving tag dev).
-CHANNEL="${CHANNEL:-stable}"
+# Канал сборки: main (stable, releases/latest) или dev (moving tag dev).
+# Пусто — спросим в интерактиве, без вопросов берём main.
+CHANNEL="${CHANNEL:-}"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -49,7 +50,7 @@ MTPROXYL_MODE=0
 #                    с именем node (node-xxxxx)
 #   --registry-token=TOKEN  обязательный Node API token регистратора
 #   --binary-url=URL        ссылка на скачивание бинарника агента
-#   --channel=stable|dev    канал сборки (по умолчанию stable; dev — ветка dev)
+#   --channel=main|dev      канал сборки (по умолчанию main = stable-релиз; dev — ветка dev)
 # То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL / CHANNEL.
 # Пример автоматизации:
 #   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --registry-token=TOKEN --name=ddproxy
@@ -58,12 +59,13 @@ REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 NONINTERACTIVE=0
 usage() {
     cat <<USAGE
-Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--channel=stable|dev] [--binary-url=URL]
+Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--channel=main|dev] [--binary-url=URL]
 
   --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
   --registry-token=TOKEN  Node API token из панели регистратора
   --name=ИМЯ       имя ноды длиной 1..10; итоговый id: ИМЯ-xxxxx, напр. helsinki-6an4o
-  --channel=stable|dev    канал сборки: stable (releases/latest) или dev (ветка dev)
+  --channel=main|dev      канал сборки: main (последний релиз, он же stable) или dev (ветка dev);
+                          без флага в интерактиве спросим
   --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent (перекрывает канал)
   -h, --help       эта справка
 
@@ -86,19 +88,13 @@ while [ $# -gt 0 ]; do
         --binary-url) shift; [ $# -gt 0 ] || die "--binary-url требует URL"
                       BINARY_URL="$1" ;;
         --channel=*)  CHANNEL="${1#*=}" ;;
-        --channel)    shift; [ $# -gt 0 ] || die "--channel требует stable|dev"
+        --channel)    shift; [ $# -gt 0 ] || die "--channel требует main|dev"
                       CHANNEL="$1" ;;
         -h|--help)    usage; exit 0 ;;
         *)            die "неизвестный параметр: $1 (справка: --help)" ;;
     esac
     shift
 done
-case "$CHANNEL" in
-    stable) BIN_BASE="https://github.com/ugDeDe/sharedd/releases/latest/download" ;;
-    dev)    BIN_BASE="https://github.com/ugDeDe/sharedd/releases/download/dev" ;;
-    *)      die "неизвестный --channel: $CHANNEL (stable|dev)" ;;
-esac
-[ -n "$BINARY_URL" ] || BINARY_URL="$BIN_BASE/sharedd-node-agent"
 
 if [ -n "$NODE_NAME" ]; then
     # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
@@ -119,6 +115,19 @@ hline; echo ""
 # curl|bash: stdin — пайп, поэтому интерактивность ловим по любому потоку,
 # а ответы читаем с /dev/tty — вопросы работают и в пайпе.
 TTY=0; { [ -t 0 ] || [ -t 1 ] || [ -t 2 ]; } && TTY=1
+
+# ── канал сборки: main (stable) или dev ──────────────────────────────────
+if [ -z "$CHANNEL" ] && [ -z "$BINARY_URL" ] && [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
+    echo -e "  ${DIM}Каналы: main — основной (последний релиз), dev — тестовый (ветка dev)${NC}"
+    read -r -p "  → Канал сборки (main/dev) [main]: " CHANNEL </dev/tty || true
+fi
+case "${CHANNEL:-main}" in
+    main|stable) CHANNEL=main; BIN_BASE="https://github.com/ugDeDe/sharedd/releases/latest/download" ;;
+    dev)         CHANNEL=dev;  BIN_BASE="https://github.com/ugDeDe/sharedd/releases/download/dev" ;;
+    *)           die "неизвестный канал: $CHANNEL (main|dev)" ;;
+esac
+[ -n "$BINARY_URL" ] || BINARY_URL="$BIN_BASE/sharedd-node-agent"
+ok "канал сборки: ${BOLD}${CHANNEL}${NC}"
 
 # ── регистратор ──────────────────────────────────────────────────────────
 REGISTRY_URL="${REGISTRY_URL:-}"
