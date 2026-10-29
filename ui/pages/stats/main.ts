@@ -3,7 +3,7 @@
    перенесена из прежней версии дословно. Меняется только разметка и стили. */
 
 import { $, esc, icon, ICONS } from "../../lib/dom";
-import { fmtDur, fmtAgo, fmtClock } from "../../lib/format";
+import { fmtDur, fmtAgo, fmtClock, plural } from "../../lib/format";
 import { initTheme } from "../../lib/theme";
 
 function chip(flag: boolean | null | undefined, okText?: string, noText?: string): string {
@@ -12,10 +12,15 @@ function chip(flag: boolean | null | undefined, okText?: string, noText?: string
 }
 function availClass(p: number): string { return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad"; }
 
+/* Публичная подпись приходит с сервера: для пользовательской ноды —
+   "login · Нода №N", для legacy/общей регистрации — прежний node_id. */
+function nodeName(n: any): string { return String(n?.display_name || n?.node_id || "—"); }
+
 const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
   classic:  { label: "Classic",  cls: "",        title: "классический telemt" },
   mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
   meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
+  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
 };
 function nodeTypeBadge(t: string): string {
   const m = NODE_TYPE_META[t];
@@ -81,7 +86,7 @@ function listRowHTML(n: any): string {
     : "";
   const clients = n.clients_unique_ips ?? null;
   return `<tr class="clickable${n.is_master ? " master" : ""}" data-id="${esc(n.node_id)}" title="открыть публичную статистику ноды">
-    <td class="mono" data-label="Нода" title="${esc(n.node_id)}">${esc(n.node_id)}</td>
+    <td data-label="Нода" title="${esc(n.node_id)}">${esc(nodeName(n))}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}${n.port ? ":" + n.port : ""}</td>
     <td data-label="Роль">${role}${ttlRem}</td>
     <td data-label="Проверки">${checksHTML(n)}</td>
@@ -92,12 +97,89 @@ function listRowHTML(n: any): string {
   </tr>`;
 }
 
+/* ---------------- карточка «Ссылки (домены)» ----------------
+   Поле `domains` появляется в /statistics/api/list только на новом
+   бэкенде. Нет ключа — карточки нет вообще (страница байт-в-байт
+   прежняя). Пустой массив — карточка с пустым состоянием. */
+
+function masterChip(m: any): string {
+  const uid = esc(nodeName(m));
+  const live = m.healthy !== false; // отсутствие поля трактуем как «жив»
+  const ip = m.ip_masked ? `<span class="mono dim">${esc(m.ip_masked)}</span>` : "";
+  const st = live ? `<span class="badge ok">жив</span>` : `<span class="badge warn">мёртв</span>`;
+  let ttl = "", ttlTitle = "";
+  if (m.ttl_remaining_sec != null) {
+    if (m.ttl_remaining_sec > 0) { ttl = `<span class="dim">⏱ ${fmtDur(m.ttl_remaining_sec)}</span>`; ttlTitle = " · TTL " + fmtDur(m.ttl_remaining_sec); }
+    else { ttl = `<span class="dim">переключение сейчас</span>`; ttlTitle = " · TTL истёк"; }
+  }
+  const title = `${m.node_id ?? ""} · ${live ? "жив" : "мёртв"}${ttlTitle}`;
+  return `<span class="chip link-master" title="${esc(title)}"><span class="mono">${uid}</span>${ip}${st}${ttl}</span>`;
+}
+
+function masterSort(a: any, b: any): number {
+  const al = a.healthy !== false ? 0 : 1, bl = b.healthy !== false ? 0 : 1;
+  if (al !== bl) return al - bl;
+  return String(a.node_id ?? "").localeCompare(String(b.node_id ?? ""));
+}
+
+/* «N/M» → занятое/всего. Возвращает null, если строку разобрать нельзя. */
+function parseSlots(sf: unknown): { used: number; total: number } | null {
+  if (typeof sf !== "string" || !sf.includes("/")) return null;
+  const [u, t] = sf.split("/").map((x) => parseInt(x, 10));
+  if (!isFinite(u) || !isFinite(t)) return null;
+  return { used: u, total: t };
+}
+
+function slotsCell(sf: unknown): string {
+  const p = parseSlots(sf);
+  if (!p) return sf == null ? `<span class="dim">—</span>` : `<span class="mono">${esc(sf)}</span>`;
+  const full = p.total > 0 && p.used >= p.total;
+  const pct = p.total > 0 ? Math.max(0, Math.min(100, (p.used / p.total) * 100)) : 0;
+  return `<div class="meter"><div class="meter-track"><span class="meter-fill ${full ? "ok" : "warn"}" style="width:${pct.toFixed(1)}%"></span></div><span class="meter-value mono">${esc(sf)}</span></div>`;
+}
+
+function domainRowHTML(dm: any): string {
+  const masters = [...(dm.masters || [])].sort(masterSort);
+  const chips = masters.length
+    ? `<span class="chips link-masters">${masters.map(masterChip).join("")}</span>`
+    : "";
+  const count = masters.length
+    ? `<span class="badge">${masters.length} ${plural(masters.length, "мастер", "мастера", "мастеров")}</span>`
+    : "";
+  return `<tr>
+    <td class="mono" data-label="Домен" title="${esc(dm.domain)}" style="white-space:nowrap">${esc(dm.domain)}</td>
+    <td class="mono num" data-label="Порт">${dm.port != null ? esc(dm.port) : "—"}</td>
+    <td data-label="Мастера">${chips ? chips + count : `<span class="dim">—</span>`}</td>
+    <td data-label="Заполнено слотов">${slotsCell(dm.slots_filled)}</td>
+  </tr>`;
+}
+
+function domainsCardHTML(domains: any[]): string {
+  let masters = 0, filled = 0, total = 0, hasSlots = false;
+  for (const dm of domains) {
+    masters += (dm.masters || []).length;
+    const p = parseSlots(dm.slots_filled);
+    if (p) { filled += p.used; total += p.total; hasSlots = true; }
+  }
+  const summary = `ссылок: ${domains.length} · мастеров: ${masters}` + (hasSlots ? ` · слоты: ${filled}/${total}` : "");
+  const body = domains.length
+    ? `<div class="table-wrap"><table class="table-cards">
+        <thead><tr><th>Домен</th><th>Порт</th><th>Мастера</th><th>Заполнено слотов</th></tr></thead>
+        <tbody>${domains.map(domainRowHTML).join("")}</tbody></table></div>`
+    : `<div class="empty-state">${icon(ICONS.info, 26)}<span class="t">Доменов-ссылок нет</span><span class="s">Managed-домены появятся здесь после настройки Cloudflare DNS.</span></div>`;
+  return `<section class="card domains-card">
+    <div class="card-head"><h2>Ссылки (домены)</h2><span class="hint">${esc(summary)}</span></div>
+    ${body}
+  </section>`;
+}
+
 async function renderListView(): Promise<void> {
   const d = await pubApi("/statistics/api/list");
   $("view-title").textContent = "Публичная статистика пула";
+  const domainsCard = Array.isArray(d.domains) ? domainsCardHTML(d.domains) : "";
   const rows = (d.nodes || []).map(listRowHTML).join("");
   const quarantineRows = (d.quarantine || []).map((n: any) => `<tr>
-    <td class="mono" data-label="Нода">${esc(n.node_id)}</td>
+    <td data-label="Нода" title="${esc(n.node_id)}">${esc(nodeName(n))}</td>
     <td class="mono" data-label="IP (маска)">${esc(n.ip)}</td>
     <td data-label="Причина"><span class="badge warn">${n.stale ? "ожидает свежий GP" : n.reverify ? "перепроверка IP" : "GP карантин"}</span></td>
     <td class="mono" data-label="Попытки">${n.attempts}/${n.max_attempts}</td>
@@ -106,6 +188,7 @@ async function renderListView(): Promise<void> {
   </tr>`).join("");
   $("root").innerHTML = `
     <div class="banner info">${icon(ICONS.info, 16)}<span>Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</span></div>
+    ${domainsCard}
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
       <div class="table-wrap"><table class="table-cards">
@@ -196,7 +279,7 @@ function renderPubEvents(list: any[]): string {
 async function renderNodeView(id: string): Promise<void> {
   const d = await pubApi("/statistics/api/node?id=" + encodeURIComponent(id));
   const n = d.node || {};
-  $("view-title").textContent = "Нода · " + (n.node_id || id);
+  $("view-title").textContent = "Нода · " + nodeName(n);
   const mdoms = n.master_domains || [];
   const clients = n.clients_unique_ips ?? null;
   const roleChip = n.is_master
@@ -303,8 +386,8 @@ async function renderNodeView(id: string): Promise<void> {
     <div class="banner info">${icon(ICONS.info, 16)}<span><a href="/statistics">← все ноды пула</a> · IP-адрес замаскирован.</span></div>
     <div class="card node-head">
       <div>
-        <div class="node-id">${esc(n.node_id)}</div>
-        <div class="node-ip">${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
+        <div class="node-id" title="${esc(n.node_id)}">${esc(nodeName(n))}</div>
+        <div class="node-ip">${n.display_name && n.display_name !== n.node_id ? `<span class="mono">${esc(n.node_id)}</span> · ` : ""}${esc(n.ip)}${n.port ? ":" + n.port : ""} · зарегистрирована ${esc(fmtAgo(n.registered_at))}</div>
       </div>
       <div class="node-chips">${chips}</div>
       ${reason}

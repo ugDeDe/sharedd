@@ -43,7 +43,7 @@ func TestMetricsLatchMasterSurvivesSingleBadReports(t *testing.T) {
 	liftToHealthy(r, "A")
 	liftToHealthy(r, "B")
 	r.evaluateAssignments(time.Now())
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatalf("A must be the initial master, got %+v", r.state.Assignments)
 	}
 
@@ -151,7 +151,9 @@ func TestMetricsLatchMigrationOnLoad(t *testing.T) {
 
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	c := r2.state.Candidates["node-x"]
 	if c == nil {
 		t.Fatal("state must reload")
@@ -167,7 +169,9 @@ func TestMetricsLatchMigrationOnLoad(t *testing.T) {
 	persistStateNow(r3)
 	r4 := newTestRegistry(t)
 	r4.cfg.State.File = r3.cfg.State.File
-	r4.loadState()
+	if err := r4.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	if r4.state.Candidates["node-y"].MetricsHealthy {
 		t.Fatal("legacy unhealthy node must stay latched-down until recover_threshold good reports")
 	}

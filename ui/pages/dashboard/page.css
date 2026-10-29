@@ -51,3 +51,7 @@
 #chart .bar { transition: opacity .13s ease; }
 #chart-box:hover .bar { opacity: .55; }
 #chart .bar.hot, #chart-box:hover .bar.hot { opacity: 1; }
+
+/* Глобальная гарантия [hidden]: классы (.banner/.btn) задают display и
+   перебивают UA-правило. Последнее правило файла. */
+[hidden] { display: none; }

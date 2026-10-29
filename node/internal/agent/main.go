@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sharedd/node/internal/config"
@@ -20,15 +21,71 @@ import (
 type registerPayload struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic / mtproxyl / meko — информационный бейдж в
+	// NodeType: classic / mtproxyl / meko / mtdd — информационный бейдж в
 	// панели (см. nodetype.go).
 	NodeType string `json:"node_type,omitempty"`
+	// AuthKey — персональный ключ регистрации из [registry] authkey
+	// (invitations-migration-contract.md §1): при выключенном общем
+	// секрете реестр принимает /register по нему.
+	AuthKey string `json:"authkey,omitempty"`
 }
 
 var nodeID string
 
-// gpKick — толчок ВНЕОЧЕРЕДНОЙ globalping-проверки: каждая успешная
-// регистрация (200) будит globalpingLoop немедленно, не дожидаясь таймера
+// Персональный секрет ноды (invitations-migration-contract.md §1):
+// реестр выдаёт его в ответе каждого успешного /register; агент хранит
+// его рядом с node_id (0600) и отправляет как Bearer на всех маршрутах.
+// Пусто = старый реестр без секретов / ещё не зарегистрировались — общий
+// токен из конфига остаётся транспортом (совместимость).
+const defaultNodeSecretFile = "/var/lib/sharedd/node_secret"
+
+var nodeSecretFile = defaultNodeSecretFile // var ради тестов
+var nodeSecret string
+var secretMu sync.RWMutex
+
+func currentNodeSecret() string {
+	secretMu.RLock()
+	defer secretMu.RUnlock()
+	return nodeSecret
+}
+
+// loadNodeSecret — секрет из файла рядом с node_id, иначе из [registry]
+// node_secret (ручное предвыданное значение). Вызывается один раз при старте.
+func loadNodeSecret(cfg *config.NodeConfig) {
+	if b, err := os.ReadFile(nodeSecretFile); err == nil {
+		if s := strings.TrimSpace(string(b)); s != "" {
+			nodeSecret = s
+			return
+		}
+	}
+	nodeSecret = strings.TrimSpace(cfg.Registry.NodeSecret)
+}
+
+// persistNodeSecret — сохранить выданный секрет (0600) и сразу использовать.
+// Неудача записи не роняет агента: секрет живёт в памяти до рестарта.
+func persistNodeSecret(secret string) {
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	if err := os.WriteFile(nodeSecretFile, []byte(secret+"\n"), 0600); err != nil {
+		log.Printf("failed to persist node secret to %s: %v (kept in memory)", nodeSecretFile, err)
+	}
+	nodeSecret = secret
+}
+
+// clearNodeSecret — реестр отклонил наш секрет (401): забываем его, чтобы
+// последующие попытки шли с общим токеном/authkey (перевыпуск на /register).
+func clearNodeSecret() {
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	nodeSecret = ""
+	if err := os.Remove(nodeSecretFile); err != nil && !os.IsNotExist(err) {
+		log.Printf("failed to remove stale node secret: %v", err)
+	}
+}
+
+// gpKick — толчок ВНЕОЧЕРЕДНОЙ globalping-проверки: обычная успешная
+// регистрация (200) будит globalpingLoop; recovery из GP не будит его обратно.
+// Обычная регистрация не дожидается таймера
 // (ум. 5 мин). Иначе после восстановления сети/смены IP нода уже
 // перерегистрировалась, но регистратор до следующего тика не видит живого
 // globalping-отчёта — прокси зря простаивает вне пула. Буфер 1: слившиеся
@@ -44,8 +101,15 @@ func kickGlobalping() {
 
 // lastNodeType — тип менеджера, с которым последний раз УСПЕШНО (HTTP 200)
 // регистрировались; heartbeat сверяет текущий с ним — переустановку ноды на
-// другой менеджер (classic ↔ mtproxyl ↔ meko) панель увидит без смены IP.
+// другой менеджер (classic ↔ mtproxyl ↔ meko ↔ mtdd) панель увидит без смены IP.
 var lastNodeType string
+var registrationMu sync.Mutex
+
+func registeredNodeType() string {
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
+	return lastNodeType
+}
 
 func Run() {
 	for i, arg := range os.Args[1:] {
@@ -81,6 +145,10 @@ func Run() {
 		log.Fatalf("failed to resolve node id: %v", err)
 	}
 	log.Printf("node id: %s (persistent random)", nodeID)
+	loadNodeSecret(cfg)
+	if nodeSecret != "" {
+		log.Printf("node secret loaded (personal bearer authentication active)")
+	}
 
 	ipr := newIPResolver()
 	if cfg.Node.PublicIP != "" { // ручной адрес (DNAT/hairpin)
@@ -96,13 +164,16 @@ func Run() {
 	// сбрасывает протухшие соединения, детектит новый адрес и в крайнем
 	// случае перезапускается (netwatch.go).
 	netw.bind(client, ipr)
+	// GP must start before any registry request, including rejected initial
+	// registration or an unavailable shared-config service.
+	go globalpingLoop(cfg, ipr)
 
 	ip, err := ipr.Current(true)
 	if err != nil {
 		log.Printf("initial public IP detection failed: %v (will keep retrying in heartbeat loop)", err)
 	} else {
 		warnIfNonPublicIP(ip)
-		register(client, cfg, ip)
+		tryRegistration(client, cfg, ip, false)
 	}
 
 	if shared, err := fetchSharedConfig(cfg); err == nil {
@@ -114,21 +185,25 @@ func Run() {
 	go syncLoop(cfg)
 	go antiscanLoop(cfg)
 	go heartbeatLoop(client, cfg, ipr)
-	go globalpingLoop(cfg, ipr)
 	metricsLoop(cfg, ipr) // блокирующий, в main goroutine
 }
 
 // register — POST /register. ok=true только при 200. Если регистратор держит
 // ноду в карантине после prune, регистрация отклоняется
-// 429 + Retry-After — тогда ok=false и retryAfter>0: вызывающая сторона
-// ОБЯЗАНА глушить повторные попытки до дедлайна (см. heartbeatLoop), иначе
-// вернёмся к долбёжке, которую карантин как раз призван прекратить.
+// 429 + Retry-After — тогда ok=false и retryAfter>0; общий путь обновляет
+// prune silence, а runtime tryRegistration соблюдает единый backoff gate.
 func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, time.Duration) {
-	if ip == "" {
+	return registerWithReason(client, cfg, ip, false, false)
+}
+
+func registerWithReason(client *http.Client, cfg *config.NodeConfig, ip string, fromGP, bootstrap bool) (bool, time.Duration) {
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
+	if ip == "" || cfg == nil {
 		return false, 0
 	}
 	nt := detectNodeType()
-	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt}
+	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt, AuthKey: cfg.Registry.AuthKey}
 	data, _ := json.Marshal(payload)
 	resp, err := registryRequest(client, cfg, http.MethodPost, "/register", bytes.NewReader(data))
 	if err != nil {
@@ -139,10 +214,15 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 	netw.noteOK()
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	// Kill от регистратора (ip_ban/dead): службу не останавливаем —
-	// агент сам ждёт восстановления (смены IP / оздоровления метрик),
-	// затем перезапускается и регистрируется заново. Сообщение
-	// регистратора уходит в лог дословно.
+	// 401 — реестр отклонил наши учётные данные. Если это был персональный
+	// секрет (перевыпущен/отозван), забываем его: следующая попытка пойдёт
+	// с общим токеном (ON) или authkey в теле (OFF), /register выдаст новый.
+	// Исключение: bootstrap/GP recovery сохраняют те же credentials на retry.
+	if resp.StatusCode == http.StatusUnauthorized && !fromGP && !bootstrap && currentNodeSecret() != "" {
+		log.Printf("registry rejected the stored node secret — clearing it for re-issue")
+		clearNodeSecret()
+	}
+	// Health refusals arm nonblocking recovery; credentials and IP survive.
 	if resp.StatusCode == http.StatusForbidden {
 		if te, ok := parseTerminateBody(body); ok {
 			selfTerminate(cfg, te.Reason, te.Message, ip)
@@ -152,6 +232,9 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 		// Prune-карантин на регистраторе. Регистрироваться раньше
 		// дедлайна нет смысла — TTL карантина растёт с каждым strike.
 		retryAfter := parseRetryAfterSeconds(resp.Header.Get("Retry-After"))
+		// All callers (startup, bootstrap, GP and heartbeat) must observe the
+		// authoritative prune silence. Ordinary network backoff is not a ban.
+		gate.noteBan(time.Now().Add(retryAfter))
 		log.Printf("register deferred by registry: node was pruned as inactive, retry after %s",
 			retryAfter.Round(time.Second))
 		return false, retryAfter
@@ -162,10 +245,21 @@ func register(client *http.Client, cfg *config.NodeConfig, ip string) (bool, tim
 	log.Printf("registered as %s (%s) type=%s, status=%d", nodeID, ip, nodeTypeLabel(nt), resp.StatusCode)
 	if resp.StatusCode == http.StatusOK {
 		lastNodeType = nt
+		// Выданный персональный секрет (contract §1): тело может его не
+		// содержать (старый реестр) — молча продолжаем с общим токеном.
+		var regResp struct {
+			NodeSecret string `json:"node_secret"`
+		}
+		if json.Unmarshal(body, &regResp) == nil && regResp.NodeSecret != "" && regResp.NodeSecret != currentNodeSecret() {
+			persistNodeSecret(regResp.NodeSecret)
+			log.Printf("node secret issued by registry — stored, personal bearer authentication active")
+		}
 		// Внеочередной globalping сразу после успешной регистрации —
 		// регистратор получает свежий отчёт немедленно, нода возвращается
 		// в пул без ожидания таймера (после восстановления сети/смены IP).
-		kickGlobalping()
+		if !fromGP {
+			kickGlobalping()
+		}
 	}
 	return resp.StatusCode == http.StatusOK, 0
 }
@@ -181,29 +275,25 @@ func parseRetryAfterSeconds(h string) time.Duration {
 }
 
 func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver) {
-	lastRegisteredIP := ""
 	// Право молчания сведено в netGate (localhealth.go): режим тихого
 	// лечения (локальные проверки красные) и prune-карантин (429 Retry-After)
-	// оба означают ПОЛНОЕ молчание для регистратора — ни heartbeat, ни
-	// отчётов. Молчание снимает ноду из пула за heartbeat_ttl; возврат —
+	// оба останавливают heartbeat и metrics reports, но НЕ локальный GP.
+	// GP recovery имеет отдельный bounded register/report путь.
+	// Молчание снимает ноду из пула за heartbeat_ttl; возврат —
 	// первый же heartbeat после дедлайна/оздоровления → 410 → register.
 
 	tryRegister := func(ip string) {
 		if ip == "" || gate.silent() {
 			return
 		}
-		ok, retryAfter := register(client, cfg, ip)
-		if ok {
-			lastRegisteredIP = ip
-			return
-		}
-		if retryAfter > 0 {
-			gate.noteBan(time.Now().Add(retryAfter))
-		}
+		tryRegistration(client, cfg, ip, false)
 	}
 
 	for {
-		if gate.silent() {
+		if gate.silent() || recovery.needed() {
+			// Bootstrap may need /register to obtain any shared config at all.
+			// After the first success, health recovery still requires completed GP.
+			retryBootstrapRegistration(client, cfg, ipr)
 			time.Sleep(intervals.Heartbeat())
 			continue
 		}
@@ -219,7 +309,10 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 		// Перерегистрация нужна при смене публичного IP и при смене типа
 		// менеджера (переустановили ноду на другой форк — бейдж типа в панели
 		// должен обновиться; register сам обновит lastNodeType при 200).
-		if ip != "" && (ip != lastRegisteredIP || detectNodeType() != lastNodeType) {
+		recovery.mu.Lock()
+		lastRegisteredIP := recovery.registeredIP
+		recovery.mu.Unlock()
+		if ip != "" && (ip != lastRegisteredIP || detectNodeType() != registeredNodeType()) {
 			tryRegister(ip)
 			time.Sleep(intervals.Heartbeat())
 			continue
@@ -242,7 +335,7 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 			netw.noteOK()
 			hbBody, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			// Kill-сигнал — нода терминально убита, завершаемся.
+			// Health rejection schedules recovery without blocking this loop.
 			if resp.StatusCode == http.StatusForbidden {
 				if te, ok := parseTerminateBody(hbBody); ok {
 					selfTerminate(cfg, te.Reason, te.Message, ip)
@@ -265,44 +358,53 @@ func globalpingLoop(cfg *config.NodeConfig, ipr *ipResolver) {
 		case <-gpKick:
 		default:
 		}
-		// Тихое лечение при мёртвых локальных метриках или активном
-		// prune-карантине measurement'ы не создаём вовсе (жечь квоту по
-		// Мёртвому прокси незачем). GP-нога НЕМОТЫ убрана — нода с
-		// «всё зелёное, кроме GP» обязана продолжать отчёты: её судьбу
-		// (карантин → N попыток → бан) и доставку kill-сигнала ведёт
-		// регистратор (registry/terminate.go).
-		if gate.metricsMuted() || gate.banActive() {
-			waitGlobalpingTick()
-			continue
-		}
-		ip, err := ipr.Current(false)
-		if err != nil {
-			log.Printf("globalping check skipped: no public IP: %v", err)
-			ip = ""
-		}
-		report := RunGlobalpingCheck(cfg, nodeID, ip)
-		if report.Error != "" {
-			log.Printf("globalping check: %s", report.Error)
-		} else {
-			log.Printf("globalping check ok=%v (ratio=%.2f) measurement=%s",
-				report.GlobalpingOK, report.GlobalpingSuccessRatio, report.GlobalpingMeasurementID)
-		}
-		if gate.silent() {
-			// Между проверкой и отправкой ушли в немоту (метрики/бан) —
-			// отчёт не шлём.
-			waitGlobalpingTick()
-			continue
-		}
-		if err := SendReport(cfg, report); err != nil {
-			var te *TerminatedError
-			if errors.As(err, &te) { // kill-сигнал при ответе на отчёт
-				selfTerminate(cfg, te.Reason, te.Message, ip)
-			}
-			log.Printf("failed to send globalping report: %v", err)
-		} else {
-			log.Printf("globalping report accepted by registry: measurement=%s", report.GlobalpingMeasurementID)
-		}
+		globalpingIteration(cfg, ipr)
 		waitGlobalpingTick()
+	}
+}
+
+var runGlobalpingCheck = RunGlobalpingCheck
+
+// One finite scheduler iteration, independent of health/registration gates.
+func globalpingIteration(cfg *config.NodeConfig, ipr *ipResolver) {
+	sendPendingRetire(cfg)
+	ip, err := ipr.Current(false)
+	if err != nil {
+		log.Printf("globalping: public IP unavailable: %v", err)
+		ip = ""
+	}
+	report := runGlobalpingCheck(cfg, nodeID, ip)
+	if report.Error != "" {
+		log.Printf("globalping check: %s", report.Error)
+		return
+	}
+	log.Printf("globalping completed ok=%t ratio=%.2f measurement=%s", report.GlobalpingOK, report.GlobalpingSuccessRatio, report.GlobalpingMeasurementID)
+	if recovery.needed() {
+		if !report.GlobalpingOK || report.GlobalpingMeasurementID == "" || gate.banActive() {
+			return
+		}
+		recovery.mu.Lock()
+		if recovery.lastMeasurement == report.GlobalpingMeasurementID {
+			recovery.mu.Unlock()
+			return
+		}
+		recovery.lastMeasurement = report.GlobalpingMeasurementID
+		recovery.mu.Unlock()
+		// Existing registry reverify path: register opens quarantine, NOT
+		// admission. /report independently GET-verifies this measurement.
+		if ok, _ := tryRegistration(&http.Client{Timeout: 5 * time.Second}, cfg, ip, true); !ok {
+			return
+		}
+	}
+	if gate.banActive() {
+		return
+	}
+	if err := SendReport(cfg, report); err != nil {
+		var te *TerminatedError
+		if errors.As(err, &te) {
+			selfTerminate(cfg, te.Reason, te.Message, ip)
+		}
+		log.Printf("failed to send globalping report: %v", err)
 	}
 }
 
@@ -336,8 +438,7 @@ func metricsLoop(cfg *config.NodeConfig, ipr *ipResolver) {
 		gate.noteLocal(report.Error == "" && report.MetricsOK)
 		// Метрик-немота непрерывно дольше dead_kill (ум. 10 мин) —
 		// класс dead. Агент сообщает регистратору /retire (бан — в вечную
-		// историю) и ЖДЁТ локального оздоровления, затем перезапускается
-		// и регистрируется заново (dead-запись на регистраторе снимается).
+		// историю); локальные циклы продолжаются без рестарта процесса.
 		if win := cfg.DeadKill(); win > 0 && gate.deadKillDue(time.Now(), win) {
 			selfTerminate(cfg, reasonDead, msgDead, ip)
 		}
@@ -365,7 +466,11 @@ const (
 	userOctetsToMetricName    = "telemt_user_octets_to_client"
 	trafficIngressMetricName  = "sharedd_traffic_ingress_bytes_total"
 	trafficEgressMetricName   = "sharedd_traffic_egress_bytes_total"
+	userIngressMetricName     = "sharedd_user_ingress_bytes_total"
+	userEgressMetricName      = "sharedd_user_egress_bytes_total"
 	trafficUsersMetricName    = "sharedd_traffic_users_fingerprint"
+	hostCPUMetricName         = "sharedd_host_cpu_percent"
+	hostRAMMetricName         = "sharedd_host_ram_percent"
 	metricsListenKey          = "metrics_listen"
 	metricsListenValue        = "127.0.0.1:9090"
 	metricsPortKey            = "metrics_port"

@@ -6,6 +6,9 @@
 #   sudo bash install_registry.sh --binary /path/sharedd-registry --domain ha.example.com
 #   sudo bash install_registry.sh --bare              # без Caddy (HTTP напрямую)
 #   sudo bash install_registry.sh --only-caddy        # доустановить/починить только Caddy
+#   sudo bash install_registry.sh --migrate-config /etc/sharedd/registry.toml
+#                                                     # dry-run миграции конфига:
+#                                                     # diff на stdout, ничего не трогает
 #
 # Что делает:
 #   1. Ставит Caddy (официальный apt/dnf/yum/apk репозиторий → fallback: бинарник с
@@ -54,6 +57,146 @@ banner() {
     echo ""
 }
 
+# ---------------------------------------------------------------- миграция конфига
+# Дозапись ТОЛЬКО отсутствующих ключей (contract §4, идемпотентно):
+#   [users] enabled=true, legacy_max_nodes=100000, allow_shared_secret=true
+#   [database] control_db, master_key_path — рядом со state-файлом из [state]
+#   [selection] masters_per_domain=1
+#   [provisioning] max_creates_per_day=5, cooldown_minutes=30 (дефолты internal/config)
+# Существующие значения НЕ трогаются (явный enabled=false остаётся false);
+# комментарии, порядок строк и CRLF сохраняются; новые строки наследуют CRLF файла.
+migrate_registry_config() { # migrate_registry_config <registry.toml> [1=dry-run]
+    local file="$1" dry="${2:-0}"
+    [ -f "$file" ] || die "файл не найден: $file"
+
+    # каталог state-файла из [state] file — рядом дефолтятся control.db / master.key
+    local state_file sdir
+    state_file="$(awk '
+        # заголовок секции нормализуем как TOML: `[ users ] # c` → `users`
+        function sectname(s,   t) {
+            t = s
+            sub(/^[[:space:]]*\[/, "", t); sub(/\].*$/, "", t)   # до \], дальше отбросить (# ...)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+            return t
+        }
+        /^[[:space:]]*\[/ { in_state = (sectname($0) == "state"); next }
+        in_state && /^[[:space:]]*file[[:space:]]*=/ {
+            v = $0; sub(/^[[:space:]]*file[[:space:]]*=[[:space:]]*/, "", v)
+            gsub(/^"|"$/, "", v); print v; exit
+        }' "$file")"
+    [ -n "$state_file" ] || state_file="$STATE_DIR/registry_state.json"
+    sdir="${state_file%/*}"
+    [ "$sdir" != "$state_file" ] && [ -n "$sdir" ] || sdir="$STATE_DIR"
+
+    local crlf=""
+    if [ "$(tr -dc '\r' <"$file" | wc -c)" -gt 0 ]; then crlf=$'\r'; fi
+
+    local tmp
+    tmp="$(mktemp "${file}.mig.XXXXXX")"
+    awk -v cr="$crlf" -v sdir="$sdir" '
+        BEGIN {
+            NSEC = 4
+            sec[1] = "users"; sec[2] = "database"; sec[3] = "selection"; sec[4] = "provisioning"
+            kn["users"] = 3
+            k["users",1] = "enabled";             d["users",1] = "true"
+            k["users",2] = "legacy_max_nodes";    d["users",2] = "100000"
+            k["users",3] = "allow_shared_secret"; d["users",3] = "true"
+            kn["database"] = 2
+            k["database",1] = "control_db";      d["database",1] = "\"" sdir "/control.db\""
+            k["database",2] = "master_key_path"; d["database",2] = "\"" sdir "/master.key\""
+            kn["selection"] = 1
+            k["selection",1] = "masters_per_domain"; d["selection",1] = "1"
+            kn["provisioning"] = 2
+            k["provisioning",1] = "max_creates_per_day"; d["provisioning",1] = "5"
+            k["provisioning",2] = "cooldown_minutes";    d["provisioning",2] = "30"
+        }
+        # заголовок секции нормализуем как TOML: `[ users ] # c` → `users`
+        # (иначе валидный, но нетипичный заголовок не помечается seen → emit_new
+        # дописывает вторую таблицу того же имени → невалидный TOML).
+        function sectname(s,   t) {
+            t = s
+            sub(/^[[:space:]]*\[/, "", t); sub(/\].*$/, "", t)   # до \], дальше отбросить (в т.ч. # ...)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)            # trim пробелов внутри скобок
+            return t
+        }
+        # дозаписываемые ключи текущей целевой секции — в её конец
+        function flush(s,   i) {
+            if (s == "" || !(s in kn)) return
+            for (i = 1; i <= kn[s]; i++)
+                if (!present[s,i]) printf "%s = %s%s\n", k[s,i], d[s,i], cr
+        }
+        # секции, которых не было вовсе, — целиком в конец файла
+        function emit_new(s,   i) {
+            if (NR > 0) printf "\n"
+            printf "[%s]%s\n", s, cr
+            for (i = 1; i <= kn[s]; i++) printf "%s = %s%s\n", k[s,i], d[s,i], cr
+        }
+        {
+            body = $0; sub(/\r$/, "", body)
+            if (body ~ /^[[:space:]]*\[/) {
+                flush(cur)
+                cur = sectname(body)
+                seen[cur] = 1
+                print; next
+            }
+            if (cur in kn) {
+                for (i = 1; i <= kn[cur]; i++)
+                    if (body ~ "^[[:space:]]*" k[cur,i] "[[:space:]]*=") present[cur,i] = 1
+            }
+            print
+        }
+        END {
+            flush(cur)
+            for (j = 1; j <= NSEC; j++) if (!seen[sec[j]]) emit_new(sec[j])
+        }
+    ' "$file" >"$tmp"
+
+    if cmp -s "$file" "$tmp"; then
+        rm -f "$tmp"
+        ok "миграция конфига: изменений нет — все ключи уже на месте (идемпотентно)"
+        return 0
+    fi
+
+    if [ "$dry" -eq 1 ]; then
+        echo -e "  ${BOLD}dry-run --migrate-config:${NC} предполагаемые изменения (файл не тронут)"
+        diff -u "$file" "$tmp" || true
+        rm -f "$tmp"
+        return 0
+    fi
+
+    # Владелец/группа/права целевого файла — снимаем ДО замены и восстанавливаем
+    # на новом файле после mv. Установка идёт от root, а сервис читает конфиг от
+    # своего пользователя (например sharedd-registry): без этого mv отдаёт
+    # root:root 0600 → сервис падает с "permission denied" после апгрейда.
+    # Числовые uid/gid — не хардкодим имя пользователя, работает при любом layout.
+    # Fail-closed: не смогли снять/разобрать владельца → не пишем файл вовсе.
+    local stat_out owner group mode
+    stat_out="$(stat -c '%u:%g:%a' -- "$file" 2>/dev/null)" || stat_out=""
+    owner="${stat_out%%:*}"; group="${stat_out#*:}"; group="${group%%:*}"; mode="${stat_out##*:}"
+    if [ -z "$stat_out" ] || [ -z "$owner" ] || [ -z "$group" ] || [ -z "$mode" ] \
+        || ! printf '%s' "$owner" | grep -Eq '^[0-9]+$' \
+        || ! printf '%s' "$group" | grep -Eq '^[0-9]+$' \
+        || ! printf '%s' "$mode"  | grep -Eq '^[0-7]+$'; then
+        rm -f "$tmp"
+        die "не удалось определить владельца/права $file — миграция отменена (файл не тронут)"
+    fi
+
+    local bak
+    bak="${file}.bak-$(date +%s)"
+    cp -a "$file" "$bak"                 # бэкап сохраняет исходные owner:group:mode (cp -a)
+    # храним последние 3 бэкапа (sort по имени: unix_ts одной длины → лексикографика = время)
+    find "$(dirname "$file")" -maxdepth 1 -name "$(basename "$file").bak-*" -type f \
+        | sort -r | tail -n +4 | while IFS= read -r old; do rm -f -- "$old"; done
+    mv -f "$tmp" "$file"
+    # восстановить точно прежние владельца/группу/права на новом файле;
+    # при сбое откатываем исходный файл из бэкапа (cp -a вернёт owner:group:mode)
+    if ! chown "$owner:$group" -- "$file" || ! chmod "$mode" -- "$file"; then
+        cp -a "$bak" "$file" || true
+        die "не удалось восстановить владельца/права ($owner:$group $mode) на $file — откат из бэкапа"
+    fi
+    ok "миграция конфига: недостающие ключи дописаны (бэкап: $(basename "$bak"), права $owner:$group $mode)"
+}
+
 # ---------------------------------------------------------------- аргументы
 BINARY=""
 DOMAIN=""
@@ -70,6 +213,7 @@ BARE=0
 ONLY_CADDY=0
 SKIP_CADDY=0
 RECONFIGURE=0
+MIGRATE_ONLY=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -98,13 +242,22 @@ while [ $# -gt 0 ]; do
         --only-caddy)    ONLY_CADDY=1; shift ;;
         --skip-caddy)    SKIP_CADDY=1; shift ;;
         --reconfigure)   RECONFIGURE=1; shift ;;
+        --migrate-config)    MIGRATE_ONLY="${2:?--migrate-config требует путь}"; shift 2 ;;
+        --migrate-config=*)  MIGRATE_ONLY="${1#*=}"; shift ;;
         # принимается для совместимости с автоустановкой: интерактивных
         # подтверждений y/N в скрипте нет, ask() читает только параметры
         -y|--yes)        shift ;;
-        -h|--help)       grep '^#' "$0" | head -24 | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)       grep '^#' "$0" | head -26 | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "неизвестный аргумент: $1 (см. --help)" ;;
     esac
 done
+
+# dry-run миграции: до root/systemd-проверок — тестируемо без сервисных прав.
+# Печатает diff будущего файла и выходит, сервис и конфиг не трогает.
+if [ -n "$MIGRATE_ONLY" ]; then
+    migrate_registry_config "$MIGRATE_ONLY" 1
+    exit 0
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo -e "${RED}Запустите от root:${NC} sudo bash $0 ..." >&2
@@ -428,6 +581,70 @@ else
 fi
 
 # ---------------------------------------------------------------- установка регистратора
+# write_registry_unit — единый источник systemd-unit регистратора.
+# Идемпотентно: совпадает с уже установленным — no-op; отличается — бэкапим и
+# заменяем. ReadWritePaths ОБЯЗАН включать /etc/sharedd: внутри
+# ProtectSystem=strict панель пишет registry.toml (temp+rename и .bak), без
+# этого каждая правка падает "read-only file system" и persisted: false.
+write_registry_unit() {
+    local unit=/etc/systemd/system/sharedd-registry.service
+    local tmp
+    tmp="$(mktemp)"
+    cat >"$tmp" <<'REG_UNIT'
+[Unit]
+Description=sharedd — HA Registry для MTProto-прокси
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/sharedd-registry -config /etc/sharedd/registry.toml
+Environment=GOTRACEBACK=all
+Restart=always
+RestartSec=5
+User=sharedd-registry
+StateDirectory=sharedd
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# hardening: сеть + свой state (/var/lib/sharedd) + запись /etc/sharedd
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ReadWritePaths=-/var/lib/sharedd
+ReadWritePaths=-/etc/sharedd
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
+REG_UNIT
+    if [ -f "$unit" ] && cmp -s "$unit" "$tmp"; then
+        rm -f "$tmp"
+        return 0 # уже актуально — daemon-reload не нужен
+    fi
+    if [ -f "$unit" ]; then
+        cp -a "$unit" "${unit}.bak-$(date +%s)"
+        warn "старый unit сохранён: ${unit}.bak-* (обновляю ReadWritePaths и hardened-настройки)"
+    fi
+    install -m 0644 -o root -g root "$tmp" "$unit"
+    rm -f "$tmp"
+    systemctl daemon-reload
+}
+
 install_registry() {
     local listen_addr="127.0.0.1:${REG_PORT}"
     [ "$BARE" -eq 1 ] && listen_addr="0.0.0.0:${REG_PORT}"
@@ -559,6 +776,9 @@ REG_TOML
         chmod 0660 "$ETC_DIR/registry.toml"
         ok "конфиг записан: $ETC_DIR/registry.toml (0660 $SVC_USER)"
     else
+        # обновление существующей установки: ДО старта сервиса дозаписываем
+        # недостающие ключи новых секций (contract §4; бэкап + идемпотентно)
+        migrate_registry_config "$ETC_DIR/registry.toml"
         # существующий конфиг — убедимся, что сервис может его ЧИТАТЬ и (для панели) ПИСАТЬ
         chown "$SVC_USER:$SVC_USER" "$ETC_DIR/registry.toml" 2>/dev/null || true
         chmod 0660 "$ETC_DIR/registry.toml" 2>/dev/null || true
@@ -570,48 +790,7 @@ REG_TOML
     fi
     ok "доступы и команда ноды: ${ETC_DIR}/credentials.txt (0600)"
 
-    cat > /etc/systemd/system/sharedd-registry.service <<'REG_UNIT'
-[Unit]
-Description=sharedd — HA Registry для MTProto-прокси
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/sharedd-registry -config /etc/sharedd/registry.toml
-Environment=GOTRACEBACK=all
-Restart=always
-RestartSec=5
-User=sharedd-registry
-StateDirectory=sharedd
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-
-# hardening: только сеть + свой state (/var/lib/sharedd) + чтение /etc/sharedd
-NoNewPrivileges=yes
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ProtectSystem=strict
-ReadWritePaths=-/var/lib/sharedd
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
-ProtectControlGroups=yes
-ProtectClock=yes
-ProtectHostname=yes
-RestrictSUIDSGID=yes
-RestrictRealtime=yes
-LockPersonality=yes
-MemoryDenyWriteExecute=yes
-RestrictNamespaces=yes
-RemoveIPC=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-SystemCallFilter=@system-service
-SystemCallErrorNumber=EPERM
-
-[Install]
-WantedBy=multi-user.target
-REG_UNIT
-    systemctl daemon-reload
+    write_registry_unit
     systemctl enable sharedd-registry.service >>"$INSTALL_LOG" 2>&1
     systemctl reset-failed sharedd-registry.service 2>/dev/null || true
     systemctl restart sharedd-registry.service

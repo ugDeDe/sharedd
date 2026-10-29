@@ -43,7 +43,7 @@ func TestMasterTTLForcedRotation(t *testing.T) {
 	makeFullyHealthyNow(r, "A")
 	changes := r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "", "A")
-	if r.state.AssignmentsSince["d1.example.com"].IsZero() {
+	if firstSince(r, "d1.example.com").IsZero() {
 		t.Fatal("assignment since must be recorded")
 	}
 
@@ -55,13 +55,13 @@ func TestMasterTTLForcedRotation(t *testing.T) {
 	}
 
 	// мастер просидел дольше лимита → принудительная ротация на B
-	r.state.AssignmentsSince["d1.example.com"] = time.Now().Add(-31 * time.Minute)
+	r.state.AssignmentsSince["d1.example.com"] = SinceSlots{time.Now().Add(-31 * time.Minute)}
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "A", "B")
 	if r.state.Counters.MasterTTLRotations != 1 {
 		t.Fatalf("MasterTTLRotations = %d, want 1", r.state.Counters.MasterTTLRotations)
 	}
-	if time.Since(r.state.AssignmentsSince["d1.example.com"]) > time.Minute {
+	if time.Since(firstSince(r, "d1.example.com")) > time.Minute {
 		t.Fatal("since must restart on TTL rotation")
 	}
 	// событие master_lost помечено как TTL-ротация
@@ -85,7 +85,7 @@ func TestMasterTTLForcedRotation(t *testing.T) {
 	}
 
 	// round-robin: B тоже пересидел — домен возвращается к A
-	r.state.AssignmentsSince["d1.example.com"] = time.Now().Add(-31 * time.Minute)
+	r.state.AssignmentsSince["d1.example.com"] = SinceSlots{time.Now().Add(-31 * time.Minute)}
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "B", "A")
 	if r.state.Counters.MasterTTLRotations != 2 {
@@ -100,13 +100,13 @@ func TestMasterTTLNoReplacementKeepsMaster(t *testing.T) {
 	r.register(registerRequest{NodeID: "A", IP: "1.1.1.1"})
 	makeFullyHealthyNow(r, "A")
 	r.evaluateAssignments(time.Now())
-	r.state.AssignmentsSince["d1.example.com"] = time.Now().Add(-2 * time.Hour)
+	r.state.AssignmentsSince["d1.example.com"] = SinceSlots{time.Now().Add(-2 * time.Hour)}
 
 	// замены нет — мастер остаётся, счётчик не двигается, overdue взведён
 	if ch := r.evaluateAssignments(time.Now()); len(ch) != 0 {
 		t.Fatalf("no replacement → no rotation, got %+v", ch)
 	}
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatal("A must keep the domain while it is the only healthy node")
 	}
 	if r.state.Counters.MasterTTLRotations != 0 {
@@ -149,7 +149,7 @@ func TestMasterTTLDisabled(t *testing.T) {
 	r.register(registerRequest{NodeID: "B", IP: "2.2.2.2"})
 	makeFullyHealthyNow(r, "B")
 
-	r.state.AssignmentsSince["d1.example.com"] = time.Now().Add(-72 * time.Hour)
+	r.state.AssignmentsSince["d1.example.com"] = SinceSlots{time.Now().Add(-72 * time.Hour)}
 	if ch := r.evaluateAssignments(time.Now()); len(ch) != 0 {
 		t.Fatalf("TTL disabled (0) — rotation must not happen, got %+v", ch)
 	}
@@ -175,12 +175,12 @@ func TestMasterTTLRoundRobinAcrossAllNodes(t *testing.T) {
 	makeFullyHealthyNow(r, "C")
 
 	r.evaluateAssignments(time.Now())
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatalf("A (старшая в очереди) должен получить домен, got %+v", r.state.Assignments)
 	}
 
 	expire := func() {
-		r.state.AssignmentsSince["d1.example.com"] = time.Now().Add(-31 * time.Minute)
+		r.state.AssignmentsSince["d1.example.com"] = SinceSlots{time.Now().Add(-31 * time.Minute)}
 	}
 	// TTL A истёк → домен к B, A — в конец очереди
 	expire()

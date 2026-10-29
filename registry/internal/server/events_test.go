@@ -90,7 +90,7 @@ func TestMasterEventsAndStintAccounting(t *testing.T) {
 	r.register(registerRequest{NodeID: "B", IP: "2.2.2.2"})
 	makeHealthy("B")
 	r.evaluateAssignments(time.Now()) // B join; у A один домен — fill-empty его не отнимает
-	if r.state.Assignments["d1.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" {
 		t.Fatal("B must not steal A's only domain")
 	}
 	r.state.Candidates["A"].MetricsOK = false
@@ -211,7 +211,7 @@ func TestPanelEndpoints(t *testing.T) {
 	r.evaluateAssignments(time.Now())
 	r.mu.Lock()
 	r.state.DNSOperations["drift.example.com"] = &DNSOperation{
-		DesiredType: "A", DesiredTarget: "1.1.1.1", AppliedType: "A", AppliedTarget: "2.2.2.2",
+		DesiredType: "A", DesiredTargets: []string{"1.1.1.1"}, AppliedType: "A", AppliedTargets: []string{"2.2.2.2"},
 		Attempts: 2, NextAttempt: time.Now().Add(time.Minute), LastError: "temporary",
 	}
 	r.mu.Unlock()
@@ -279,7 +279,10 @@ func TestPanelEndpoints(t *testing.T) {
 	foundDNSDrift := false
 	for _, op := range ov.DNS.Items {
 		if op.Domain == "drift.example.com" {
-			foundDNSDrift = op.Drifted && op.DesiredTarget == "1.1.1.1" && op.AppliedTarget == "2.2.2.2" && op.Attempts == 2 && op.LastError == "temporary"
+			foundDNSDrift = op.Drifted &&
+				len(op.DesiredTargets) == 1 && op.DesiredTargets[0] == "1.1.1.1" &&
+				len(op.AppliedTargets) == 1 && op.AppliedTargets[0] == "2.2.2.2" &&
+				op.Attempts == 2 && op.LastError == "temporary"
 		}
 	}
 	if !foundDNSDrift {
@@ -344,7 +347,9 @@ func TestEventsPersisted(t *testing.T) {
 
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	if len(r2.state.Events) == 0 {
 		t.Fatal("events must survive state reload")
 	}

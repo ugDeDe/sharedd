@@ -5,7 +5,7 @@
    версии ДОСЛОВНО — renderNodeDetail/clientsSparkInteractive/attachSparkHover.
    Меняется только разметка. */
 
-import { $, esc } from "../../../lib/dom";
+import { $, esc, renderSection } from "../../../lib/dom";
 import { fmtDur, fmtAgo, fmtClock } from "../../../lib/format";
 import { api, state } from "../state";
 import { renderInto as renderEventsInto } from "./events";
@@ -19,6 +19,7 @@ const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string
   classic:  { label: "Classic",  cls: "",         title: "классический telemt" },
   mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
   meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
+  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
 };
 function nodeTypeBadge(t: string): string {
   const m = NODE_TYPE_META[t];
@@ -201,11 +202,11 @@ function renderNodeDetail(d: any): void {
   attachSparkHover(clientPts);
 }
 
-export async function load(id: string): Promise<void> {
+export async function load(id: string, poll = false): Promise<void> {
   const d = await api("/panel/api/node?id=" + encodeURIComponent(id));
   if (state.nodeId === id) {
     state.node = d;
-    renderNodeDetail(d);
+    renderSection($("node-detail"), poll, () => renderNodeDetail(d));
   }
 }
 

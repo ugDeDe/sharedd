@@ -4,7 +4,8 @@
    запросов, интервал опроса, поведение при 401. Переписан только слой
    представления, он живёт в ./views/*. */
 
-import { $, esc } from "../../lib/dom";
+import { $, esc, renderSection } from "../../lib/dom";
+import { initBuildWatch } from "../../lib/update";
 import { initTheme } from "../../lib/theme";
 import { api, state, showLogin, hideLogin, showToast, setRefreshAll, LS_KEY } from "./state";
 
@@ -15,6 +16,8 @@ import * as dns from "./views/dns";
 import * as srmd from "./views/srmd";
 import * as events from "./views/events";
 import * as settings from "./views/settings";
+import * as users from "./views/users";
+import * as profiles from "./views/profiles";
 
 const VIEW_META: Record<string, { title: string }> = {
   overview: { title: "Обзор" },
@@ -22,6 +25,7 @@ const VIEW_META: Record<string, { title: string }> = {
   dns:      { title: "Мастера и DNS" },
   srmd:     { title: "СРМД — распределение и масштабирование доменов" },
   events:   { title: "Журнал событий" },
+  users:    { title: "Пользователи" },
   settings: { title: "Настройки" },
 };
 
@@ -58,30 +62,38 @@ function route(): void {
   if (r.view === "srmd" && !state.srmdLoaded) {
     srmd.loadSettings().then(() => { state.srmdLoaded = true; }).catch(() => {});
   }
+  if (r.view === "users") {
+    users.load().catch(() => {});
+    profiles.load().catch(() => {});
+  }
   renderAll();
 }
 
-function renderAll(): void {
+function renderAll(poll = false): void {
   const o = state.ov;
   if (o) {
     renderHeader(o);
     renderBanner(o);
     const r = currentRoute();
     if (r.view === "overview") {
-      overview.render(o);
-      events.renderInto($("events-mini"), state.events.slice(0, 8));
+      renderSection($("view-overview"), poll, () => {
+        overview.render(o);
+        events.renderInto($("events-mini"), state.events.slice(0, 8));
+      });
     } else if (r.view === "nodes") {
-      nodes.render(o);
+      renderSection($("view-nodes"), poll, () => nodes.render(o));
     } else if (r.view === "dns") {
-      dns.render(o);
+      renderSection($("view-dns"), poll, () => dns.render(o));
     } else if (r.view === "srmd") {
-      srmd.render(o);
+      renderSection($("view-srmd"), poll, () => srmd.render(o));
     } else if (r.view === "events") {
-      events.renderView();
+      renderSection($("view-events"), poll, () => events.renderView());
     }
   }
   const r = currentRoute();
-  if (r.view === "node" && state.node && state.nodeId === r.id) node.render(state.node);
+  if (r.view === "node" && state.node && state.nodeId === r.id) {
+    renderSection($("view-node"), poll, () => node.render(state.node));
+  }
 }
 
 /* ── шапка и баннер тревог ──────────────────────────────────────────── */
@@ -133,11 +145,11 @@ async function refresh(): Promise<void> {
   state.ov = ov;
   state.events = ev.events || [];
   const r = currentRoute();
-  if (r.view === "node") await node.load(r.id!).catch(() => {});
+  if (r.view === "node") await node.load(r.id!, true).catch(() => {});
   $("last-upd").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
   $("live-text").textContent = "live";
   $("live-pill").className = "status-pill live";
-  renderAll();
+  renderAll(true);
 }
 
 /* ── вход ───────────────────────────────────────────────────────────── */
@@ -164,10 +176,13 @@ window.addEventListener("hashchange", route);
 /* ── старт ──────────────────────────────────────────────────────────── */
 setRefreshAll(refresh);
 initTheme();
+initBuildWatch();
 settings.init();
 srmd.init();
 events.init();
 nodes.init();
+users.init();
+profiles.init();
 
 if (!localStorage.getItem(LS_KEY)) showLogin(false);
 route();

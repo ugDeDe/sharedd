@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%234da3ff"/><stop offset="1" stop-color="%238b8bf5"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(%23g)"/><text x="32" y="43" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="white" text-anchor="middle">DD</text></svg>'>
+<title>sharedd · кабинет</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")||"dark"}catch(e){}</script>
+<style>
+<!--{css}-->
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+
+  <header class="topbar">
+    <div class="topbar-inner glass">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-name">sharedd</div>
+          <div class="brand-sub" id="hdr-user">кабинет</div>
+        </div>
+      </div>
+      <div class="navwrap"><nav class="nav">
+        <a href="#/nodes" data-view="nodes">Пул</a>
+        <a href="#/beget" data-view="beget">Хостинги</a>
+        <a href="#/operations" data-view="operations">Журнал</a>
+        <div class="more">
+          <button type="button" class="more-btn" aria-expanded="false" aria-haspopup="true" aria-controls="more-menu-top">Дополнительно</button>
+          <div class="more-menu" id="more-menu-top" hidden>
+            <a href="#/servers" data-view="servers">Серверы</a>
+            <a href="#/profiles" data-view="profiles">Профили</a>
+          </div>
+        </div>
+      </nav></div>
+      <div class="topbar-right">
+        <span class="status-pill" id="live-pill"><i></i><span id="live-text">обновление…</span></span>
+        <button class="icon-btn" id="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">
+          <svg class="i-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.6v2.4M12 20v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.6 12h2.4M20 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        </button>
+        <button class="icon-btn" id="logout-btn" type="button" title="Выйти" aria-label="Выйти">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <h1 id="view-title" class="view-title">Пул</h1>
+
+  <main>
+    <!-- ═══ Мои ноды ════════════════════════════════════════════════ -->
+    <section class="view" id="view-nodes">
+      <div class="metrics" id="node-metrics"></div>
+      <div id="quota-banner"></div>
+
+      <!-- Автопилот: один платный заказ создаёт N нод и ставит их в пул. -->
+      <section class="card" id="autopilot-card" aria-labelledby="ap-title">
+        <div class="card-head">
+          <h2 id="ap-title">Автопилот</h2>
+          <span class="hint">N нод одной командой · платно</span>
+        </div>
+        <form class="card-body ap-form" id="ap-form" novalidate>
+          <div class="banner bad" id="ap-err" role="alert" hidden style="margin:0 0 12px"></div>
+          <div class="srv-grid">
+            <div class="field">
+              <label for="ap-conn">Подключение</label>
+              <select id="ap-conn" required><option value="">Загрузка…</option></select>
+              <span class="help">Только проверенные подключения Nodehost с поддержкой создания.</span>
+            </div>
+            <div class="field">
+              <label for="ap-count">Количество</label>
+              <input id="ap-count" type="number" inputmode="numeric" min="1" max="20" step="1" value="1" required>
+              <span class="help">1–20 нод: имена получат суффикс -01…-NN.</span>
+            </div>
+            <div class="field">
+              <label for="ap-loc">Локация</label>
+              <select id="ap-loc" required disabled><option value="">Загрузка каталога…</option></select>
+            </div>
+            <div class="field">
+              <label for="ap-cpu">CPU</label>
+              <select id="ap-cpu" required disabled><option value="">Сначала выберите локацию</option></select>
+              <span class="help" id="ap-cpu-help">Выберите локацию.</span>
+            </div>
+            <div class="field">
+              <label for="ap-os">ОС</label>
+              <select id="ap-os" required disabled><option value="">Загрузка…</option></select>
+            </div>
+            <div class="field">
+              <label for="ap-disktype">Тип диска</label>
+              <select id="ap-disktype" required disabled><option value="">Загрузка…</option></select>
+            </div>
+            <div class="field">
+              <label for="ap-cores">Ядра</label>
+              <input id="ap-cores" type="number" inputmode="numeric" disabled>
+              <span class="help" id="ap-cores-help">доступно —</span>
+            </div>
+            <div class="field">
+              <label for="ap-ram">ОЗУ, ГБ</label>
+              <input id="ap-ram" type="number" inputmode="numeric" disabled>
+              <span class="help" id="ap-ram-help">доступно —</span>
+            </div>
+            <div class="field">
+              <label for="ap-disk">Диск, ГБ</label>
+              <input id="ap-disk" type="number" inputmode="numeric" disabled>
+              <span class="help" id="ap-disk-help">доступно —</span>
+            </div>
+            <div class="field">
+              <label for="ap-period">Период</label>
+              <select id="ap-period">
+                <option value="1d">1 день</option>
+                <option value="3d">3 дня</option>
+                <option value="1w">1 неделя</option>
+                <option value="1m" selected>1 месяц</option>
+                <option value="3m">3 месяца</option>
+                <option value="6m">6 месяцев</option>
+                <option value="1y">1 год</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ap-net">Скорость сети</label>
+              <select id="ap-net" disabled><option value="">Не задано</option></select>
+              <span class="help">Необязательно. Станет доступна после выбора локации.</span>
+            </div>
+          </div>
+
+          <div id="ap-catalog-state" style="margin:10px 0 0" aria-live="polite"><div class="skeleton skel-line"></div></div>
+
+          <fieldset class="cr-inst">
+            <legend>Установка и замена</legend>
+            <div class="srv-grid">
+              <div class="field">
+                <label for="ap-name">Имя нод</label>
+                <input id="ap-name" type="text" maxlength="7" value="fleet" autocomplete="off" spellcheck="false" aria-describedby="ap-name-help">
+                <span class="help" id="ap-name-help">1–7 символов. Итоговые имена: <span class="mono">fleet-01</span>…, технический ID добавит суффикс сам.</span>
+              </div>
+              <div class="field">
+                <label for="ap-prof">Профиль установки</label>
+                <select id="ap-prof"><option value="">Загрузка профилей…</option></select>
+                <span class="help" id="ap-prof-help">Только текстовые профили: опубликованные и ваши.</span>
+              </div>
+            </div>
+            <div id="ap-inst-vars" hidden style="margin-top:12px">
+              <label class="static-head">Параметры установки</label>
+              <div class="help" style="margin-bottom:8px">Ad tag и другие параметры применяются к каждой ноде этого заказа. Профиль при этом не меняется.</div>
+            </div>
+            <label class="check" id="ap-save-defaults-row" hidden style="margin-top:8px">
+              <input type="checkbox" id="ap-save-defaults" aria-describedby="ap-save-defaults-help">
+              <span class="box"></span> Запомнить эти параметры для профиля
+            </label>
+            <span class="help ap-help" id="ap-save-defaults-help" hidden>В следующий раз значения подставятся автоматически. Секреты не сохраняются.</span>
+            <label class="check" style="margin-top:10px">
+              <input type="checkbox" id="ap-auto" aria-describedby="ap-auto-help">
+              <span class="box"></span> Заменять ноды при бане автоматически
+            </label>
+            <span class="help ap-help" id="ap-auto-help">Выключено по умолчанию. Если включить, при подтверждённом бане автоматически создаётся платная замена ДО удаления старой. Выключено — бан сам по себе ничего не покупает, замена выполняется вручную.</span>
+            <label class="check" id="ap-consent-row" hidden>
+              <input type="checkbox" id="ap-consent" aria-describedby="ap-consent-help">
+              <span class="box"></span> Разрешаю будущие платные замены при подтверждённой блокировке
+            </label>
+            <span class="help ap-help" id="ap-consent-help" hidden>Это отдельное разрешение на будущие расходы, а не только на текущий заказ. Его можно отключить в карточке ноды.</span>
+          </fieldset>
+
+          <div class="banner info" id="ap-estimate" hidden aria-live="polite"></div>
+          <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="submit" class="btn primary" id="ap-submit">Развернуть 1 ноду</button>
+            <button type="button" class="btn sm ghost" id="ap-reset-pending" hidden>Начать новый заказ</button>
+          </div>
+        </form>
+        <div class="card-body" id="ap-fleet" hidden></div>
+        <div class="card-note">Один платный заказ создаёт N серверов, устанавливает профиль и ставит ноды в пул. Прогресс по каждой строке обновляется автоматически; после завершения списки нод и ресурсов обновляются. Ошибка одной строки не отменяет остальные.</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ключ доступа</h2>
+          <span class="hint">ключ регистрации нод в пуле</span>
+        </div>
+        <div class="card-body" id="authkey-body"><div class="skeleton skel-line"></div></div>
+        <div class="card-note" id="authkey-note"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Пул</h2>
+          <span class="hint" id="nodes-hint"></span>
+          <button class="btn ghost sm" style="margin-left:auto" id="nodes-reload">Обновить</button>
+        </div>
+        <div class="node-list" id="nodes-body"></div>
+        <div class="card-note">Ошибка здоровья или установки не создаёт новый сервер. Ресурс остаётся и доступен для повторной установки профиля. Платный заказ отправляется ровно один раз — повтор того же запроса не создаёт второй сервер.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Нода (детальная карточка, #/nodes/<id>) ═════════════════ -->
+    <section class="view" id="view-node" hidden>
+      <div style="margin-bottom:12px">
+        <a class="btn ghost sm" href="#/nodes">← К нодам</a>
+      </div>
+      <div id="node-detail"><div class="skeleton skel-block"></div></div>
+    </section>
+
+    <!-- ═══ Создать сервер ══════════════════════════════════════════ -->
+    <section class="view" id="view-create" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Создать сервер</h2>
+          <span class="hint">платный заказ у Beget · отправляется один раз</span>
+        </div>
+        <div class="wizard-steps" id="wiz-steps" role="list"></div>
+        <div id="wiz-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-foot" id="wiz-foot"></div>
+      </section>
+    </section>
+
+    <!-- ═══ Серверы (свои хосты + созданные у провайдера) ═══════════ -->
+    <section class="view" id="view-servers" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Серверы</h2>
+          <span class="hint">свои хосты и серверы провайдера</span>
+          <button class="btn ghost sm" style="margin-left:auto" id="servers-reload">Обновить</button>
+          <button class="btn primary sm" id="srv-add" aria-controls="server-form" aria-expanded="false">Добавить сервер</button>
+        </div>
+        <form class="card-body" id="server-form" novalidate hidden>
+          <div class="srv-grid">
+            <div class="field">
+              <label for="sv-label">Название</label>
+              <input type="text" id="sv-label" maxlength="64" autocomplete="off" placeholder="Например, my-vps-1" required>
+            </div>
+            <div class="field">
+              <label for="sv-host">IP-адрес</label>
+              <input type="text" id="sv-host" class="mono" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="203.0.113.10" required>
+              <span class="help">Публичный IPv4. Приватные, локальные адреса и IP регистратора не принимаются.</span>
+            </div>
+            <div class="field">
+              <label for="sv-port">Порт SSH</label>
+              <input type="number" id="sv-port" min="1" max="65535" placeholder="22" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="sv-user">Пользователь SSH</label>
+              <input type="text" id="sv-user" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="root">
+              <span class="help">По умолчанию root.</span>
+            </div>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label>Способ входа</label>
+            <div class="seg" id="sv-authtype" role="radiogroup" aria-label="Способ входа">
+              <button type="button" role="radio" data-authtype="password" class="active" aria-checked="true" tabindex="0">Пароль</button>
+              <button type="button" role="radio" data-authtype="key" aria-checked="false" tabindex="-1">Приватный ключ</button>
+            </div>
+          </div>
+          <div class="field" id="sv-pass-wrap" style="margin-top:12px">
+            <label for="sv-pass">Пароль</label>
+            <div class="input-group">
+              <input type="password" id="sv-pass" autocomplete="new-password">
+              <button type="button" class="in-btn" data-reveal="sv-pass" aria-label="Показать пароль" title="Показать пароль">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="help">Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="field" id="sv-key-wrap" style="margin-top:12px" hidden>
+            <label for="sv-key">Приватный ключ</label>
+            <textarea id="sv-key" class="mono" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+            <input type="file" id="sv-key-file" accept=".pem,.key,.txt,.openssh,application/x-pem-file,application/octet-stream" aria-label="Загрузить файл ключа">
+            <span class="help">Вставьте OpenSSH/PEM-ключ (≤ 16 КиБ) или выберите файл. Хранится в зашифрованном виде, наружу не отдаётся. После отправки поле очищается.</span>
+          </div>
+          <div class="banner bad" id="sv-err" role="alert" hidden style="margin:12px 0 0"></div>
+          <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
+            <button type="button" class="btn ghost" id="sv-cancel">Отмена</button>
+            <button type="submit" class="btn primary" id="sv-submit">Подключить сервер</button>
+          </div>
+        </form>
+        <div id="servers-body"><div class="skeleton skel-block"></div></div>
+        <div class="card-note" id="servers-note">Подключение и установка выполняются на ваш существующий сервер по SSH. Новый сервер не создаётся и не оплачивается. «Повторить установку» использует тот же хост и ту же ноду — второй сервер не появляется. Нужен новый сервер у провайдера? <a href="#/create">Создать сервер</a> — платный заказ у хостинга.</div>
+      </section>
+
+      <section class="card" id="srv-cloud-card">
+        <div class="card-head">
+          <h2>Ресурсы у провайдера</h2>
+          <span class="hint" id="srv-cloud-hint"></span>
+          <button class="btn ghost sm" style="margin-left:auto" id="srv-cloud-reload">Обновить</button>
+        </div>
+        <div class="node-list" id="srv-cloud-list" role="list"><div role="listitem"><div class="skeleton skel-block"></div></div></div>
+        <div class="card-note">Серверы, созданные здесь у Nodehost, с тем же прогрессом установки, что и у своих хостов. Установка выполняется по SSH на уже созданный сервер — второй платный заказ не отправляется.</div>
+      </section>
+    </section>
+
+    <!-- ═══ Мои профили ═════════════════════════════════════════════ -->
+    <section class="view" id="view-profiles" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Мои профили</h2>
+          <span class="hint" id="profiles-hint" style="margin-left:0">локальные профили · видны только вам</span>
+          <button class="btn" style="margin-left:auto" id="profiles-create">Создать текстовый профиль</button>
+          <button class="btn primary" id="profiles-create-graph">Создать граф</button>
+        </div>
+        <div id="profiles-disabled" hidden></div>
+        <div class="node-list" id="profiles-body"></div>
+        <div class="node-list" id="profiles-published" hidden></div>
+        <div class="card-body blueprint-toolbar"><a class="btn" href="#/profiles/editor/new?starter=nodehost">Nodehost · замена VPS</a><a class="btn" href="#/profiles/editor/new?starter=beget">Beget · только проектирование</a></div>
+        <form id="profiles-open-run" class="card-body blueprint-toolbar"><label for="profiles-run-id">Открыть запуск по известному ID</label><input id="profiles-run-id" type="number" min="1" step="1" required class="blueprint-version-number"><button class="btn" type="submit">Открыть запуск</button><span class="help">Откройте по ID или после явного запуска профиля. Общего списка запусков API не предоставляет.</span></form>
+        <div class="card-note">Локальные профили видны только вам. При создании сервера доступны и опубликованные профили, и ваши локальные (помечены «мой профиль»). Опубликованный профиль администратора можно скопировать себе кнопкой «Сделать копию» — копия станет вашим локальным профилем, доступным для правки. Сохранение обновляет профиль на месте. Шаги выполняются по SSH на вашем VPS; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе операции.</div>
+      </section>
+    </section>
+
+    <section class="view blueprint-editor" id="view-blueprint-editor" hidden aria-label="Редактор Blueprint"></section>
+    <section class="view blueprint-run" id="view-blueprint-run" hidden aria-label="Запуск Blueprint"></section>
+
+    <!-- ═══ Хостинги (подключения + облачные ресурсы) ═══════════════ -->
+    <section class="view" id="view-beget" hidden>
+      <nav class="nd-tabs" id="hosting-tabs" role="tablist" aria-label="Разделы хостингов">
+        <button type="button" role="tab" id="htab-conns" data-htab="conns" aria-controls="hpanel-conns" aria-selected="true" tabindex="0">Подключения</button>
+        <button type="button" role="tab" id="htab-resources" data-htab="resources" aria-controls="hpanel-resources" aria-selected="false" tabindex="-1">Ресурсы</button>
+      </nav>
+
+      <div class="nd-panel" id="hpanel-conns" role="tabpanel" aria-labelledby="htab-conns" tabindex="-1" data-hpanel="conns">
+        <section class="card">
+          <div class="card-head">
+            <h2>Подключения</h2>
+            <span class="hint" id="hosting-conns-hint"></span>
+            <button class="btn primary" style="margin-left:auto" id="hc-add">Добавить подключение</button>
+          </div>
+          <div class="node-list" id="hosting-conns" role="list"><div role="listitem"><div class="skeleton skel-block"></div></div></div>
+          <div class="card-note">Секреты сохраняются в зашифрованном виде и наружу не отдаются. «Обновить баланс» не чаще одного раза в 60 секунд — более частый запрос вернёт сохранённое значение без обращения к провайдеру.</div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Личный аккаунт Beget</h2>
+            <span class="hint">регистратор добавит SSH-ключ для установки</span>
+            <button class="btn ghost sm" style="margin-left:auto" id="beget-reload">Обновить</button>
+          </div>
+          <div class="card-body" id="beget-status"><div class="skeleton skel-line"></div></div>
+          <div class="card-body" id="beget-ratelimit" role="alert" hidden></div>
+          <form class="card-body" id="beget-form" novalidate>
+            <div class="field">
+              <label for="bg-login">Логин Beget</label>
+              <input type="text" id="bg-login" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            </div>
+            <div class="field">
+              <label for="bg-pass">Пароль Beget</label>
+              <div class="input-group">
+                <input type="password" id="bg-pass" autocomplete="new-password" required>
+                <button type="button" class="in-btn" data-reveal="bg-pass" aria-label="Показать пароль" title="Показать пароль">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <span class="help">Пароль не отображается и не сохраняется в открытом виде. Регистратор добавит SSH-ключ для установки.</span>
+            </div>
+            <div class="field">
+              <label for="bg-code">Код (2FA)</label>
+              <input type="text" id="bg-code" class="mono" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false">
+              <span class="help">Необязательно: код подтверждения, если Beget его запросил.</span>
+            </div>
+            <div class="card-foot" style="margin:0 calc(var(--pad) * -1) calc(var(--pad) * -1);">
+              <button type="submit" class="btn primary" id="beget-submit">Подключить</button>
+            </div>
+          </form>
+          <div class="card-note">Старый поток Beget остаётся доступен — подключите личный аккаунт, чтобы создавать серверы через «Создать сервер».</div>
+        </section>
+      </div>
+
+      <div class="nd-panel" id="hpanel-resources" role="tabpanel" aria-labelledby="htab-resources" tabindex="-1" data-hpanel="resources" hidden>
+        <section class="card">
+          <div class="card-head">
+            <h2>Ресурсы</h2>
+            <span class="hint" id="cloud-res-hint"></span>
+            <button class="btn ghost sm" style="margin-left:auto" id="cloud-reload">Обновить</button>
+            <button class="btn primary sm" id="cr-add" aria-controls="cr-form-card" aria-expanded="false">Создать ресурс</button>
+          </div>
+          <div style="padding:0 var(--pad)" id="cr-beget-note" hidden></div>
+          <div class="node-list" id="cloud-res-list" role="list"><div role="listitem"><div class="skeleton skel-block"></div></div></div>
+          <div class="card-note">Ошибка создания, установки или бан IP не создаёт новый сервер автоматически. Ресурс остаётся и доступен для повторной установки. Платный заказ отправляется ровно один раз — повтор того же запроса не создаёт второй сервер.</div>
+        </section>
+
+        <section class="card" id="cr-form-card" hidden>
+          <div class="card-head"><h2>Создать ресурс</h2><span class="hint">платный заказ · Nodehost</span></div>
+          <form class="card-body" id="cr-form" novalidate>
+            <div class="banner bad" id="cr-err" role="alert" hidden style="margin:0 0 12px"></div>
+            <div class="wizard-steps" id="cr-steps" role="list" hidden></div>
+            <div class="srv-grid">
+              <div class="field">
+                <label for="cr-conn">Подключение</label>
+                <select id="cr-conn" required></select>
+                <span class="help">Только проверенные подключения Nodehost с поддержкой создания.</span>
+              </div>
+              <div class="field">
+                <label for="cr-loc">Локация</label>
+                <select id="cr-loc" required disabled><option value="">Загрузка каталога…</option></select>
+                <span class="help">От локации зависят доступные скорости сети.</span>
+              </div>
+              <div class="field"><label for="cr-os">ОС</label><select id="cr-os" required disabled><option value="">Загрузка…</option></select></div>
+              <div class="field">
+                <label for="cr-cpu">CPU</label>
+                <select id="cr-cpu" required disabled><option value="">Сначала выберите локацию</option></select>
+                <span class="help" id="cr-cpu-help">Выберите локацию.</span>
+              </div>
+              <div class="field">
+                <label for="cr-cores">Ядра</label>
+                <input id="cr-cores" type="number" inputmode="numeric" disabled>
+                <span class="help" id="cr-cores-help">доступно —</span>
+              </div>
+              <div class="field">
+                <label for="cr-ram">ОЗУ, ГБ</label>
+                <input id="cr-ram" type="number" inputmode="numeric" disabled>
+                <span class="help" id="cr-ram-help">доступно —</span>
+              </div>
+              <div class="field">
+                <label for="cr-disk">Диск, ГБ</label>
+                <input id="cr-disk" type="number" inputmode="numeric" disabled>
+                <span class="help" id="cr-disk-help">доступно —</span>
+              </div>
+              <div class="field"><label for="cr-disktype">Тип диска</label><select id="cr-disktype" required disabled><option value="">Загрузка…</option></select></div>
+              <div class="field">
+                <label for="cr-period">Период</label>
+                <select id="cr-period">
+                  <option value="1d">1 день</option>
+                  <option value="3d">3 дня</option>
+                  <option value="1w">1 неделя</option>
+                  <option value="1m" selected>1 месяц</option>
+                  <option value="3m">3 месяца</option>
+                  <option value="6m">6 месяцев</option>
+                  <option value="1y">1 год</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cr-net">Скорость сети</label>
+                <select id="cr-net" disabled><option value="">Выберите локацию</option></select>
+                <span class="help">Станет доступна после выбора локации.</span>
+              </div>
+              <div class="field">
+                <label for="cr-name">Имя ресурса</label>
+                <input type="text" id="cr-name" maxlength="10" autocomplete="off" placeholder="Например, my-vps-1" required aria-describedby="cr-name-help cr-name-err">
+                <span class="help" id="cr-name-help">1–10 символов: латиница, цифры, . _ - (без . _ - по краям). Отображается как имя ноды NAME-HASH.</span>
+                <span class="help" id="cr-name-err" role="alert" hidden style="color:var(--bad)"></span>
+              </div>
+              <div class="field">
+                <label for="cr-count">Количество</label>
+                <input type="number" id="cr-count" min="1" max="20" step="1" value="1" placeholder="1" inputmode="numeric">
+                <span class="help">1–20. При >1 к имени добавится -01…-NN.</span>
+              </div>
+              <div class="field">
+                <label for="cr-hostname">Hostname</label>
+                <input type="text" id="cr-hostname" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Например, node-01">
+                <span class="help">Необязательно.</span>
+              </div>
+            </div>
+            <div id="cr-catalog-state" style="margin:10px 0 0" aria-live="polite"><div class="skeleton skel-line"></div></div>
+            <fieldset class="cr-inst">
+              <legend>Установка</legend>
+              <div class="srv-grid">
+                <div class="field">
+                  <label for="cr-prof">Профиль</label>
+                  <select id="cr-prof"><option value="">— без профиля —</option></select>
+                  <span class="help" id="cr-prof-help" aria-live="polite">Можно настроить и позже — на карточке ресурса.</span>
+                </div>
+              </div>
+              <label class="check" style="margin-top:10px"><input type="checkbox" id="cr-instant" checked disabled><span class="box"></span> Установить сразу после создания</label>
+              <div class="field" id="cr-inst-vars-wrap" hidden style="gap:6px;margin-top:12px">
+                <label>Переменные установки</label>
+                <div id="cr-inst-vars"></div>
+                <span class="help">Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения «секрет» маскируются в выводе.</span>
+              </div>
+            </fieldset>
+            <div class="banner info" id="cr-estimate" hidden style="margin:12px 0 0" aria-live="polite"></div>
+            <div class="cr-batch" id="cr-batch" hidden aria-live="polite"></div>
+            <div class="card-foot" style="margin:14px calc(var(--pad) * -1) calc(var(--pad) * -1);">
+              <button type="button" class="btn ghost" id="cr-cancel">Отмена</button>
+              <button type="button" class="btn sm ghost" id="cr-reset-pending" hidden>Начать новый заказ</button>
+              <button type="submit" class="btn primary" id="cr-submit" disabled>Создать ресурс</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div class="sr-only" id="hosting-live" aria-live="polite" aria-atomic="true"></div>
+    </section>
+
+
+    <!-- ═══ Операции ════════════════════════════════════════════════ -->
+    <section class="view" id="view-operations" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Операции</h2>
+          <span class="hint">журнал платных заказов · обновление каждые 5 с</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Создана</th><th>Тип</th><th>Нода</th><th>Состояние</th><th>Ошибка</th><th>Действие</th></tr></thead>
+            <tbody id="ops-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note" id="ops-note"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="page-foot">sharedd · кабинет · <span id="last-upd">ещё не обновлялось</span></footer>
+</div>
+
+<nav class="mobile-nav glass">
+  <a href="#/nodes" data-view="nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/></svg><span>Пул</span></a>
+  <a href="#/beget" data-view="beget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Хостинги</span></a>
+  <a href="#/operations" data-view="operations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Журнал</span></a>
+  <div class="more more-mobile">
+    <button type="button" class="more-btn" aria-expanded="false" aria-haspopup="true" aria-controls="more-menu-mobile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg><span>Дополнительно</span></button>
+    <div class="more-menu more-menu-up" id="more-menu-mobile" hidden>
+      <a href="#/servers" data-view="servers">Серверы</a>
+      <a href="#/profiles" data-view="profiles">Профили</a>
+    </div>
+  </div>
+</nav>
+
+<div id="toast" aria-live="polite"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script>
+<!--{js}-->
+</script>
+</body>
+</html>

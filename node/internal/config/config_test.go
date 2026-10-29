@@ -54,6 +54,41 @@ func TestLoadNodeConfigDefaultsApplied(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigTelemtAPIAddr(t *testing.T) {
+	// api_addr — telemt Control API для DC2-проверки; пусто = совместимость.
+	write := func(content string) string {
+		path := filepath.Join(t.TempDir(), "node.toml")
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	base := "[registry]\nurl = \"http://127.0.0.1:8080\"\ntoken = \"tok\"\n"
+
+	// пусто → режим совместимости (dc2_fallback_metrics)
+	cfg, err := LoadNodeConfig(write(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Telemt.APIAddr != "" {
+		t.Fatalf("empty api_addr must stay empty, got %q", cfg.Telemt.APIAddr)
+	}
+
+	// задан → хвостовой слэш срезается
+	cfg, err = LoadNodeConfig(write(base + "[telemt]\napi_addr = \"http://127.0.0.1:8080/\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Telemt.APIAddr != "http://127.0.0.1:8080" {
+		t.Fatalf("trailing slash must be trimmed, got %q", cfg.Telemt.APIAddr)
+	}
+
+	// не http(s) URL → отказ
+	if _, err = LoadNodeConfig(write(base + "[telemt]\napi_addr = \"127.0.0.1:8080\"\n")); err == nil {
+		t.Fatal("non-URL api_addr must be rejected")
+	}
+}
+
 func TestLoadNodeConfigRequiresRegistryURL(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "node.toml")

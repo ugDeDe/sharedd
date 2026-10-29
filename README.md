@@ -211,7 +211,7 @@ TXT/MX/NS и чужие сервисы зоны не трогаются вооб
 доля успешных РФ-проб в последней верификации («посл.%»), исторический
 «вериф.%» Globalping, позиция в очереди, **доступность %** за всю жизнь node_id,
 возраст heartbeat/отчёта, суммарное время мастерства и число stint'ов,
-клиенты (уникальные активные IP), бейдж типа ноды (**Classic / MEKO / MTProxyL**),
+клиенты (уникальные активные IP), бейдж типа ноды (**Classic / MEKO / MTProxyL / mtdd**),
 статус карантина, первая причина нездоровья. Клик по строке → страница ноды.
 
 #### 3️⃣ Страница ноды
@@ -441,6 +441,7 @@ sudo bash pkg/install_full.sh # URL регистратора (Enter = дефол
 # явные пресеты:
 sudo bash pkg/install_full.sh --preset classic # /etc/telemt/telemt.toml
 sudo bash pkg/install_full.sh --preset mtproxyl # MTProxyL (настройка через CLI)
+sudo bash pkg/install_full.sh --preset mtdd      # mtdd (/etc/mtdd/config.json, API)
 ```
 
 Или web-установка голым бинарником из релиза:

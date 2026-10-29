@@ -41,7 +41,30 @@
 #toast.err { border-color: var(--bad); color: var(--bad); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
+/* ═══ Полоска обновления интерфейса (ui/lib/update.ts) ════════════════
+   Ненавязчивая плавающая полоска внизу: не перекрывает контент и модалку,
+   сама не перезагружает — только по клику. */
+#update-bar {
+  position: fixed; left: 50%; bottom: 16px; z-index: 80;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 9px 12px 9px 16px; border-radius: var(--r-md);
+  border: 1px solid var(--acc); background: var(--surf); color: var(--fg);
+  box-shadow: var(--sh-pop); font-size: 12.5px;
+}
+#update-bar[hidden] { display: none; }
+#update-bar .btn { flex: none; }
+
 /* ═══ Пара «ключ — значение» ══════════════════════════════════════════ */
 .kv { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
 .kv-k { color: var(--fg-3); font-size: 10.5px; }
 .kv-v { color: var(--fg); font-weight: 560; }
+
+/* ═══ Визуально скрытое (текстовый эквивалент графиков) ═══════════════
+   DESIGN.md §13.4: общая утилита, не в page.css. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+table.sr-only { table-layout: fixed; }

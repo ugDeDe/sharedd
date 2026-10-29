@@ -1,38 +1,10 @@
 package agent
 
-// Завершение ноды и самостоятельное возвращение в строй.
-//
-// Регистратор (registry/internal/server/terminate.go) ставит ноде
-// терминальную запись в двух классах:
-//
-//	ip_ban — не прошла globalping (карантин исчерпал попытки или нода
-//	 вышла из карантина по expiry/dead), значит IP заблокирован
-//	 снаружи. Агент при этом НЕ останавливает службу: он уходит в
-//	 режим ожидания смены IP (awaitIPChange) — полное молчание для
-//	 регистратора + перепроверка публичного адреса раз в минуту.
-//	 Оператор меняет IP на хостинге → агент замечает это сам и
-//	 перезапускается (exit(1) под Restart=always), свежий процесс
-//	 регистрируется с нового адреса — регистратор снимает бан
-//	 регистрацией с НОВОГО ip. Ручной restart службы тоже работает.
-//	dead — TCP-порт не отвечает и/или метрики не идут дольше
-//	 terminate_dead_min. Агент сам детектирует тот же факт по
-//	 непрерывно красным локальным scrape'ам (netGate.mMutedSince),
-//	 сообщает POST /retire (бан — в вечную историю регистратора) и
-//	 ЖДЁТ локального восстановления, самостоятельно перепроверяя
-//	 метрики. Оздоровилось — exit(1), свежий процесс перерегистрируется:
-//	 регистратор снимает dead-запись первым же /register и проверяет
-//	 здоровье заново. Циклов «умерла → восстановилась → вернулась»
-//	 неограниченное число, tombstone-файла больше нет — единственный
-//	 источник правды о блокировках теперь регистратор.
-//
-// Тексты сообщений — дословно из ТЗ, совпадают с MsgIPBan/MsgDead
-// регистратора; регистратор присылает их же в kill-ответе (403 terminate),
-// агент пишет в лог присланную строку как есть.
-
 import (
 	"bytes"
 	"encoding/json"
 	"log"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -45,168 +17,145 @@ import (
 const (
 	reasonIPBan = "ip_ban"
 	reasonDead  = "dead"
-
-	msgIPBan = "Бан по ip, запустите службу заново после его смены"
-	msgDead  = "Регистратор не достучался до порта и/или не получил метрики"
+	msgIPBan    = "Бан по ip; агент продолжает Globalping и повторит регистрацию после успешной проверки и cooldown"
+	msgDead     = "Регистратор не достучался до порта и/или не получил метрики"
 )
 
-// agentUnitName — наш systemd-юнит (scripts/install_node.sh).
 var agentUnitName = "sharedd-node-agent.service"
+var exitProcess = os.Exit // Only the separate network watchdog may request restart.
 
-// ipBanPollInterval — период перепроверки публичного IP в режиме ожидания
-// смены адреса после ip_ban (var ради тестов).
-var ipBanPollInterval = time.Minute
+// Health recovery is state, not a goroutine waiting for an IP change or exit.
+// The GP scheduler owns finite recovery attempts; all registration callers share
+// one backoff and single-flight gate. No persisted identity/secret is replaced.
+type recoveryState struct {
+	mu              sync.Mutex
+	registering     sync.Mutex
+	active          bool
+	registered      bool
+	bootstrapped    bool // a registration or authenticated config fetch has ever succeeded
+	registeredIP    string
+	epoch           uint64
+	retireIP        string
+	next            time.Time
+	failures        int
+	lastMeasurement string
+}
 
-// deadRecoveryPoll — период самопроверки метрик в режиме ожидания
-// восстановления после dead (var ради тестов).
-var deadRecoveryPoll = 30 * time.Second
+var recovery = &recoveryState{}
 
-// awaitIPChangeFn — var ради тестов (боевое ожидание бесконечно).
-var awaitIPChangeFn = awaitIPChange
+func (s *recoveryState) needed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.active || !s.registered
+}
 
-// awaitIPChange — режим ожидания смены IP после ip_ban: блокируется, пока
-// публичный адрес не станет отличным от забаненного (перепроверка раз в
-// ipBanPollInterval, форс мимо кэша). Служба ПРОДОЛЖАЕТ работать — оператору
-// не нужно ничего перезапускать руками; для регистратора нода в это время
-// полностью молчит. Возвращает новый адрес.
-func awaitIPChange(bannedIP string, ipr *ipResolver) string {
-	log.Print(msgIPBan)
-	log.Printf("ip_ban: жду смену публичного IP (забанен %s, перепроверка каждые %s); после смены адреса вернусь в пул сам",
-		bannedIP, ipBanPollInterval)
-	for {
-		time.Sleep(ipBanPollInterval)
-		cur, err := ipr.Current(true)
-		if err != nil || !isPublicIP(cur) {
-			continue
-		}
-		if cur != bannedIP {
-			log.Printf("public IP changed %s -> %s — ban lifted, resuming service", bannedIP, cur)
-			return cur
-		}
+func (s *recoveryState) bootstrapNeeded() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.bootstrapped
+}
+
+// One bounded heartbeat bootstrap attempt. Pending credentials can only claim
+// via /register, so missing shared config/metrics must not deadlock that claim.
+func retryBootstrapRegistration(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver) {
+	if cfg == nil || !recovery.bootstrapNeeded() || gate.banActive() {
+		return
+	}
+	if ip, err := ipr.Current(false); err == nil {
+		tryRegistration(client, cfg, ip, false)
 	}
 }
 
-// ipBanOnce — рантайм-восстановление после ip_ban ведёт ровно ОДНА горутина;
-// остальные вызвавшие selfTerminate (heartbeat/globalping/metrics могут
-// словить 403 параллельно) блокируются в Do и больше регистратор не трогают.
-// Pointer — тесты подменяют на свежий.
-var ipBanOnce = new(sync.Once)
-
-// ipBanRecover — рантайм-обработка ip_ban (kill-сигнал 403 посреди работы):
-// ждём смену публичного адреса (перепроверка раз в минуту), затем
-// перезапускаемся через systemd (exit(1) при Restart=always) — свежий
-// процесс регистрируется с нового IP, регистратор снимает бан регистрацией
-// с нового адреса. В проде Do не возвращается (exit), вторые и последующие
-// горутины блокируются в Do — молчание для регистратора обеспечивается
-// самой блокировкой.
-func ipBanRecover(bannedIP string) {
-	ipBanOnce.Do(func() {
-		ipr := netw.resolver()
-		if ipr == nil { // ранний вызов до bind (теоретический)
-			ipr = newIPResolver()
-		}
-		newIP := awaitIPChangeFn(bannedIP, ipr)
-		if systemdAvailable() && unitLoaded(agentUnitName) {
-			log.Printf("restarting agent to re-register from the new IP %s (systemd will bring it back up)", newIP)
-		} else {
-			log.Printf("no systemd unit — exiting so the supervisor/operator restarts the agent (new IP %s)", newIP)
-		}
-		exitProcess(1) // Restart=always поднимет процесс с чистого листа
-	})
-}
-
-// deadOnce — аналогично ipBanOnce: ожидание восстановления после dead
-// ведёт ровно одна горутина, параллельные вызвавшие блокируются в Do.
-// Pointer — тесты подменяют на свежий.
-var deadOnce = new(sync.Once)
-
-// awaitLocalRecoveryFn — var ради тестов (боевое ожидание бесконечно, пока
-// локальные проверки красные).
-var awaitLocalRecoveryFn = awaitLocalRecovery
-
-// awaitLocalRecovery — режим ожидания после dead: основные циклы стоят
-// (main-горутина заблокирована в selfTerminate), поэтому scrape'ы делаем
-// САМИ, раз в deadRecoveryPoll. Зелёные метрики = прокси ожил → exit(1),
-// Restart=always поднимет свежий процесс, который перерегистрируется
-// (регистратор снимает dead-запись первым же /register). Не возвращается.
-func awaitLocalRecovery(cfg *config.NodeConfig) {
-	log.Print(msgDead)
-	log.Printf("dead: жду восстановления локальных проверок (перепроверка каждые %s); после оздоровления перезапущусь и зарегистрируюсь заново",
-		deadRecoveryPoll)
-	for {
-		time.Sleep(deadRecoveryPoll)
-		if cfg == nil {
-			continue
-		}
-		rep := RunMetricsCheck(cfg, nodeID, "")
-		if rep.Error == "" && rep.MetricsOK {
-			log.Print("local checks recovered — restarting agent to re-register")
-			return
-		}
+func selfTerminate(_ *config.NodeConfig, reason, message, ip string) {
+	recovery.mu.Lock()
+	defer recovery.mu.Unlock()
+	if recovery.active {
+		return
 	}
-}
-
-// deadRecover — рантайм-обработка dead: ждём локального оздоровления,
-// затем перезапуск через systemd. В проде Do не возвращается (exit).
-func deadRecover(cfg *config.NodeConfig) {
-	deadOnce.Do(func() {
-		awaitLocalRecoveryFn(cfg)
-		if systemdAvailable() && unitLoaded(agentUnitName) {
-			log.Print("restarting agent to re-register after recovery (systemd will bring it back up)")
-		} else {
-			log.Print("no systemd unit — exiting so the supervisor/operator restarts the agent")
-		}
-		exitProcess(1) // Restart=always поднимет процесс с чистого листа
-	})
-}
-
-// exitProcess — подменяется в тестах, recovery-режимы должны «завершать» процесс.
-var exitProcess = os.Exit
-
-// selfTerminate — kill-сигнал от регистратора (403 terminate на любом нашем
-// запросе) ИЛИ локальный вердикт dead. Для локального dead сначала шлём
-// POST /retire (best-effort, короткий таймаут). Оба класса не останавливают
-// службу: агент сам ждёт восстановления (смены IP / оздоровления метрик),
-// после чего перезапускается и регистрируется заново.
-func selfTerminate(cfg *config.NodeConfig, reason, message, ip string) {
+	recovery.active = true
+	recovery.registered = false
+	recovery.epoch++
+	if reason == reasonDead {
+		recovery.retireIP = ip
+	}
 	if message == "" {
 		message = msgIPBan
 		if reason == reasonDead {
 			message = msgDead
 		}
 	}
-	log.Print(message)
-	if reason == reasonDead && cfg != nil && ip != "" {
-		body, _ := json.Marshal(map[string]string{"node_id": nodeID, "ip": ip, "reason": reasonDead})
-		client := &http.Client{Timeout: 4 * time.Second}
-		resp, err := registryRequest(client, cfg, http.MethodPost, "/retire", bytes.NewReader(body))
-		if err != nil {
-			log.Printf("retire notice to registry failed: %v (ban history may miss this node)", err)
-		} else {
-			_ = resp.Body.Close()
-		}
-	}
-	// Горутина-вызвавший блокируется в recovery-режиме навсегда до
-	// восстановления — молчание для регистратора обеспечено.
-	if reason == reasonIPBan && ip != "" {
-		ipBanRecover(ip)
-		return // только тесты: боевой ipBanRecover не возвращается
-	}
-	if reason == reasonDead {
-		deadRecover(cfg)
-		return // только тесты: боевой deadRecover не возвращается
-	}
-	// unknown reason — не блокируем цикл, просто выходим под Restart=always
-	exitProcess(1)
+	log.Printf("%s; recovery scheduled, Globalping continues (reason=%s)", message, reason)
 }
 
-// isPublicIP — минимальная проверка «не приватный/не пустой» для
-// awaitIPChange. Полная валидация остаётся на warnIfNonPublicIP при
-// регистрации.
-func isPublicIP(ip string) bool {
-	if ip == "" {
-		return false
+func sendPendingRetire(cfg *config.NodeConfig) {
+	recovery.mu.Lock()
+	ip := recovery.retireIP
+	recovery.retireIP = ""
+	recovery.mu.Unlock()
+	if cfg == nil || ip == "" {
+		return
 	}
+	body, _ := json.Marshal(map[string]string{"node_id": nodeID, "ip": ip, "reason": reasonDead})
+	resp, err := registryRequest(&http.Client{Timeout: 4 * time.Second}, cfg, http.MethodPost, "/retire", bytes.NewReader(body))
+	if err != nil {
+		log.Printf("retire notice failed: %v", err)
+		return
+	}
+	_ = resp.Body.Close()
+}
+
+func tryRegistration(client *http.Client, cfg *config.NodeConfig, ip string, fromGP bool) (bool, time.Duration) {
+	if cfg == nil || ip == "" {
+		return false, 0
+	}
+	if !recovery.registering.TryLock() {
+		return false, time.Second
+	}
+	defer recovery.registering.Unlock()
+	gate.mu.Lock()
+	banUntil := gate.banUntil
+	gate.mu.Unlock()
+	recovery.mu.Lock()
+	if banUntil.After(recovery.next) {
+		recovery.next = banUntil
+	}
+	if wait := time.Until(recovery.next); wait > 0 {
+		recovery.mu.Unlock()
+		return false, wait
+	}
+	bootstrap := !recovery.bootstrapped
+	if recovery.active && !fromGP && !bootstrap {
+		recovery.mu.Unlock()
+		return false, 0
+	}
+	epoch := recovery.epoch
+	recovery.mu.Unlock()
+	ok, retry := registerWithReason(client, cfg, ip, fromGP, bootstrap)
+	recovery.mu.Lock()
+	defer recovery.mu.Unlock()
+	if ok {
+		recovery.bootstrapped = true
+		recovery.failures = 0
+		recovery.next = time.Time{}
+		if epoch == recovery.epoch {
+			recovery.active = false
+			recovery.registered = true
+			recovery.registeredIP = ip
+		}
+		return true, 0
+	}
+	recovery.failures++
+	if retry <= 0 {
+		// Bounded exponential backoff with jitter; no retry loop inside a tick.
+		retry = 5 * time.Second * time.Duration(1<<min(recovery.failures-1, 5))
+		retry += time.Duration(rand.Int64N(int64(retry / 2)))
+		retry = min(retry, 5*time.Minute)
+	}
+	recovery.next = time.Now().Add(retry)
+	return false, retry
+}
+
+func isPublicIP(ip string) bool {
 	p := net.ParseIP(ip)
 	return p != nil && !p.IsPrivate() && !p.IsLoopback() && !p.IsUnspecified()
 }

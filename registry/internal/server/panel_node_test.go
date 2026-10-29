@@ -119,7 +119,7 @@ func TestNodeDetailEndpoint(t *testing.T) {
 		},
 	}
 	r.state.Candidates["node-det"] = c
-	r.state.Assignments = map[string]string{"d1.example.com": "node-det"}
+	r.state.Assignments = map[string]AssignmentSlots{"d1.example.com": {"node-det"}}
 	r.mu.Lock()
 	r.addEventLocked(Event{Type: EventMasterElected, NodeID: "node-det", Domain: "d1.example.com"})
 	r.addEventLocked(Event{Type: EventNodeRegistered, NodeID: "other-node"})

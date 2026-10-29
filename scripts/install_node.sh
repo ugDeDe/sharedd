@@ -22,7 +22,7 @@
 #                                            fail-fast с подсказкой про --preset)
 #   ничего нет, но MTProxyL установлен     → включаем superexpert (файл родится
 #                                            копией текущего рабочего конфига)
-# Явные переопределения: --preset classic|mtproxyl, --telemt-config PATH
+# Явные переопределения: --preset classic|mtproxyl|mtdd, --telemt-config PATH
 # (env TELEMT_CONFIG). Патчить генерируемый /opt/mtproxyl/mtproxy/config.toml
 # БЕССМЫСЛЕННО — MTProxyL пересобирает его из настроек; в superexpert-режиме
 # источником правды становится superexpert.toml (копируется в config.toml
@@ -69,6 +69,7 @@ NONINTERACTIVE=0
 
 # автоопределяемые пути к конфигу telemt
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
+TELEMT_MTDD="/etc/mtdd/config.json"   # mtdd: JSON-конфиг, юнит mtdd.service
 MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
 detect_mtproxyl_config() {
@@ -92,20 +93,23 @@ while [ $# -gt 0 ]; do
 		--registry-token=*) REGISTRY_TOKEN="${1#*=}"; shift ;;
 		--name)           NODE_NAME="${2:?--name требует имя}"; shift 2 ;;
 		--name=*)         NODE_NAME="${1#*=}"; shift ;;
-        --preset)         PRESET="${2:?--preset classic|mtproxyl}"; shift 2 ;;
+        --preset)         PRESET="${2:?--preset classic|mtproxyl|mtdd}"; shift 2 ;;
         --preset=*)       PRESET="${1#*=}"; shift ;;
         --telemt-config)  TELEMT_CONFIG="${2:?}"; shift 2 ;;
         --telemt-config=*) TELEMT_CONFIG="${1#*=}"; shift ;;
         --no-apply)       APPLY=0; shift ;;
         --reconfigure)    RECONFIGURE=1; shift ;;
-        -h|--help)        grep '^#' "$0" | head -28 | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)        grep '^#' "$0" | head -32 | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "неизвестный аргумент: $1 (см. --help)" ;;
     esac
 done
 
 if [ -n "$NODE_NAME" ]; then
-    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
-        || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
+    if ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+        && ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    fi
 fi
 
 # --preset не перекрывает явный --telemt-config / env TELEMT_CONFIG
@@ -113,7 +117,8 @@ case "$PRESET" in
     "") ;;
     classic)  [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_CLASSIC" ;;
     mtproxyl) [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_MTPROXYL" ;;
-    *) die "--preset: ожидается classic|mtproxyl, получено: $PRESET" ;;
+    mtdd)     [ -z "$TELEMT_CONFIG" ] && TELEMT_CONFIG="$TELEMT_MTDD" ;;
+    *) die "--preset: ожидается classic|mtproxyl|mtdd, получено: $PRESET" ;;
 esac
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -274,6 +279,12 @@ apply_mtproxyl_from_registry() {
     ok "MTProxyL: параметры успешно применены через CLI"
 }
 
+# mtdd — только если других менеджеров на хосте нет (иначе выбор неоднозначен:
+# указывайте --preset mtdd / --telemt-config явно)
+if [ -z "$TELEMT_CONFIG" ] && [ -f "$TELEMT_MTDD" ] && [ ! -f "$TELEMT_CLASSIC" ] \
+    && [ ! -f "$TELEMT_MTPROXYL" ] && [ ! -d "$MTPROXYL_DIR" ] && ! mtproxyl_cli; then
+    TELEMT_CONFIG="$TELEMT_MTDD"
+fi
 if [ -z "$TELEMT_CONFIG" ]; then
     have_classic=0; have_mtproxyl=0
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
@@ -310,7 +321,7 @@ fi
 
 # mtproxyl-режим — по фактическому пути (покрывает и --telemt-config, и --preset)
 if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
-    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ]; then
+    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ] && [ "$TELEMT_CONFIG" != "$TELEMT_MTDD" ]; then
         MTPROXYL_MODE=1
         disable_superexpert_if_active
         TELEMT_CONFIG="$(detect_mtproxyl_config)"
@@ -377,18 +388,26 @@ if [ -n "$NODE_NAME" ]; then
     ID_STATE_FILE="$STATE_DIR/node_id"
     OLD_ID=""
     [ ! -s "$ID_STATE_FILE" ] || OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
-    old_suffix="${OLD_ID##*-}"
-    if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
-        NODE_ID="$OLD_ID"
-    else
-        NODE_SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 5 || true)"
-        [ "${#NODE_SUFFIX}" -eq 5 ] || die "не удалось сгенерировать суффикс имени ноды"
-        NODE_ID="${NODE_NAME}-${NODE_SUFFIX}"
-        if [ -n "$OLD_ID" ]; then
-            warn "node id меняется: $OLD_ID -> $NODE_ID; позиция в очереди будет новой"
-        fi
+    # Предсозданный регистратором полный node_id (NAME-HASH) фиксируем как есть:
+    # --name приходит от штатного профиля с уже выделенным id (addendum §7.1).
+    if printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        NODE_ID="$NODE_NAME"
         printf '%s' "$NODE_ID" >"$ID_STATE_FILE"
         chmod 0600 "$ID_STATE_FILE"
+    else
+        old_suffix="${OLD_ID##*-}"
+        if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
+            NODE_ID="$OLD_ID"
+        else
+            NODE_SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 5 || true)"
+            [ "${#NODE_SUFFIX}" -eq 5 ] || die "не удалось сгенерировать суффикс имени ноды"
+            NODE_ID="${NODE_NAME}-${NODE_SUFFIX}"
+            if [ -n "$OLD_ID" ]; then
+                warn "node id меняется: $OLD_ID -> $NODE_ID; позиция в очереди будет новой"
+            fi
+            printf '%s' "$NODE_ID" >"$ID_STATE_FILE"
+            chmod 0600 "$ID_STATE_FILE"
+        fi
     fi
     ok "имя ноды: ${BOLD}${NODE_ID}${NC}"
 fi
@@ -425,7 +444,7 @@ fi
 cat > /etc/systemd/system/sharedd-node-agent.service <<'NODE_UNIT'
 [Unit]
 Description=sharedd — агент HA-ноды (MTProto proxy pool)
-After=network-online.target telemt.service
+After=network-online.target telemt.service mtdd.service
 Wants=network-online.target
 
 [Service]
@@ -470,7 +489,7 @@ systemctl enable sharedd-node-agent.service >>"$INSTALL_LOG" 2>&1
 # telemt.service; list-units его не видит, если юнит ещё не загружен):
 detect_proxy_unit() {
     local unit d luf
-    for unit in telemt.service mtproxy.service mtproxyl-telemt.service; do
+    for unit in telemt.service mtproxy.service mtproxyl-telemt.service mtdd.service; do
         # 1) юнит известен менеджеру (cat читает и незагруженные юнит-файлы)
         if systemctl cat "$unit" >/dev/null 2>&1; then
             printf '%s' "$unit"; return 0
@@ -523,6 +542,8 @@ fi
 PROXY_UNIT=""
 if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     [ "$MTPROXYL_MODE" -eq 0 ] && PROXY_UNIT="$(detect_proxy_unit || true)"
+    # на mtdd-ноде юнит известен точно (рядом может лежать чужой telemt.service)
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then PROXY_UNIT="mtdd.service"; fi
     [ -n "$PROXY_UNIT" ] && say "юнит прокси: ${BOLD}${PROXY_UNIT}${NC}"
 
     if ! grep -aq 'APPLY-ONCE:' /usr/local/bin/sharedd-node-agent 2>/dev/null; then
@@ -584,13 +605,21 @@ if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     elif [ -n "$mp" ]; then
         METRICS_URL="http://127.0.0.1:${mp}/metrics"
     fi
+    # mtdd: /metrics под Bearer-токеном, порт — control_port из JSON-конфига
+    METRICS_AUTH=()
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then
+        mdp=$(grep -oE '"control_port"[[:space:]]*:[[:space:]]*[0-9]+' "$TELEMT_CONFIG" 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
+        METRICS_URL="http://127.0.0.1:${mdp:-9090}/metrics"
+        mtok=$(sed -n 's/^\(export \)\{0,1\}MTDD_API_TOKEN=//p' /etc/mtdd/credentials.env 2>/dev/null | head -n1 || true)
+        [ -n "$mtok" ] && METRICS_AUTH=("Authorization: Bearer $mtok")
+    fi
     say "жду подъёма прокси с новым конфигом (опрашиваю ${METRICS_URL}, до 120 с)..."
     UP=0
     for _ in $(seq 1 120); do
         if command -v curl &>/dev/null; then
-            curl -fsS --max-time 3 "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
+            curl -fsS --max-time 3 ${METRICS_AUTH[@]+-H "${METRICS_AUTH[0]}"} "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
         else
-            wget -q -T 3 -O /dev/null "$METRICS_URL" 2>/dev/null && { UP=1; break; }
+            wget -q -T 3 -O /dev/null ${METRICS_AUTH[@]+--header="${METRICS_AUTH[0]}"} "$METRICS_URL" 2>/dev/null && { UP=1; break; }
         fi
         sleep 1
     done

@@ -62,14 +62,6 @@ func (w *netWatch) bind(client *http.Client, ipr *ipResolver) {
 	w.ipr = ipr
 }
 
-// resolver — общий ipResolver агента (ip_ban-ожидание переиспользует его,
-// чтобы уважать ручной [node] public_ip).
-func (w *netWatch) resolver() *ipResolver {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.ipr
-}
-
 // noteOK — получен ЛЮБОЙ ответ регистратора (сеть жива): серия сбоев
 // обнуляется, фиксируется текущий исходящий IPv4 как эталон.
 func (w *netWatch) noteOK() {
@@ -123,8 +115,8 @@ func (w *netWatch) noteFail() {
 
 // restartSelf — самоперезапуск через systemd: exit(1) при Restart=always
 // поднимает агента заново (чистые сокеты, свежий детект IP, немедленная
-// регистрация). Recovery-режимы terminate.go (ip_ban/dead) используют ту же
-// семантику exit(1). Без systemd-юнита не выходим: убить агента насовсем
+// регистрация). Health recovery (ip_ban/dead) не использует exit(1).
+// Без systemd-юнита не выходим: убить агента насовсем
 // хуже, чем продолжать ретраи со сбросом соединений.
 func restartSelf(reason string) {
 	if systemdAvailable() && unitLoaded(agentUnitName) {

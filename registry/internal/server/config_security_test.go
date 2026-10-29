@@ -65,6 +65,8 @@ func TestValidateRegistryConfigRejectsUnsafeStartupValues(t *testing.T) {
 			c.Healthcheck.GlobalpingValidityMin = 5
 			c.NodeDefaults.GlobalpingMs = 5 * 60 * 1000
 		}},
+		{"masters_per_domain zero", func(c *RegistryConfig) { c.Selection.MastersPerDomain = 0 }},
+		{"masters_per_domain too high", func(c *RegistryConfig) { c.Selection.MastersPerDomain = 9 }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,5 +84,18 @@ func TestValidateRegistryConfigRejectsUnsafeStartupValues(t *testing.T) {
 	cfg.Rotation.MasterTTLMinutes = &zero
 	if err := validateRegistryConfig(&cfg); err != nil {
 		t.Fatalf("documented explicit zero disable semantics rejected: %v", err)
+	}
+}
+
+// [selection] masters_per_domain: границы 1..8 (дефолт 1 = прежнее поведение),
+// применяются до валидации; 8 — допустимый потолок.
+func TestSelectionMastersPerDomainBounds(t *testing.T) {
+	cfg := validRegistryConfigForTest()
+	if cfg.Selection.MastersPerDomain != 1 {
+		t.Fatalf("default masters_per_domain must be 1, got %d", cfg.Selection.MastersPerDomain)
+	}
+	cfg.Selection.MastersPerDomain = 8
+	if err := validateRegistryConfig(&cfg); err != nil {
+		t.Fatalf("masters_per_domain=8 must be valid, got %v", err)
 	}
 }

@@ -13,3 +13,11 @@ type RegistryConfig = config.RegistryConfig
 var applyRegistryDefaults = config.ApplyRegistryDefaults
 
 var validateRegistryConfig = config.ValidateRegistryConfig
+
+// Мульти-мастер ([selection] masters_per_domain): потолок и резолвер.
+const maxMastersPerDomain = config.MaxMastersPerDomain
+
+var resolveMastersPerDomain = config.ResolveMastersPerDomain
+
+// Профили установки: эффективное значение user_profiles_enabled.
+var resolveUserProfilesEnabled = config.ResolveUserProfilesEnabled

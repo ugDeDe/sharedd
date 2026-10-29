@@ -18,6 +18,7 @@ const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string
   classic:  { label: "Classic",  cls: "",         title: "классический telemt" },
   mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
   meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
+  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
 };
 function nodeTypeBadge(t: string): string {
   const m = NODE_TYPE_META[t];
@@ -46,8 +47,33 @@ function ttlRing(m: any): string {
   </span>`;
 }
 
-/* Пара «домен ↔ его мастер» — тот же язык, что в топологии на «Обзоре».
-   Раньше это была таблица из пяти колонок. */
+function dnsOpsHTML(dns: any): string {
+  const items: any[] = dns?.items || [];
+  if (!items.length) return "";
+  const fmtTargets = (t: unknown): string => Array.isArray(t) && t.length ? t.join(", ") : "—";
+  const when = (v: unknown): string => {
+    if (!v) return "—";
+    const d = new Date(String(v));
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("ru-RU");
+  };
+  return `<section class="card">
+    <div class="card-head"><h2>DNS-синхронизация</h2><span class="hint">${dns.drifted || 0} ожидает · ${dns.failed || 0} с ошибкой</span></div>
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Домен</th><th>Нужно</th><th>В Cloudflare</th><th>Состояние</th><th>Повтор</th></tr></thead>
+      <tbody>${items.map((it) => {
+        const err = it.last_error ? `<span class="badge bad" title="${esc(it.last_error)}">ошибка</span>` : "";
+        const drift = it.drifted ? `<span class="badge warn">ожидает</span>` : `<span class="badge ok">синхронизировано</span>`;
+        return `<tr>
+          <td class="mono" data-label="Домен">${esc(it.domain)}</td>
+          <td class="mono wrap" data-label="Нужно">${esc(fmtTargets(it.desired_targets))}</td>
+          <td class="mono wrap" data-label="В Cloudflare">${esc(fmtTargets(it.applied_targets))}</td>
+          <td data-label="Состояние">${drift}${err ? " " + err : ""}</td>
+          <td class="mono" data-label="Повтор">${it.next_attempt ? esc(when(it.next_attempt)) : "—"}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>
+  </section>`;
+}
 function pairHTML(m: any): string {
   // свёрнутый СРМД домен: мастера нет по определению, показываем приёмник
   if (m.cname_target) {
@@ -116,5 +142,6 @@ export function render(o: any): void {
     ? `<div class="empty-state"><div class="t">Домены не настроены</div><div class="s">Задайте их в «Настройки → Cloudflare DNS».</div></div>`
     : `<div class="pair-list">${masters.map(pairHTML).join("")}</div>`;
 
+  $("dns-sync").innerHTML = dnsOpsHTML(o.dns);
   $("s-dns-push2").onclick = dnsPush;
 }

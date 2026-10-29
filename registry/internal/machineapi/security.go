@@ -77,10 +77,10 @@ func ValidatePublicIPv4(s string) error {
 
 func ValidateNodeType(nodeType string) error {
 	switch nodeType {
-	case "classic", "mtproxyl", "meko":
+	case "classic", "mtproxyl", "meko", "mtdd":
 		return nil
 	default:
-		return fmt.Errorf("node_type must be classic, mtproxyl, or meko")
+		return fmt.Errorf("node_type must be classic, mtproxyl, meko, or mtdd")
 	}
 }
 
@@ -120,8 +120,12 @@ func ValidateHealthReport(payload HealthReportPayload, now time.Time) error {
 type RegisterRequest struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic/mtproxyl/meko — информационный бейдж в панели.
+	// NodeType: classic/mtproxyl/meko/mtdd — информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
+	// AuthKey — персональный ключ регистрации (sda_…, user-режим
+	// [users] enabled=true). В legacy-режиме поле игнорируется; agents
+	// без authkey продолжают регистрировать legacy-ноды общим токеном.
+	AuthKey string `json:"authkey,omitempty"`
 }
 
 // Intervals — тайминги циклов, раздаваемые нодам в GET /config.
@@ -139,6 +143,34 @@ type SharedConfigResponse struct {
 	Users           map[string]string `json:"users"`
 	Intervals       Intervals         `json:"intervals"`
 	ForceGlobalping bool              `json:"force_globalping,omitempty"`
+	// NodeSettingsProtocol > 0 сообщает агенту, что он может присылать
+	// подтверждение применённых настроек на /api/node/settings/status.
+	NodeSettingsProtocol int           `json:"node_settings_protocol,omitempty"`
+	NodeSettings         *NodeSettings `json:"node_settings,omitempty"`
+}
+
+// NodeSettings — индивидуальные runtime-настройки ноды. Передаются только
+// агенту, аутентифицированному персональным секретом владельца.
+type NodeSettings struct {
+	Revision int64        `json:"revision"`
+	AdTag    AdTagSetting `json:"ad_tag"`
+}
+
+type AdTagSetting struct {
+	// Mode: unmanaged | set | clear. unmanaged означает «не трогать».
+	Mode  string `json:"mode"`
+	Value string `json:"value,omitempty"`
+}
+
+// NodeSettingsStatus — подтверждение применения от агента.
+type NodeSettingsStatus struct {
+	NodeID            string   `json:"node_id"`
+	ProtocolVersion   int      `json:"protocol_version"`
+	Capabilities      []string `json:"capabilities,omitempty"`
+	AttemptedRevision int64    `json:"attempted_revision"`
+	AppliedRevision   int64    `json:"applied_revision"`
+	State             string   `json:"state"`
+	ErrorCode         string   `json:"error_code,omitempty"`
 }
 
 // HealthReportPayload — тело POST /report (отчёт ноды о здоровье).
@@ -152,7 +184,32 @@ type HealthReportPayload struct {
 	GlobalpingSuccessRatio  float64            `json:"globalping_success_ratio"`
 	MetricsOK               bool               `json:"metrics_ok"`
 	MetricsSnapshot         map[string]float64 `json:"metrics_snapshot,omitempty"`
-	Healthy                 bool               `json:"healthy"`
-	CheckedAt               time.Time          `json:"checked_at"`
-	Error                   string             `json:"error,omitempty"`
+	// DC2-поля (specs/dc2-health.md): вердикт по ME-пулу DC2. Непустой
+	// DC2Reason маркирует dc2-осведомлённого агента (в режиме совместимости
+	// агент шлёт dc2_fallback_metrics); у старых агентов поле пустое —
+	// реестр тогда доверяет прежнему MetricsOK.
+	DC2OK     bool           `json:"dc2_ok"`
+	DC2Reason string         `json:"dc2_reason,omitempty"`
+	DC2Diag   map[string]any `json:"dc2_diag,omitempty"`
+	// DCStats — полный снапшот Control API /v1/stats/dcs (dc2-режим, только
+	// metrics-отчёт). nil — Control API не ответил; вердикт dc2 не затронут.
+	DCStats   *DCStats  `json:"dc_stats,omitempty"`
+	Healthy   bool      `json:"healthy"`
+	CheckedAt time.Time `json:"checked_at"`
+	Error     string    `json:"error,omitempty"`
+}
+
+// DCStat/DCStats — зеркало типа агента для приёма dc_stats (json-теги 1:1).
+type DCStat struct {
+	DC                 int     `json:"dc"`
+	AvailableEndpoints int     `json:"available_endpoints"`
+	AliveWriters       int     `json:"alive_writers"`
+	FreshAliveWriters  int     `json:"fresh_alive_writers"`
+	RTTMs              float64 `json:"rtt_ms"`
+}
+
+type DCStats struct {
+	MiddleProxyEnabled   bool     `json:"middle_proxy_enabled"`
+	GeneratedAtEpochSecs int64    `json:"generated_at_epoch_secs"`
+	DCs                  []DCStat `json:"dcs"`
 }

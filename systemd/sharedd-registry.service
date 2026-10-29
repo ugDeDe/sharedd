@@ -12,13 +12,16 @@ User=sharedd-registry
 StateDirectory=sharedd
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
-# ── hardening: регистратору нужна только сеть + свой state + чтение конфига.
-# Файл состояния и SQLite живут в /var/lib/sharedd (StateDirectory), TOML
-# читается из /etc/sharedd, писать больше некуда и незачем.
+# ── hardening: сеть + свой state + ЗАПИСЬ конфига.
+# Файл состояния и SQLite живут в /var/lib/sharedd (StateDirectory).
+# /etc/sharedd должен быть в ReadWritePaths: панель персистит registry.toml
+# (temp+rename и .bak) прямо внутри ProtectSystem=strict, иначе каждая
+# правка из панели падает с "read-only file system" (persisted: false).
 NoNewPrivileges=yes
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ProtectSystem=strict
 ReadWritePaths=-/var/lib/sharedd
+ReadWritePaths=-/etc/sharedd
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

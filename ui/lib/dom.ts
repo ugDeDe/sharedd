@@ -11,6 +11,55 @@ export const icon = (path: string, size = 15): string =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
   `stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
+/* ── перерисовка без тревоги для пользователя ─────────────────────────
+   Кабинет и панель — SPA: списки/секции перерисовываются опросом раз в 5 с.
+   Замена innerHTML уносит фокус и прокрутку (страница «прыгает» наверх), а
+   ввод под курсором теряется. renderSection оборачивает ОДНУ такую
+   перерисовку: при poll (фоновое обновление) она пропускается, пока открыта
+   модалка или фокус внутри раздела; иначе прокрутка и фокус восстанавливаются
+   по стабильной идентичности (id или data-* атрибут). */
+
+/** Открыта ли модалка (общая для кабинета и панели). */
+export function modalOpen(): boolean {
+  const m = document.getElementById("modal");
+  return !!m && m.classList.contains("show");
+}
+
+/** ID first; repeated graph ports also require their stable owning node. */
+function stableSelector(el: Element | null): string {
+  if (!(el instanceof HTMLElement)) return "";
+  if (el.id) return "#" + CSS.escape(el.id);
+  const node = el.closest<HTMLElement>("[data-canvas-node]");
+  if (node) {
+    const owner = `[data-canvas-node="${CSS.escape(node.dataset.canvasNode!)}"]`;
+    if (el.hasAttribute("data-exec")) return `${owner} [data-exec]`;
+    if (el.hasAttribute("data-output")) return `${owner} [data-output="${CSS.escape(el.dataset.output!)}"]`;
+  }
+  for (const a of Array.from(el.attributes)) {
+    if (a.name.startsWith("data-")) return `[${a.name}="${CSS.escape(a.value)}"]`;
+  }
+  return "";
+}
+
+/** Перерисовать раздел, не сбивая пользователя. Возвращает false, если
+ *  отрисовка пропущена (открыта модалка или фокус внутри раздела при poll). */
+export function renderSection(section: HTMLElement | null, poll: boolean, render: () => void): boolean {
+  if (poll && (modalOpen() || (section != null && section.contains(document.activeElement)))) return false;
+  const scrollY = window.scrollY;
+  const focused = document.activeElement;
+  const focus = section?.contains(focused) ? stableSelector(focused) : "";
+  render();
+  // Unrelated refreshes must never refocus an element that survived the render.
+  if (focused && !focused.isConnected && focus && section?.isConnected) {
+    try {
+      const target = section.matches(focus) ? section : section.querySelector<HTMLElement>(focus);
+      target?.focus({ preventScroll: true });
+    } catch { /* detached */ }
+  }
+  if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+  return true;
+}
+
 export const ICONS = {
   masters: `<polygon points="12 2 15 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.3 12 2"/>`,
   nodes:   `<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>`,

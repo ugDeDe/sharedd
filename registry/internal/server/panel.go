@@ -3,7 +3,10 @@ package server
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sharedd/registry/internal/config"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,7 +27,11 @@ const uniqueIPsMetric = "telemt_user_unique_ips_current"
 const (
 	trafficIngressMetric = "sharedd_traffic_ingress_bytes_total"
 	trafficEgressMetric  = "sharedd_traffic_egress_bytes_total"
+	userIngressMetric    = "sharedd_user_ingress_bytes_total"
+	userEgressMetric     = "sharedd_user_egress_bytes_total"
 	trafficUsersMetric   = "sharedd_traffic_users_fingerprint"
+	hostCPUMetric        = "sharedd_host_cpu_percent"
+	hostRAMMetric        = "sharedd_host_ram_percent"
 )
 
 // panelAuthorized — общая проверка для API панели и /status.
@@ -146,7 +153,7 @@ type panelNode struct {
 	GPVerifiedPct    float64  `json:"gp_verified_pct"`
 	MasterStints     int      `json:"master_stints"`
 	MasterTimeSec    int64    `json:"master_time_sec"`
-	// NodeType: classic/mtproxyl/meko — бейдж типа менеджера в панели.
+	// NodeType: classic/mtproxyl/meko/mtdd — бейдж типа менеджера в панели.
 	NodeType string `json:"node_type,omitempty"`
 	// Quarantine: не-nil — нода в GP-карантине, рендерится
 	// отдельной таблицей (не в основном списке нод).
@@ -161,16 +168,28 @@ type panelQuarantine struct {
 	Reverify  bool      `json:"reverify,omitempty"` // перепроверка старого забаненного ip
 }
 
+// panelMasterSlot — один слот мастера домена (мульти-мастер DNS
+// round-robin): узел, его IP и момент назначения (база TTL ПО СЛОТУ).
+type panelMasterSlot struct {
+	NodeID   string    `json:"node_id"`
+	IP       string    `json:"ip,omitempty"`
+	Since    time.Time `json:"since,omitempty"`
+	Dead     bool      `json:"dead,omitempty"`
+	NodeType string    `json:"node_type,omitempty"`
+}
+
 // PanelMaster — кому назначен managed-домен.
 type panelMaster struct {
-	Domain   string `json:"domain"`
+	Domain string `json:"domain"`
+	// NodeID/IP/Dead/NodeType — первый слот (обратная совместимость UI);
+	// полный список мастеров домена — в Masters.
 	NodeID   string `json:"node_id,omitempty"`
 	IP       string `json:"ip,omitempty"`
 	Dead     bool   `json:"dead,omitempty"` // назначен, но нода пропала/нездорова
 	NodeType string `json:"node_type,omitempty"`
 	// (TTL мастерства): TTLSec — действующий лимит (0 = выкл);
 	// TTLRemainingSec — сколько осталось до принудительной ротации
-	// (<0 = лимит истёк, ждём здоровую замену).
+	// первого слота (<0 = лимит истёк, ждём здоровую замену).
 	TTLSec          int64 `json:"ttl_sec,omitempty"`
 	TTLRemainingSec int64 `json:"ttl_remaining_sec,omitempty"`
 	// (СРМД): Clients — последние известные активные клиенты домена
@@ -178,6 +197,10 @@ type panelMaster struct {
 	// домен свёрнут СРМД и живёт CNAME-записью на этот домен (мастера нет).
 	Clients     *int   `json:"clients,omitempty"`
 	CNameTarget string `json:"cname_target,omitempty"`
+	// (Мульти-мастер): Masters — все слоты домена по порядку;
+	// SlotsFilled — «2/2»: занято слотов из masters_per_domain.
+	Masters     []panelMasterSlot `json:"masters,omitempty"`
+	SlotsFilled string            `json:"slots_filled,omitempty"`
 }
 
 // panelGPBan — один «бан» Globalping. Бан = globalping_blocked, после
@@ -415,16 +438,16 @@ type panelDNSSummary struct {
 }
 
 type panelDNSOperation struct {
-	Domain        string    `json:"domain"`
-	DesiredType   string    `json:"desired_type,omitempty"`
-	DesiredTarget string    `json:"desired_target,omitempty"`
-	AppliedType   string    `json:"applied_type,omitempty"`
-	AppliedTarget string    `json:"applied_target,omitempty"`
-	Drifted       bool      `json:"drifted"`
-	Attempts      int       `json:"attempts"`
-	NextAttempt   time.Time `json:"next_attempt,omitempty"`
-	LastError     string    `json:"last_error,omitempty"`
-	LastSuccess   time.Time `json:"last_success,omitempty"`
+	Domain         string    `json:"domain"`
+	DesiredType    string    `json:"desired_type,omitempty"`
+	DesiredTargets []string  `json:"desired_targets,omitempty"`
+	AppliedType    string    `json:"applied_type,omitempty"`
+	AppliedTargets []string  `json:"applied_targets,omitempty"`
+	Drifted        bool      `json:"drifted"`
+	Attempts       int       `json:"attempts"`
+	NextAttempt    time.Time `json:"next_attempt,omitempty"`
+	LastError      string    `json:"last_error,omitempty"`
+	LastSuccess    time.Time `json:"last_success,omitempty"`
 }
 
 // buildOverview собирает снимок состояния пула для панели (под RLock).
@@ -476,8 +499,8 @@ func (r *Registry) buildOverview() panelOverview {
 			ov.DNS.NextAttempt = op.NextAttempt
 		}
 		ov.DNS.Items = append(ov.DNS.Items, panelDNSOperation{
-			Domain: domain, DesiredType: op.DesiredType, DesiredTarget: op.DesiredTarget,
-			AppliedType: op.AppliedType, AppliedTarget: op.AppliedTarget, Drifted: drifted,
+			Domain: domain, DesiredType: op.DesiredType, DesiredTargets: op.DesiredTargets,
+			AppliedType: op.AppliedType, AppliedTargets: op.AppliedTargets, Drifted: drifted,
 			Attempts: op.Attempts, NextAttempt: op.NextAttempt, LastError: op.LastError,
 			LastSuccess: op.LastSuccess,
 		})
@@ -506,14 +529,23 @@ func (r *Registry) buildOverview() panelOverview {
 	}
 
 	// Per-domain мастера. holdsBy — nodeID → его домены (для роли ноды),
-	// masters — карточка раскладки по доменам из конфига.
+	// masters — карточка раскладки по доменам из конфига. Мульти-мастер:
+	// каждый домен держит список слотов; SlotsFilled — «2/2».
 	holdsBy := make(map[string][]string, len(r.state.Assignments))
-	for d, id := range r.state.Assignments {
-		holdsBy[id] = append(holdsBy[id], d)
+	for d, ids := range r.state.Assignments {
+		for _, id := range ids {
+			if id == "" || slices.Contains(holdsBy[id], d) {
+				continue
+			}
+			holdsBy[id] = append(holdsBy[id], d)
+		}
 	}
 	for id := range holdsBy {
 		sort.Strings(holdsBy[id])
 	}
+	r.cfgMu.RLock()
+	mastersTotal := config.ResolveMastersPerDomain(r.cfg.Selection.MastersPerDomain)
+	r.cfgMu.RUnlock()
 	domainsSeen := make(map[string]bool, len(ov.Domains))
 	for _, d := range ov.Domains {
 		d = strings.TrimSpace(d)
@@ -530,20 +562,28 @@ func (r *Registry) buildOverview() panelOverview {
 		if cn := r.state.SRMD.CNames[d]; cn != "" {
 			m.CNameTarget = cn
 		}
-		if id := r.state.Assignments[d]; id != "" {
-			m.NodeID = id
+		sinceList := r.state.AssignmentsSince[d]
+		for i, id := range r.state.Assignments[d] {
+			slot := panelMasterSlot{NodeID: id, Dead: true}
 			if c := r.state.Candidates[id]; c != nil {
-				m.IP = c.IP
-				m.NodeType = c.NodeType
-				m.Dead = !c.IsFullyHealthy(r.cfg.ReportFreshnessTTL)
-			} else {
-				m.Dead = true
+				slot.IP = c.IP
+				slot.NodeType = c.NodeType
+				slot.Dead = !c.IsFullyHealthy(r.cfg.ReportFreshnessTTL)
 			}
-			// TTL мастерства: заполняем, только когда назначение отсчитано
-			// (лениво инициализирует since на первом evaluate).
-			if since := r.state.AssignmentsSince[d]; ttl > 0 && !since.IsZero() {
+			if i < len(sinceList) {
+				slot.Since = sinceList[i]
+			}
+			m.Masters = append(m.Masters, slot)
+		}
+		if len(m.Masters) > 0 {
+			m.SlotsFilled = fmt.Sprintf("%d/%d", len(m.Masters), mastersTotal)
+			first := m.Masters[0]
+			m.NodeID, m.IP, m.Dead, m.NodeType = first.NodeID, first.IP, first.Dead, first.NodeType
+			// TTL мастерства первого слота: заполняем, только когда
+			// назначение отсчитано (лениво инициализирует since на первом evaluate).
+			if ttl > 0 && !first.Since.IsZero() {
 				m.TTLSec = int64(ttl.Seconds())
-				m.TTLRemainingSec = int64(ttl.Seconds()) - int64(now.Sub(since).Seconds())
+				m.TTLRemainingSec = int64(ttl.Seconds()) - int64(now.Sub(first.Since).Seconds())
 			}
 		}
 		ov.Masters = append(ov.Masters, m)
@@ -596,7 +636,7 @@ func (r *Registry) buildOverview() panelOverview {
 	ov.QueueSize = len(queue)
 	ov.Stats = r.buildPanelStatsLocked(now)
 	// Снимок СРМД (таблица доменов, нужное число доменов, алерт)
-	ov.SRMD = r.buildPanelSRMDLocked(len(queue), srmdEnabled, srmdBase, srmdMaxN)
+	ov.SRMD = r.buildPanelSRMDLocked(len(queue), srmdEnabled, srmdBase, srmdMaxN, mastersTotal)
 	return ov
 }
 
@@ -675,12 +715,12 @@ func (r *Registry) queuePositionLocked(c *Candidate) int {
 	return pos
 }
 
-// masterDomainsLocked — отсортированный список доменов, которые держит нода.
-// ВЫЗЫВАТЬ под r.mu (минимум RLock).
+// masterDomainsLocked — отсортированный список доменов, которые держит нода
+// (по любому из её слотов). ВЫЗЫВАТЬ под r.mu (минимум RLock).
 func (r *Registry) masterDomainsLocked(id string) []string {
 	domains := make([]string, 0, 1)
-	for d, nid := range r.state.Assignments {
-		if nid == id {
+	for d, ids := range r.state.Assignments {
+		if slices.Contains(ids, id) {
 			domains = append(domains, d)
 		}
 	}

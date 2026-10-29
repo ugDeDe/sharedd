@@ -73,7 +73,12 @@ function renderKpis(o: any): void {
   // считаются только активные домены
   const active = masters.filter((m: any) => !m.cname_target);
   const folded = masters.length - active.length;
-  const aliveMs = active.filter((m: any) => m.node_id && !m.dead).length;
+  // Плитка считает ДОМЕНЫ (одна запись masters[] = один домен), не мастера:
+  // домен «с мастером» — если у него ≥1 живой слот (masters[].dead == false)
+  // либо легаси-поля node_id/dead.
+  const domainsTotal = active.length;
+  const liveDomains = active.filter((m: any) =>
+    (m.masters || []).some((x: any) => !x.dead) || (m.node_id && !m.dead)).length;
   const dnsErr = c.dns_errors_total ?? 0;
 
   const card = (label: string, iconPath: string, valueHtml: string, valueCls: string,
@@ -86,10 +91,10 @@ function renderKpis(o: any): void {
     </div>`;
 
   $("cards").innerHTML =
-    card("Мастера", ICONS.masters,
-      `${aliveMs}<span class="sep">/</span>${active.length}`,
-      active.length > 0 && aliveMs === active.length ? "ok" : "bad",
-      `живых назначений${folded ? " · свёрнуто СРМД: " + folded : ""}`) +
+    card("Домены с мастером", ICONS.masters,
+      `${liveDomains}<span class="sep">/</span>${domainsTotal}`,
+      domainsTotal > 0 && liveDomains === domainsTotal ? "ok" : "bad",
+      `домены с ≥1 живым мастером${folded ? " · свёрнуто СРМД: " + folded : ""}`) +
     card("Нод в пуле", ICONS.nodes,
       `${o.nodes_total}`, "",
       `fully healthy: ${o.nodes_fully_healthy} · очередь: ${o.queue_size}`) +
@@ -167,7 +172,7 @@ function renderGPStats(o: any): void {
    2 домена со связями и 3 ноды в очереди — остальное сводится в строку
    «ещё N…», иначе схема расползается на большом пуле. */
 
-const NODE_TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO" };
+const NODE_TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd" };
 
 function domainSubtitle(m: any): string {
   if (m.node_id) {
@@ -181,10 +186,27 @@ function domainSubtitle(m: any): string {
   return `<span style="color:var(--bad)">мастер не назначен — DNS-записи нет</span>`;
 }
 
+/* Чип одного слота-мастера: node_id, «мёртв» для нездорового слота,
+   «с {время}» — когда слот назначен. Живой слот — без бейджа, статус
+   дублирован в title (не только цветом). */
+function topoMasterChip(ms: any): string {
+  const dead = !!ms.dead;
+  const since = ms.since ? `<span class="dim">с ${fmtClock(ms.since)}</span>` : "";
+  const title = `${ms.node_id} · ${dead ? "мёртв" : "жив"}${ms.since ? " · с " + fmtClock(ms.since) : ""}`;
+  return `<span class="chip" title="${esc(title)}"><span class="mono">${esc(ms.node_id)}</span>${
+    dead ? `<span class="badge warn">мёртв</span>` : ""}${since}</span>`;
+}
+
 function domainItemHTML(m: any, id: string, pair?: number): string {
   const cls = m.node_id ? (m.dead ? "sick" : "live") : "sick";
-  return `<div class="topo-item ${cls}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
-    <div class="topo-b"><div class="topo-t">${esc(m.domain)}</div><div class="topo-s">${domainSubtitle(m)}</div></div>
+  const masters: any[] = m.masters || [];
+  // slots_filled («2/2») всегда видим — бейджем у домена; чипы — все слоты.
+  const slotBadge = m.slots_filled
+    ? ` <span class="badge mono" title="занято/всего слотов домена">${esc(m.slots_filled)}</span>` : "";
+  const chips = masters.length
+    ? `<div class="chips topo-masters">${masters.map(topoMasterChip).join("")}</div>` : "";
+  return `<div class="topo-item ${cls}${masters.length ? " has-masters" : ""}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
+    <div class="topo-b"><div class="topo-t">${esc(m.domain)}${slotBadge}</div><div class="topo-s">${domainSubtitle(m)}</div>${chips}</div>
     <div class="topo-r"><div class="topo-n">${m.clients != null ? m.clients : "—"}</div><div class="topo-u">клиентов</div></div>
   </div>`;
 }

@@ -1,0 +1,373 @@
+@import "../../tokens.css";
+@import "../../base.css";
+@import "../../components/glass.css";
+@import "../../components/topbar.css";
+@import "../../components/card.css";
+@import "../../components/table.css";
+@import "../../components/badge.css";
+@import "../../components/form.css";
+@import "../../components/vars.css";
+@import "../../components/misc.css";
+@import "../../components/modal.css";
+@import "../../components/nodecard.css";
+@import "../../components/feed.css";
+@import "./blueprint.css";
+
+/* ═══ Кабинет: только раскладка ═══════════════════════════════════════
+   Ни одной новой кнопки/поля/бейджа — всё из components/*. Ниже —
+   сетки, шаги визарда и одноразовый показ ключа. */
+.view-title { margin: 4px 2px 14px; }
+.view[hidden] { display: none; }
+.card { margin-bottom: var(--gap); }
+
+/* скелеты областей, пока нет данных */
+.skel-line { height: 20px; margin: 2px 0; }
+.skel-block { height: 120px; margin: var(--pad); }
+
+/* ═══ Визард ═══════════════════════════════════════════════════════════ */
+.wizard-steps {
+  display: flex; gap: 6px; padding: 14px var(--pad) 2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.wizard-steps::-webkit-scrollbar { display: none; }
+.wizard-step {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: var(--r-pill); border: 1px solid var(--line);
+  background: var(--surf); color: var(--fg-3); font-size: 12px; font-weight: 550;
+  white-space: nowrap;
+}
+.wizard-step .n {
+  display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--surf-3); color: var(--fg-3); font-size: 10.5px; font-weight: 650;
+}
+.wizard-step.active { background: var(--acc-soft); border-color: transparent; color: var(--acc); }
+.wizard-step.active .n { background: var(--acc); color: var(--acc-fg); }
+.wizard-step.done { color: var(--fg-2); }
+.wizard-step.done .n { background: var(--ok-soft); color: var(--ok); }
+
+.wiz-body { padding: var(--pad); display: flex; flex-direction: column; gap: 14px; }
+.wiz-body[hidden] { display: none; }
+.wiz-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+/* выбор региона/профиля — карточка-кнопка (раскладка, не новый控件) */
+.pick-list { display: flex; flex-direction: column; gap: 8px; }
+.pick {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surf-2); color: var(--fg); font: inherit; cursor: pointer;
+  transition: border-color .12s ease, background .12s ease;
+}
+.pick:hover { border-color: var(--fg-3); }
+.pick[aria-pressed="true"] { border-color: var(--acc); background: var(--acc-soft); }
+.pick[disabled] { opacity: .5; cursor: not-allowed; }
+.pick .dot {
+  width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--fg-3); flex: none;
+}
+.pick[aria-pressed="true"] .dot { border-color: var(--acc); box-shadow: inset 0 0 0 3px var(--acc); }
+.pick-b { min-width: 0; flex: 1; }
+.pick-t { font-size: 13px; font-weight: 600; }
+.pick-s { font-size: 11.5px; color: var(--fg-3); margin-top: 2px; }
+
+.wiz-foot { justify-content: space-between; }
+.wiz-foot .spacer { flex: 1 1 auto; }
+
+/* ═══ Одноразовый показ ключа ═════════════════════════════════════════ */
+.secret-reveal {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.secret-reveal .key {
+  font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere;
+  padding: 11px 13px; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surf-2); color: var(--fg); user-select: all;
+}
+.secret-reveal .warn-note { color: var(--warn); font-size: 12px; }
+
+/* ═══ Операции: бейдж состояния ══════════════════════════════════════ */
+.op-err { color: var(--fg-2); font-size: 12px; overflow-wrap: anywhere; }
+.row-highlight { background: var(--acc-soft); }
+#ops-note[hidden] { display: none; }
+
+/* Шаги операции (Фаза 3): индекс, имя, статус, длительность; лог — details. */
+.op-steps { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+.op-step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: baseline; gap: 4px 10px; padding: 7px var(--pad); }
+.op-step + .op-step { border-top: 1px solid var(--line-2); }
+.op-step-idx { color: var(--fg-3); font-size: 11px; }
+.op-step-name { font-weight: 560; overflow-wrap: anywhere; }
+.op-step-dur { font-size: 11.5px; }
+.op-step-logwrap { grid-column: 2 / -1; }
+.op-step-log { margin-top: 4px; }
+.op-step-log summary { cursor: pointer; font-size: 11.5px; color: var(--fg-3); }
+.op-step-log[open] summary { color: var(--fg-2); }
+.op-steps-empty { padding: 12px var(--pad); }
+.op-steps-row > td { padding: 0; background: var(--surf-2); }
+
+/* ═══ Детальная карточка ноды (Фаза 2) ════════════════════════════════
+   Разметка — только существующие .card/.table/.badge/.metrics/.kv/.feed. */
+.nd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: var(--pad); }
+.nd-ip-lead { font-size: 13.5px; color: var(--fg-2); }
+.nd-ip-lead .mono { color: var(--fg); }
+.nd-ip { color: var(--fg-3); font-size: 12.5px; margin-top: 4px; }
+.nd-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; max-width: 100%; }
+.nd-reason { flex-basis: 100%; color: var(--bad); font-size: 12.5px; }
+.nd-grid {
+  display: grid; gap: 10px 18px; padding: var(--pad);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* ═══ Табы разделов ноды (порт .c-tabs из mtplane) ═══════════════════
+   Разбивает статистику по категориям вместо одного скролла. */
+.nd-tabs {
+  display: flex; align-items: flex-end; gap: 2px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto; overscroll-behavior-x: contain;
+  margin: 0 0 var(--gap);
+  scrollbar-width: thin;
+}
+.nd-tabs button {
+  appearance: none; flex: 0 0 auto; background: transparent;
+  border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 0 12px; height: 38px; white-space: nowrap; cursor: pointer;
+  color: var(--fg-3); font: inherit; font-size: 12.5px; font-weight: 540;
+  transition: color .12s, background .12s, border-color .12s;
+}
+.nd-tabs button:hover { color: var(--fg); background: var(--surf-2); }
+.nd-tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--acc); }
+.nd-tabs button:focus-visible {
+  outline: 2px solid var(--acc); outline-offset: -2px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+.nd-panel:focus { outline: none; }
+.nd-panel:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; border-radius: var(--r-sm); }
+
+.chart-cap { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 7px; font-size: 11.5px; color: var(--fg-3); }
+.chart-cap:first-child { margin-top: 0; }
+.chart-cap .hint { margin-left: auto; }
+
+/* ═══ Графики (specs/node-stats.md §4, DESIGN.md §13) ═════════════════
+   SVG тянется по ширине (preserveAspectRatio="none"); подписи осей — HTML:
+   внутри SVG текст растянулся бы по горизонтали. Цвета — только токены. */
+.chart-wrap { width: 100%; }
+.chart-plot { display: flex; gap: 6px; }
+.chart-y {
+  display: flex; flex-direction: column; justify-content: space-between;
+  flex: none; font-size: 10px; color: var(--fg-3); white-space: nowrap;
+}
+.chart-svg { display: block; width: 100%; height: 160px; }
+.chart-svg .chart-line {
+  fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.chart-svg .bar { fill: var(--fg-3); }
+.chart-svg .bar.ok { fill: var(--ok); }
+.chart-svg .bar.warn { fill: var(--warn); }
+.chart-svg .bar.bad { fill: var(--bad); }
+.chart-x { display: flex; margin-top: 4px; }
+.chart-x > span {
+  flex: 1 1 0; min-width: 0; text-align: center; font-size: 10px;
+  color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
+.legend-static { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-2); }
+.legend-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.legend-static b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Пончик сети (specs/node-stats.md — граф D, «Сеть»): доли-дуги, старт сверху.
+   Числа (% и байты) — текстом в легенде: цвет не единственный сигнал. */
+.donut-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.donut { display: block; flex: none; }
+.donut .donut-track { stroke: var(--surf-3); }
+.donut-legend { flex-direction: column; gap: 6px; margin-bottom: 0; }
+/* График E — горизонтальные столбики (текущий снимок). */
+.h-bars { display: flex; flex-direction: column; gap: 7px; }
+.h-bar { display: grid; grid-template-columns: minmax(56px, 22%) 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
+.h-bar-k { color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-bar-track { height: 9px; border-radius: var(--r-xs); background: var(--surf-3); overflow: hidden; }
+.h-bar-fill { display: block; height: 100%; background: var(--acc); border-radius: var(--r-xs); }
+.h-bar-v { color: var(--fg); font-variant-numeric: tabular-nums; }
+.h-bar:hover .h-bar-track { box-shadow: 0 0 0 2px var(--acc-soft); }
+
+/* ═══ Наведение на линейные графики (chart.ts liveLineChart) ══════════
+   Оверлей поверх SVG: кроссхэйр, точки серий, тултип. Позиции — в % от
+   .chart-canvas (та же линейная шкала, что у растянутого SVG). */
+.chart-canvas { position: relative; flex: 1 1 0; min-width: 0; }
+.chart-cross {
+  position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px;
+  background: var(--fg-3); opacity: .55; pointer-events: none;
+}
+.chart-dots { position: absolute; inset: 0; pointer-events: none; }
+.chart-dots .chart-dot {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--surf);
+}
+.chart-tip {
+  position: absolute; top: 4px; z-index: 5; pointer-events: none;
+  transform: translateX(-50%); padding: 6px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surf); box-shadow: var(--sh-pop);
+  font-size: 11px; color: var(--fg); max-width: 100%; white-space: normal;
+}
+.chart-tip .tip-t { color: var(--fg-3); margin-bottom: 3px; }
+.chart-tip .tip-r { display: flex; align-items: center; gap: 6px; }
+.chart-tip .tip-r b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chart-tip .tip-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+/* ═══ Свои серверы (addendum-manual-servers.md §3) ════════════════════
+   Только раскладка поверх существующих .card/.field/.btn/.seg/.node-card. */
+.srv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.srv-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Дорожка сегментированного переключателя способа входа. */
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-md);
+  background: var(--track); box-shadow: inset 0 1px 2px var(--track-in);
+}
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--fg-2); cursor: pointer;
+  padding: 6px 13px; border-radius: var(--r-sm); font: inherit; font-size: 12.5px; font-weight: 520;
+  white-space: nowrap; transition: color .15s, background .15s;
+}
+.seg button:hover { color: var(--fg); }
+.seg button.active {
+  color: var(--fg); font-weight: 600; background: var(--thumb);
+  box-shadow: 0 1px 2px rgba(16, 23, 37, .1), inset 0 1px 0 var(--thumb-hi);
+}
+/* Загрузка файла ключа: нативный input, выровнен по высоте поля. */
+#sv-key-file { margin-top: 2px; font-size: 12px; color: var(--fg-2); }
+#sv-key { min-height: 120px; }
+/* Карточка своего сервера: действия в правой колонке, вывод — отдельной строкой. */
+.srv .node-side { flex-wrap: wrap; justify-content: flex-end; }
+.srv .srv-more { grid-column: 1 / -1; margin-top: 8px; }
+.srv-out {
+  white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; margin: 6px 0 0;
+}
+
+/* ═══ Хостинги: подключения и облачные ресурсы (hosting-blueprints §20) ═
+   Только раскладка поверх существующих .card/.node-card/.badge/.kv/.nd-tabs.
+   Ни одного нового цветового токена, кнопки, поля или бейджа. */
+.node-card.hc, .node-card.cr { cursor: default; }
+.hc .node-side, .cr .node-side { flex-wrap: wrap; justify-content: flex-end; }
+.hc-balance { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.cr-progress { margin: 8px 0 0; }
+.cr-check { margin: 8px 0 0; font-size: 12.5px; }
+.cr-check.ok { color: var(--ok); }
+.cr-check.bad { color: var(--bad); }
+.cr-spin {
+  display: inline-block; width: 12px; height: 12px; vertical-align: -2px;
+  border: 2px solid var(--line); border-top-color: var(--acc); border-radius: 50%;
+  animation: cr-spin .7s linear infinite;
+}
+@keyframes cr-spin { to { transform: rotate(360deg); } }
+.cr-batch { margin: 12px 0 0; }
+.cr-batch-head { font-size: 13px; color: var(--fg-2); margin-bottom: 6px; }
+.cr-batch-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.cr-batch-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cr-batch-list .nm { font-weight: 600; }
+.cr-batch-list .why { color: var(--bad); font-size: 12px; }
+#cr-beget-note .banner { margin: 12px 0 0; }
+/* Шаги/поле «Установка» внутри формы создания ресурса: card-body уже даёт
+   отступ, wizard-steps и fieldset его дублируют. */
+#cr-steps { padding: 0 0 2px; }
+.cr-inst { border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px 14px 14px; margin: 14px 0 0; }
+.cr-inst legend { padding: 0 6px; font-size: 13px; font-weight: 600; }
+
+/* ═══ Автопилот (fleet-autopilot) ═════════════════════════════════════
+   Только раскладка поверх .card/.srv-grid/.cr-inst/.node-list/.badge. */
+.ap-form .card-foot { margin: 14px calc(var(--pad) * -1) calc(var(--pad) * -1); }
+.ap-help { display: block; margin-top: 8px; }
+.ap-fleet-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.ap-fleet-sum { margin: 0 0 10px; }
+.ap-item { cursor: default; }
+.ap-item .node-top { flex-wrap: wrap; }
+.ap-item .node-sub { flex-wrap: wrap; }
+.ap-item .ap-reason { color: var(--bad); font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .hc .node-side, .cr .node-side { justify-content: flex-start; }
+}
+
+@media (max-width: 640px) {
+  .wiz-foot { flex-direction: column-reverse; }
+  .wiz-foot .btn { width: 100%; }
+  .card-head { padding-left: 12px; padding-right: 12px; }
+  .srv .node-side { justify-content: flex-start; }
+  .chart-svg { height: 140px; }
+  .chart-x > span { font-size: 9px; }
+}
+
+/* ═══ «Дополнительно»: компактное меню вторичных разделов ═════════════
+   Первичная навигация — Пул · Хостинги · Журнал. Серверы и Профили живут
+   здесь, чтобы не расширять основной сценарий. Раскрытие — в main.ts. */
+.navwrap { overflow: visible; }
+.nav .more { position: relative; display: flex; }
+.more-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 13px; border: 0; border-radius: var(--r-sm); cursor: pointer;
+  background: transparent; color: var(--fg-2); font: inherit;
+  font-size: 12.5px; font-weight: 520; white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.more-btn:hover { color: var(--fg); background: var(--track); }
+.more-btn.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+.more-btn::after {
+  content: ""; width: 5px; height: 5px; flex: none;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+.more-btn[aria-expanded="true"]::after { transform: translateY(1px) rotate(-135deg); }
+.more-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 168px; padding: 5px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surf); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgba(16, 23, 37, .28);
+}
+.more-menu a {
+  padding: 8px 10px; border-radius: var(--r-sm); color: var(--fg-2);
+  font-size: 12.5px; font-weight: 520; text-decoration: none; white-space: nowrap;
+}
+.more-menu a:hover { color: var(--fg); background: var(--track); }
+.more-menu a.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+
+/* Мобильная панель: четвёртый пункт открывает то же меню вверх. */
+.more-mobile .more-btn {
+  width: 100%; height: 100%; flex-direction: column; gap: 3px;
+  padding: 7px 2px; border-radius: var(--r-md);
+  color: var(--fg-3); font-size: inherit;
+}
+.more-mobile .more-btn svg { width: 19px; height: 19px; flex: none; }
+.more-mobile .more-btn span {
+  font-size: 9.5px; font-weight: 560; letter-spacing: -.01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.more-mobile .more-btn::after { display: none; }
+.more-mobile .more-btn.active { color: var(--acc); background: var(--acc-soft); }
+.more-menu-up { top: auto; bottom: calc(100% + 8px); right: 0; }
+/* .mobile-nav a растягивает все ссылки в колонку; пункты выпадающего
+   меню — обычные строки, иначе иконка/подпись прыгают. */
+.mobile-nav .more-menu a {
+  display: block; padding: 8px 10px; color: var(--fg-2);
+  font-size: 12.5px; font-weight: 520; text-align: left;
+}
+.mobile-nav .more-menu a:hover { color: var(--fg); background: var(--track); }
+.mobile-nav .more-menu a.active { color: var(--fg); font-weight: 600; background: var(--thumb); }
+
+/* Глобальная гарантия [hidden]: .banner/.btn/.node-card и прочие задают
+   display и перебивают UA-правило, поэтому «скрытое» (например пустой
+   красный #sv-err) рендерилось бы. !important обязателен: при сборке
+   компонентные стили могут оказаться ПОСЛЕ этого правила, и меню
+   «Дополнительно» (.more-menu{display:flex}) иначе всегда раскрыто. */
+[hidden] { display: none !important; }
+
+/* Дропдаун «Дополнительно» живёт внутри .navwrap, у которого overflow-x:auto
+   создаёт scroll-контейнер и обрезает абсолютное меню. На десктопе навигация
+   помещается — разрешаем меню выйти за границы. */
+@media (min-width: 721px) {
+  .navwrap { overflow: visible; }
+}
+
+/* Нижняя навигация — .glass с overflow:hidden (нужен для бликов), но он же
+   обрезает выпадающее вверх меню «Дополнительно»: виден только первый пункт.
+   Для навигации обрезка не нужна — разрешаем меню выйти над панелью. */
+.mobile-nav.glass { overflow: visible; }
+
+/* Шапка — .glass (overflow:hidden для бликов). Это же правило обрезало
+   выпадающее меню «Дополнительно» и заставляло браузер «прокручивать»
+   контейнер при фокусе пункта (меню уезжало вверх). Навигации обрезка
+   не нужна: меню должно свободно выходить под шапкой. */
+.topbar-inner.glass { overflow: visible; }

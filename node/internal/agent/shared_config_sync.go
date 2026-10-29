@@ -347,6 +347,7 @@ type SharedConfig struct {
 	Users           map[string]string `json:"users"`
 	Intervals       NodeIntervals     `json:"intervals"`
 	ForceGlobalping bool              `json:"force_globalping"`
+	NodeSettings    *NodeSettings     `json:"node_settings,omitempty"`
 }
 
 type SharedConfigCache struct {
@@ -440,6 +441,9 @@ func fetchSharedConfig(cfg *config.NodeConfig) (SharedConfig, error) {
 	if err := json.Unmarshal(body, &shared); err != nil {
 		return SharedConfig{}, fmt.Errorf("parse /config error: %w", err)
 	}
+	recovery.mu.Lock()
+	recovery.bootstrapped = true
+	recovery.mu.Unlock()
 	return shared, nil
 }
 
@@ -466,7 +470,9 @@ func applySharedConfig(cfg *config.NodeConfig, shared SharedConfig) {
 	}
 	if err := applySharedConfigManaged(cfg, shared); err != nil {
 		log.Printf("failed to apply shared config to telemt.toml: %v", err)
+		return
 	}
+	applyNodeSettings(cfg, shared.NodeSettings)
 }
 
 func syncLoop(cfg *config.NodeConfig) {
@@ -628,6 +634,10 @@ func validateTOMLText(lines []string) error {
 func applySharedConfigManaged(cfg *config.NodeConfig, shared SharedConfig) error {
 	applySvcMu.Lock()
 	defer applySvcMu.Unlock()
+
+	if isMtddConfigPath(cfg.Telemt.ConfigPath) {
+		return applyMtddShared(cfg, shared)
+	}
 
 	path := cfg.Telemt.ConfigPath
 	newLines, changed, err := computeSharedConfigPatch(cfg, shared)

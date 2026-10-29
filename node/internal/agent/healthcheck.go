@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -32,6 +33,13 @@ type TelemtConfig struct {
 }
 
 func loadTelemtConfig(path string) (*TelemtConfig, error) {
+	if isMtddConfigPath(path) {
+		mc, err := loadMtddConfig(path)
+		if err != nil {
+			return nil, err
+		}
+		return mc.asTelemt(), nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read telemt config at %s: %w", path, err)
@@ -176,27 +184,42 @@ func (g *GlobalpingChecker) CreateAndAwait(ip string, port int, fakeSNI string) 
 }
 
 func (g *GlobalpingChecker) pollUntilDone(id string, timeout time.Duration) (*globalpingMeasurement, error) {
-	deadline := time.Now().Add(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	for {
-		m, err := g.FetchMeasurement(id)
+		m, err := g.fetchMeasurement(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		// Top-level статус по Globalping OpenAPI — только "in-progress"/"finished";
 		// "failed"/"offline" оставлены для устойчивости к вариациям API
 		// (per-probe result.status такими бывает).
-		if m.Status == "finished" || m.Status == "failed" || m.Status == "offline" {
+		if m.Status == "finished" {
 			return m, nil
 		}
-		if time.Now().After(deadline) {
-			return m, fmt.Errorf("globalping measurement %s did not finish in time", id)
+		if m.Status == "failed" || m.Status == "offline" {
+			return m, fmt.Errorf("globalping measurement %s: %s", id, m.Status)
 		}
-		time.Sleep(2 * time.Second)
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return m, fmt.Errorf("globalping measurement %s did not finish: %w", id, ctx.Err())
+		case <-timer.C:
+		}
 	}
 }
 
 func (g *GlobalpingChecker) FetchMeasurement(id string) (*globalpingMeasurement, error) {
-	resp, err := g.Client.Get(g.APIBase + "/measurements/" + id)
+	return g.fetchMeasurement(context.Background(), id)
+}
+
+func (g *GlobalpingChecker) fetchMeasurement(ctx context.Context, id string) (*globalpingMeasurement, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.APIBase+"/measurements/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := g.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("globalping fetch error: %w", err)
 	}
@@ -395,15 +418,24 @@ func buildMetricsSnapshot(samples []promSample, sharedUsers map[string]string) (
 			}
 			connSum += s.value
 			connSeen = true
-		case userOctetsFromMetricName:
+		case userOctetsFromMetricName, userOctetsFromMetricName + "_total":
 			if counted(promUserLabel(s.labels)) {
 				ingressSum += s.value
 				ingressSeen = true
+				// per-user cumulative key для регистратора (24ч-разбивка)
+				if s.labels != "" && userSeries < snapshotMaxUserSeries {
+					snapshot[userIngressMetricName+"{"+s.labels+"}"] = s.value
+					userSeries++
+				}
 			}
-		case userOctetsToMetricName:
+		case userOctetsToMetricName, userOctetsToMetricName + "_total":
 			if counted(promUserLabel(s.labels)) {
 				egressSum += s.value
 				egressSeen = true
+				if s.labels != "" && userSeries < snapshotMaxUserSeries {
+					snapshot[userEgressMetricName+"{"+s.labels+"}"] = s.value
+					userSeries++
+				}
 			}
 		}
 	}
@@ -451,9 +483,18 @@ type HealthReport struct {
 	GlobalpingSuccessRatio  float64            `json:"globalping_success_ratio"`
 	MetricsOK               bool               `json:"metrics_ok"`
 	MetricsSnapshot         map[string]float64 `json:"metrics_snapshot,omitempty"`
-	Healthy                 bool               `json:"healthy"`
-	CheckedAt               time.Time          `json:"checked_at"`
-	Error                   string             `json:"error,omitempty"`
+	// DC2-поля (specs/dc2-health.md): вердикт по ME-пулу DC2 через telemt
+	// Control API. DC2Reason пуст только на здоровом dc2-отчёте; в режиме
+	// совместимости всегда dc2_fallback_metrics.
+	DC2OK     bool           `json:"dc2_ok"`
+	DC2Reason string         `json:"dc2_reason,omitempty"`
+	DC2Diag   map[string]any `json:"dc2_diag,omitempty"`
+	// DCStats — полный снапшот Control API (dc2-режим, только metrics-отчёт).
+	// nil, если API не ответил; в fallback-режиме не заполняется.
+	DCStats   *DCStats  `json:"dc_stats,omitempty"`
+	Healthy   bool      `json:"healthy"`
+	CheckedAt time.Time `json:"checked_at"`
+	Error     string    `json:"error,omitempty"`
 }
 
 // lastMetrics — кэш последнего результата metrics-цикла; globalping-цикл
@@ -495,6 +536,9 @@ func baseReport(nodeID, ip string, telemtCfg *TelemtConfig) HealthReport {
 // RunGlobalpingCheck — медленная внешняя проверка (HEAD/HTTPS с fake-SNI из РФ-проб).
 // Отчёт всегда содержит measurement_id (кроме случая, когда create упал ещё до id).
 func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
+	if cfg == nil {
+		return HealthReport{NodeID: nodeID, IP: ip, Error: "node config unavailable"}
+	}
 	telemtCfg, terr := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	report := baseReport(nodeID, ip, telemtCfg)
 
@@ -514,7 +558,7 @@ func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport 
 		report.Healthy = false
 		return report
 	}
-	if ip == "" {
+	if !isPublicIP(ip) {
 		report.Error = "public IP not yet detected"
 		report.Healthy = false
 		return report
@@ -547,65 +591,254 @@ func RunGlobalpingCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport 
 	return report
 }
 
-// RunMetricsCheck — быстрая локальная проверка telemt /metrics.
+// ── DC2: telemt Control API /v1/stats/dcs ──────────────────────
+
+// Коды причин dc2_reason (specs/dc2-health.md).
+const (
+	dc2ReasonAPIError    = "dc2_api_error"        // HTTP/транспорт или not ok
+	dc2ReasonMEDisabled  = "dc2_me_disabled"      // middle_proxy_enabled == false
+	dc2ReasonStale       = "dc2_stale"            // снимок устарел (или из будущего)
+	dc2ReasonAbsent      = "dc2_absent"           // нет строки dc == 2
+	dc2ReasonNoEndpoints = "dc2_no_endpoints"     // available_endpoints == 0
+	dc2ReasonNoFresh     = "dc2_no_fresh"         // fresh_alive_writers == 0
+	dc2ReasonFallback    = "dc2_fallback_metrics" // api_addr не задан — старый критерий
+)
+
+const (
+	dc2StaleAfter = 300 * time.Second // снапшот старше этого — dc2_stale
+	dc2FutureSkew = 120 * time.Second // дрейф в будущее сверх этого — тоже dc2_stale
+	dc2APITimeout = 5 * time.Second
+	dc2StatsPath  = "/v1/stats/dcs"
+	dc2TargetDC   = 2
+)
+
+// dc2DCStats — строка data.dcs[] ответа Control API (telemt 3.4.25).
+// Только поля из спека; остальное игнорируем.
+type dc2DCStats struct {
+	DC                 int     `json:"dc"`
+	AvailableEndpoints int     `json:"available_endpoints"`
+	AliveWriters       int     `json:"alive_writers"`
+	FreshAliveWriters  int     `json:"fresh_alive_writers"`
+	RTTMs              float64 `json:"rtt_ms"`
+}
+
+type dc2StatsResponse struct {
+	OK   bool `json:"ok"`
+	Data struct {
+		MiddleProxyEnabled   bool         `json:"middle_proxy_enabled"`
+		GeneratedAtEpochSecs int64        `json:"generated_at_epoch_secs"`
+		DCs                  []dc2DCStats `json:"dcs"`
+	} `json:"data"`
+}
+
+// DCStat/DCStats — экспортируемое зеркало снапшота Control API /v1/stats/dcs
+// для регистратора (dc_stats в HealthReport). Вердикт dc2 считается отдельно
+// и этими типами не управляется.
+type DCStat struct {
+	DC                 int     `json:"dc"`
+	AvailableEndpoints int     `json:"available_endpoints"`
+	AliveWriters       int     `json:"alive_writers"`
+	FreshAliveWriters  int     `json:"fresh_alive_writers"`
+	RTTMs              float64 `json:"rtt_ms"`
+}
+
+type DCStats struct {
+	MiddleProxyEnabled   bool     `json:"middle_proxy_enabled"`
+	GeneratedAtEpochSecs int64    `json:"generated_at_epoch_secs"`
+	DCs                  []DCStat `json:"dcs"`
+}
+
+// dc2Verdict — результат оценки снапшота: OK/Reason по критерию из спека,
+// Diag — alive/fresh dc2, rtt dc2, generated_at.
+type dc2Verdict struct {
+	OK     bool
+	Reason string
+	Diag   map[string]any
+}
+
+// dc2Diag — диагностика с тем, что известно о строке dc2 (нули, если её нет).
+func dc2Diag(resp *dc2StatsResponse, row *dc2DCStats) map[string]any {
+	d := map[string]any{
+		"dc2_generated_at": resp.Data.GeneratedAtEpochSecs,
+	}
+	if row != nil {
+		d["dc2_alive"] = row.AliveWriters
+		d["dc2_fresh"] = row.FreshAliveWriters
+		d["dc2_rtt_ms"] = row.RTTMs
+	} else {
+		d["dc2_alive"] = 0
+		d["dc2_fresh"] = 0
+	}
+	return d
+}
+
+// evaluateDC2 — чистая функция критерия MetricsOK (specs/dc2-health.md):
+// ok AND middle_proxy_enabled AND снапшот свежий (now-300s; дрейф >120s в
+// будущее тоже несвежий) AND существует dc==2 AND endpoints>0 AND fresh>0.
+// coverage_pct и alive>=required_writers сознательно не требуются.
+func evaluateDC2(resp *dc2StatsResponse, now time.Time) dc2Verdict {
+	if resp == nil || !resp.OK {
+		return dc2Verdict{Reason: dc2ReasonAPIError}
+	}
+	if !resp.Data.MiddleProxyEnabled {
+		return dc2Verdict{Reason: dc2ReasonMEDisabled, Diag: dc2Diag(resp, nil)}
+	}
+	gen := time.Unix(resp.Data.GeneratedAtEpochSecs, 0)
+	drift := now.Sub(gen)
+	if resp.Data.GeneratedAtEpochSecs <= 0 || drift > dc2StaleAfter || -drift > dc2FutureSkew {
+		return dc2Verdict{Reason: dc2ReasonStale, Diag: dc2Diag(resp, nil)}
+	}
+	var row *dc2DCStats
+	for i := range resp.Data.DCs {
+		if resp.Data.DCs[i].DC == dc2TargetDC {
+			row = &resp.Data.DCs[i]
+			break
+		}
+	}
+	if row == nil {
+		return dc2Verdict{Reason: dc2ReasonAbsent, Diag: dc2Diag(resp, nil)}
+	}
+	diag := dc2Diag(resp, row)
+	switch {
+	case row.AvailableEndpoints <= 0:
+		return dc2Verdict{Reason: dc2ReasonNoEndpoints, Diag: diag}
+	case row.FreshAliveWriters <= 0:
+		return dc2Verdict{Reason: dc2ReasonNoFresh, Diag: diag}
+	}
+	return dc2Verdict{OK: true, Diag: diag}
+}
+
+// fetchDCStats — GET <api_addr>/v1/stats/dcs: вердикт dc2 и полный снапшот
+// всех DC по порядку. API-ошибка (транспорт/статус/парсинг) → пустой снапшот
+// (nil): регистратор не должен видеть control_api, если Control API молчит.
+func fetchDCStats(apiAddr string, client *http.Client, now time.Time) (dc2Verdict, *DCStats) {
+	resp, err := client.Get(strings.TrimRight(apiAddr, "/") + dc2StatsPath)
+	if err != nil {
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
+	}
+	var parsed dc2StatsResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return dc2Verdict{Reason: dc2ReasonAPIError}, nil
+	}
+	stats := &DCStats{
+		MiddleProxyEnabled:   parsed.Data.MiddleProxyEnabled,
+		GeneratedAtEpochSecs: parsed.Data.GeneratedAtEpochSecs,
+		DCs:                  make([]DCStat, 0, len(parsed.Data.DCs)),
+	}
+	for _, d := range parsed.Data.DCs {
+		stats.DCs = append(stats.DCs, DCStat(d))
+	}
+	return evaluateDC2(&parsed, now), stats
+}
+
+// RunMetricsCheck — быстрая локальная проверка health ноды.
 // Отчёт намеренно НЕ содержит measurement_id: регистратор при таком отчёте
 // не трогает ранее верифицированный globalping-статус.
+//
+// Вердикт MetricsOK:
+//   - [telemt] api_addr задан — критерий DC2 по Control API /v1/stats/dcs
+//     (dc2_ok); снапшот /metrics при этом всё равно собирается для панели
+//     и трафика;
+//   - api_addr пуст — режим совместимости dc2_fallback_metrics: прежний
+//     критерий telemt_me_writers_active_current > 0.
 func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 	telemtCfg, terr := loadTelemtConfig(cfg.Telemt.ConfigPath)
 	report := baseReport(nodeID, ip, telemtCfg)
+	dc2Mode := strings.TrimSpace(cfg.Telemt.APIAddr) != ""
 
 	if terr != nil {
 		report.Error = terr.Error()
+		report.MetricsOK, report.DC2OK = false, false
 		report.Healthy = false
 		return report
 	}
 
+	// Снапшот /metrics собирается в ОБА режимах (панель + трафик);
+	// вердикт MetricsOK в dc2-режиме решает Control API, в fallback — метрика.
+	metricsErr := ""
 	url := metricsURLFromTelemt(telemtCfg.Server.MetricsPort, telemtCfg.Server.MetricsListen)
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url)
+	client := &http.Client{Timeout: dc2APITimeout} // тот же клиент и для Control API
+	resp, err := metricsGet(client, cfg, url)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		samples := parsePrometheusSamples(string(body))
+		if isMtddConfigPath(cfg.Telemt.ConfigPath) {
+			samples = translateMtddSamples(samples)
+		}
 		// Клиенты считаются только по общему секрету — в агрегат
 		// входят лишь пользователи из shared-конфига регистратора.
-		snapshot, values := buildMetricsSnapshot(parsePrometheusSamples(string(body)), sharedConfigCache.Get().Users)
+		snapshot, values := buildMetricsSnapshot(samples, sharedConfigCache.Get().Users)
 		report.MetricsSnapshot = snapshot
+
+		// Хостовые метрики (CPU/RAM) не влияют на вердикты — только для панели.
+		if v, ok := hostCPUPercent(); ok {
+			snapshot[hostCPUMetricName] = v
+		}
+		if v, ok := hostRAMPercent(); ok {
+			snapshot[hostRAMMetricName] = v
+		}
 
 		v, ok := values[healthMetricName]
 		if !ok {
-			report.Error = fmt.Sprintf("metrics: metric %s not found in %s output", healthMetricName, url)
-			report.MetricsOK = false
+			// Ключевой метрики нет — почти всегда другая сборка telemt
+			// без телеметрии sharedd (анти-спам: сообщение 1/час).
 			noteTelemtCompatSuspicion(body)
-		} else {
+			if !dc2Mode {
+				metricsErr = fmt.Sprintf("metrics: metric %s not found in %s output", healthMetricName, url)
+			}
+		} else if !dc2Mode {
 			report.MetricsOK = v > 0
 		}
-		cacheMetrics(report.MetricsOK, snapshot)
-		report.Healthy = report.MetricsOK
-		return report
-	}
-	if resp != nil {
-		_ = resp.Body.Close()
+	} else {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if err != nil {
+			metricsErr = "metrics: fetch error: " + err.Error() + " (" + url + ")"
+		} else {
+			metricsErr = fmt.Sprintf("metrics: %s returned status %d", url, resp.StatusCode)
+		}
 	}
 
-	// /metrics недоступен — нода нездорова, без обходных путей:
-	// Telemt REST API не используем (выпилен, "оно не работает").
-	promErr := ""
-	if err != nil {
-		promErr = "metrics: fetch error: " + err.Error() + " (" + url + ")"
+	if dc2Mode {
+		// specs/dc2-health.md: dc2_ok == MetricsOK. Сбой /metrics вердикту
+		// не мешает (Control API и /metrics — один процесс telemt), а
+		// непустой Error триггерил бы dead-килл ворчдога на живом прокси.
+		verdict, stats := fetchDCStats(cfg.Telemt.APIAddr, client, time.Now())
+		report.DCStats = stats
+		report.DC2OK = verdict.OK
+		report.DC2Diag = verdict.Diag
+		report.MetricsOK = verdict.OK
+		if verdict.OK {
+			report.DC2Reason = ""
+		} else {
+			report.DC2Reason = verdict.Reason
+			report.Error = "dc2: " + verdict.Reason
+		}
 	} else {
-		promErr = fmt.Sprintf("metrics: %s returned status %d", url, resp.StatusCode)
+		// Режим совместимости: прежний критерий, прежние ошибки /metrics.
+		if metricsErr != "" {
+			report.Error = metricsErr
+			report.MetricsOK = false
+		}
+		report.DC2OK = report.MetricsOK
+		report.DC2Reason = dc2ReasonFallback
 	}
-	report.Error = promErr
-	report.MetricsOK = false
-	cacheMetrics(false, nil)
+
+	cacheMetrics(report.MetricsOK, report.MetricsSnapshot)
+	report.Healthy = report.MetricsOK
 	return report
 }
 
 // TerminatedError — регистратор ответил kill-сигналом
 // (403 {"terminate":true,...}): обязана записать Message в лог дословно и
-// уйти в режим ожидания восстановления (terminate.go): ip_ban — ждём смены
-// IP, dead — ждём локального оздоровления, затем перезапуск и повторная
-// регистрация.
+// запланировать recovery без ожидания смены IP или рестарта процесса.
 type TerminatedError struct {
 	Reason  string
 	Message string
@@ -631,7 +864,11 @@ func parseTerminateBody(body []byte) (*TerminatedError, bool) {
 
 func SendReport(cfg *config.NodeConfig, report HealthReport) error {
 	data, _ := json.Marshal(report)
-	client := &http.Client{Timeout: 10 * time.Second}
+	timeout := 10 * time.Second
+	if report.GlobalpingMeasurementID != "" {
+		timeout = 85 * time.Second // allow bounded registry GET verification, below its 90s write timeout
+	}
+	client := &http.Client{Timeout: timeout}
 	resp, err := registryRequest(client, cfg, http.MethodPost, "/report", bytes.NewReader(data))
 	if err != nil {
 		netw.noteFail() // сетевой вотчдог: сброс keep-alive / детект смены IP
@@ -640,6 +877,9 @@ func SendReport(cfg *config.NodeConfig, report HealthReport) error {
 	netw.noteOK()
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+			return &TerminatedError{Reason: "pruned", Message: "candidate missing; recovery registration required"}
+		}
 		body, _ := io.ReadAll(resp.Body)
 		if te, ok := parseTerminateBody(body); ok {
 			return te

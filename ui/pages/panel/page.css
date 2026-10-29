@@ -6,9 +6,12 @@
 @import "../../components/table.css";
 @import "../../components/badge.css";
 @import "../../components/form.css";
+@import "../../components/vars.css";
 @import "../../components/feed.css";
 @import "../../components/topology.css";
 @import "../../components/misc.css";
+@import "../../components/nodecard.css";
+@import "../../components/modal.css";
 
 /* ═══ Панель ══════════════════════════════════════════════════════════ */
 .view-title { margin: 4px 2px 14px; }
@@ -255,78 +258,6 @@ tbody tr.clickable:hover td:last-child::after {
   #cards:empty, #pool-stats:empty, #topology:empty, #masters-full:empty { animation: none; }
 }
 
-/* ═══ Карточка-строка ноды ═════════════════════════════════════════════
-   Таблица на двенадцать колонок не помещалась в экран и читалась как
-   простыня. Здесь каждая нода — объект: сверху кто и какая роль, снизу
-   адрес, тип и три проверки, справа клиенты и доступность. Редкое
-   (мастерство, heartbeat, отчёты) раскрывается по клику. */
-.node-list { display: block; }
-.node-group {
-  display: flex; align-items: baseline; gap: 10px;
-  padding: 12px var(--pad) 8px; background: var(--surf-2);
-  border-bottom: 1px solid var(--line-2);
-  font-size: 10.5px; font-weight: 640; letter-spacing: .09em; text-transform: uppercase;
-  color: var(--fg-2);
-}
-.node-group .dim { letter-spacing: .02em; text-transform: none; font-weight: 500; }
-
-.node-card {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center; gap: 6px 18px;
-  padding: 12px var(--pad); border-bottom: 1px solid var(--line-2);
-  cursor: pointer; transition: background .12s ease;
-}
-.node-card:last-child { border-bottom: 0; }
-.node-card:hover { background: var(--surf-2); }
-.node-card.master {
-  background: color-mix(in srgb, var(--gold) 7%, transparent);
-  box-shadow: inset 3px 0 0 var(--gold);
-}
-.node-card.master:hover { background: color-mix(in srgb, var(--gold) 12%, transparent); }
-@supports not (background: color-mix(in srgb, red 50%, blue)) {
-  .node-card.master { background: var(--gold-soft); }
-}
-
-.node-main { min-width: 0; }
-.node-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.node-id { font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
-.node-sub {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-top: 5px; font-size: 11.5px; color: var(--fg-3);
-}
-.node-problem {
-  color: var(--bad); max-width: 320px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.node-side { display: flex; align-items: center; gap: 20px; flex: none; }
-.node-clients { text-align: right; }
-.node-clients-v { display: block; font-size: 15px; font-weight: 640; letter-spacing: -.02em; }
-.node-clients-l { font-size: 10.5px; color: var(--fg-3); }
-.node-meter { min-width: 140px; }
-
-/* раскрытие */
-.node-more {
-  grid-column: 1 / -1; display: none;
-  gap: 10px 26px; flex-wrap: wrap; align-items: center;
-  margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--line);
-}
-.node-card.open .node-more { display: flex; }
-.node-more .kv-v.late { color: var(--bad); }
-.node-more .node-open { margin-left: auto; }
-
-.node-card.quar { cursor: pointer; }
-.node-card.quar .node-sub { gap: 12px; }
-
-@media (max-width: 720px) {
-  .node-card { grid-template-columns: minmax(0, 1fr); }
-  .node-side { justify-content: space-between; gap: 12px; margin-top: 8px; }
-  .node-meter { min-width: 0; flex: 1; }
-  .node-problem { max-width: 100%; white-space: normal; }
-  .node-group, .node-card { padding-left: 12px; padding-right: 12px; }
-  .node-more .node-open { margin-left: 0; width: 100%; }
-}
-
 /* ═══ СРМД: вместимость и домены ═══════════════════════════════════════
    Из таблицы не читалось, ПОЧЕМУ система решает создать или свернуть
    домен. Полоса показывает главное соотношение: сколько нод в очереди
@@ -374,3 +305,33 @@ tbody tr.clickable:hover td:last-child::after {
   .srmd-ctl .btn { width: 100%; }
   .cap-nums { margin-left: 0; width: 100%; }
 }
+
+/* ═══ Пользователи ═════════════════════════════════════════════════════
+   Раскладка строки: набор кнопок-действий и мини-метр квоты. */
+.u-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.u-quota { display: inline-flex; align-items: center; gap: 8px; }
+.u-quota .meter { min-width: 70px; }
+.q-edit { display: inline-flex; align-items: center; gap: 6px; }
+.q-edit .q-in { width: 76px; }
+@media (max-width: 720px) { .u-acts .btn { width: 100%; } }
+
+/* ── топология: все мастера домена чипами ───────────────────────────────
+   Карточка домена растёт под несколько слотов. Чипы — существующие
+   .chips .chip; новых цветов/радиусов нет (DESIGN.md §5.2). */
+.topo-item.has-masters { height: auto; min-height: 62px; align-items: flex-start; padding-top: 10px; padding-bottom: 10px; }
+.topo-masters { margin-top: 6px; }
+.topo-masters .chip { font-size: 11px; gap: 5px; padding: 2px 8px; }
+
+/* ═══ Приглашения · Совместимость агентов (invitations-legacy-ui.md) ═══
+   Только раскладка: классы, цвета и контролы — существующие. */
+.legacy-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Доступная область цели чекбокса ≥ 24×24 (spec §6) */
+.legacy-check { min-height: 24px; }
+/* Важные предупреждения секций — --fg, не малоконтрастный (spec §2/§6) */
+#legacy-err, #legacy-warn { color: var(--fg); }
+
+/* Глобальная гарантия [hidden]: классы .banner/.btn/.legacy-row задают
+   display и перебивают UA-правило (см. signin/page.css:29). Это правило
+   специфичностью (0,1,0) и порядком после @import перекрывает их, поэтому
+   «скрытое» действительно скрыто (H-INV2). */
+[hidden] { display: none; }

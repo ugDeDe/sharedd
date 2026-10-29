@@ -3,6 +3,28 @@
 Все заметные изменения проекта. Формат — Keep a Changelog; версии
 соответствуют тегам релизов.
 
+## [Unreleased]
+
+### Changed
+
+- **CI/CD без ручных тегов**: push в `main` сам считает следующую версию
+  (`scripts/next_version.sh`: `feat` → minor, `type!:`/BREAKING CHANGE →
+  major, иначе patch), ставит тег `vX.Y.Z` и публикует релиз (он же
+  `releases/latest`). Push в `dev` обновляет prerelease `dev` с версией
+  `X.Y.Z-dev.<sha7>`. Ручной тег по-прежнему даёт релиз.
+- **Веб-установщик ноды**: интерактивный выбор канала `main`/`dev`
+  (`--channel=main|dev`; `stable` оставлен как синоним `main`).
+
+### Added
+
+- **Поддержка mtdd** (https://github.com/ugDeDe/mtdd) как типа ноды `mtdd`:
+  агент читает порт и `/metrics` из `/etc/mtdd/config.json`, ходит в API с
+  Bearer-токеном из `credentials.env`, переводит `mtdd_*` метрики в ключи
+  регистратора (здоровье — сумма `mtdd_me_pool_ready`), синхронизирует
+  пользователей через `/v1/users` и меняет `tls_domain` с рестартом
+  `mtdd.service` и откатом. Установщики: `--preset mtdd` и автодетект.
+  Runtime-смена `ad_tag` для mtdd пока не поддерживается.
+
 ## [1.0.3] - 2026-10-05
 
 ### Added

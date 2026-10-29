@@ -1,288 +1,152 @@
 package agent
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
+	"sharedd/node/internal/config"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"sharedd/node/internal/config"
 )
 
-// Завершение ноды и самостоятельное возвращение в строй: разбор kill-ответа
-// регистратора, retire-уведомление при локальном dead, режимы ожидания
-// (смена IP после ip_ban, локальное оздоровление после dead).
-
-// stubExitProcess — подмена «завершения процесса»: код exit пишется в канал.
-// Вызывать ОДИН раз на тест до wait-стабов (последняя подмена выигрывает).
-func stubExitProcess(t *testing.T) chan int {
+func isolateRecovery(t *testing.T) {
 	t.Helper()
-	exited := make(chan int, 4)
-	old := exitProcess
-	exitProcess = func(code int) { exited <- code }
-	t.Cleanup(func() { exitProcess = old })
-	return exited
-}
-
-// stubIPBanWait — подмена ожидания смены IP после ip_ban: «смена» происходит
-// мгновенно (возвращается newIP). Возвращает канал: waited — с каким
-// забаненным IP вошли в ожидание.
-func stubIPBanWait(t *testing.T, newIP string) chan string {
-	t.Helper()
-	waited := make(chan string, 4)
-
-	oldWait := awaitIPChangeFn
-	awaitIPChangeFn = func(banned string, _ *ipResolver) string {
-		waited <- banned
-		return newIP
-	}
-	oldOnce := ipBanOnce
-	ipBanOnce = new(sync.Once)
-	t.Cleanup(func() {
-		awaitIPChangeFn = oldWait
-		ipBanOnce = oldOnce
-	})
-	return waited
-}
-
-// stubDeadWait — подмена ожидания локального восстановления после dead:
-// «оздоровление» происходит мгновенно. Канал: entered — факт входа в ожидание.
-func stubDeadWait(t *testing.T) chan struct{} {
-	t.Helper()
-	entered := make(chan struct{}, 4)
-
-	oldWait := awaitLocalRecoveryFn
-	awaitLocalRecoveryFn = func(_ *config.NodeConfig) { entered <- struct{}{} }
-	oldOnce := deadOnce
-	deadOnce = new(sync.Once)
-	t.Cleanup(func() {
-		awaitLocalRecoveryFn = oldWait
-		deadOnce = oldOnce
-	})
-	return entered
+	old := recovery
+	oldGate := gate
+	recovery = &recoveryState{}
+	gate = &netGate{}
+	t.Cleanup(func() { recovery = old; gate = oldGate; drainGpKick() })
 }
 
 func TestParseTerminateBody(t *testing.T) {
-	te, ok := parseTerminateBody([]byte(`{"terminate":true,"reason":"ip_ban","message":"Бан по ip"}`))
-	if !ok || te.Reason != "ip_ban" || te.Message == "" {
-		t.Fatalf("valid terminate body rejected: %+v, ok=%v", te, ok)
+	te, ok := parseTerminateBody([]byte(`{"terminate":true,"reason":"ip_ban","message":"blocked"}`))
+	if !ok || te.Reason != reasonIPBan {
+		t.Fatal("valid terminate rejected")
 	}
-	for _, bad := range []string{
-		`{"terminate":false,"reason":"dead"}`,
-		`{"terminate":true}`,
-		`not json at all`,
-		`{}`,
-	} {
-		if _, ok := parseTerminateBody([]byte(bad)); ok {
-			t.Fatalf("non-terminate body parsed as terminate: %s", bad)
+	for _, body := range []string{`{"terminate":false,"reason":"dead"}`, `{"terminate":true}`, `not json`, `{}`} {
+		if _, ok := parseTerminateBody([]byte(body)); ok {
+			t.Fatalf("accepted %s", body)
 		}
 	}
 }
 
-// Локальный dead-килл: до ухода в ожидание агент успевает сообщить /retire;
-// после «восстановления» — самоперезапуск exit(1), служба не останавливается.
-func TestSelfTerminateNotifiesRetire(t *testing.T) {
-	nodeID = "node-testdead01"
-	exited := stubExitProcess(t)
-	entered := stubDeadWait(t)
-
-	type retireBody struct {
-		NodeID string `json:"node_id"`
-		IP     string `json:"ip"`
-		Reason string `json:"reason"`
-	}
-	got := make(chan retireBody, 1)
+// Replaces awaitIPChange: the SAME address must recover without a supervisor
+// exit, on every episode rather than only sync.Once's first.
+func TestSameIPRecoveryRepeatedCycles(t *testing.T) {
+	isolateRecovery(t)
+	isolateSecret(t)
+	nodeSecret = "personal-or-pending"
+	nodeID = "same-abc12"
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/retire" {
-			w.WriteHeader(http.StatusNotFound)
-			return
+		if r.Header.Get("Authorization") != "Bearer personal-or-pending" {
+			t.Error("lost personal bearer")
 		}
-		data, _ := io.ReadAll(r.Body)
-		var b retireBody
-		if err := json.Unmarshal(data, &b); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		got <- b
+		calls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
-	t.Cleanup(srv.Close)
-
+	defer srv.Close()
 	cfg := &config.NodeConfig{}
 	cfg.Registry.URL = srv.URL
-	selfTerminate(cfg, reasonDead, msgDead, "5.6.7.8")
-
-	select {
-	case code := <-exited:
-		if code != 1 {
-			t.Fatalf("after recovery want exit(1) for Restart=always, got %d", code)
+	for i := 0; i < 10; i++ {
+		selfTerminate(cfg, reasonIPBan, "", "8.8.8.8")
+		if !recovery.needed() {
+			t.Fatal("recovery not armed")
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("recovered dead must restart the agent, not stop the service")
-	}
-	select {
-	case b := <-got:
-		if b.NodeID != nodeID || b.IP != "5.6.7.8" || b.Reason != reasonDead {
-			t.Fatalf("/retire payload mismatch: %+v", b)
+		if ok, _ := tryRegistration(srv.Client(), cfg, "8.8.8.8", true); !ok {
+			t.Fatal("same IP recovery failed")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("/retire must be posted before entering the recovery wait")
+		if recovery.needed() {
+			t.Fatal("recovery not cleared")
+		}
+		if len(gpKick) != 0 {
+			t.Fatal("recovery registration kicked GP: storm")
+		}
 	}
-	select {
-	case <-entered:
-	default:
-		t.Fatal("dead must enter the local-recovery wait")
+	if calls.Load() != 10 {
+		t.Fatalf("requests=%d", calls.Load())
 	}
 }
 
-// Рантайм ip_ban (kill-сигнал 403 посреди работы): служба НЕ останавливается,
-// агент ждёт смену IP и после неё рестартует себя.
-func TestSelfTerminateIPBanWaitsForIPChange(t *testing.T) {
-	exited := stubExitProcess(t)
-	waited := stubIPBanWait(t, "9.9.9.9")
-
-	selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
-
-	select {
-	case banned := <-waited:
-		if banned != "5.6.7.8" {
-			t.Fatalf("waiting for the wrong IP: %q", banned)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("runtime ip_ban must enter the await-IP-change mode")
+// Replaces dead's blocking local wait: concurrent signals return even while
+// the registry is unavailable, coalescing into one repeatable recovery episode.
+func TestTerminateNonblockingConcurrent(t *testing.T) {
+	isolateRecovery(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); selfTerminate(nil, reasonDead, "", "8.8.8.8") }()
 	}
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
 	select {
-	case code := <-exited:
-		if code != 1 {
-			t.Fatalf("want exit(1) for systemd Restart=always, got %d", code)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("agent must restart itself after the IP change")
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("terminate blocked")
+	}
+	if recovery.epoch != 1 || !recovery.needed() {
+		t.Fatal("terminate signals not coalesced")
 	}
 }
 
-// dead не терминален: никакого останова службы и никакого ожидания смены IP —
-// только ожидание локального оздоровления.
-func TestSelfTerminateDeadWaitsForRecovery(t *testing.T) {
-	exited := stubExitProcess(t)
-	entered := stubDeadWait(t)
-	ipWaited := stubIPBanWait(t, "9.9.9.9")
-
-	selfTerminate(nil, reasonDead, msgDead, "5.6.7.8")
-
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("dead must enter the local-recovery wait")
-	}
-	select {
-	case <-ipWaited:
-		t.Fatal("dead must not wait for an IP change")
-	default:
-	}
-	select {
-	case code := <-exited:
-		if code != 1 {
-			t.Fatalf("after recovery want exit(1), got %d", code)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("after recovery the agent must restart itself")
-	}
-}
-
-// awaitIPChange (настоящий, без стаба): пока echo-сервис отдаёт забаненный
-// адрес — ждём; отдал новый — вернулись с ним.
-func TestAwaitIPChangeReturnsOnNewIP(t *testing.T) {
-	var mu sync.Mutex
-	current := "5.6.7.8"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		_, _ = w.Write([]byte(current))
+func TestRegistrationRetryGate(t *testing.T) {
+	isolateRecovery(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Retry-After", "900")
+		w.WriteHeader(http.StatusTooManyRequests)
 	}))
-	t.Cleanup(srv.Close)
-	oldSvc := ipEchoServices
-	ipEchoServices = []string{srv.URL}
-	t.Cleanup(func() { ipEchoServices = oldSvc })
-
-	oldPoll := ipBanPollInterval
-	ipBanPollInterval = 30 * time.Millisecond
-	t.Cleanup(func() { ipBanPollInterval = oldPoll })
-
-	got := make(chan string, 1)
-	go func() { got <- awaitIPChange("5.6.7.8", newIPResolver()) }()
-
-	select {
-	case ip := <-got:
-		t.Fatalf("returned while the IP is still banned: %q", ip)
-	case <-time.After(150 * time.Millisecond):
+	defer srv.Close()
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
+	for i := 0; i < 10; i++ {
+		tryRegistration(srv.Client(), cfg, "8.8.8.8", true)
 	}
+	if calls.Load() != 1 {
+		t.Fatalf("cooldown bypassed: %d", calls.Load())
+	}
+	if time.Until(recovery.next) < 899*time.Second {
+		t.Fatal("Retry-After lost")
+	}
+}
 
-	mu.Lock()
-	current = "9.10.11.12"
-	mu.Unlock()
+func TestRecovery401PreservesSecret(t *testing.T) {
+	isolateRecovery(t)
+	isolateSecret(t)
+	nodeSecret = "pending"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
+	defer srv.Close()
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
+	tryRegistration(srv.Client(), cfg, "8.8.8.8", true)
+	if nodeSecret != "pending" {
+		t.Fatal("health recovery erased credentials")
+	}
+}
 
-	select {
-	case ip := <-got:
-		if ip != "9.10.11.12" {
-			t.Fatalf("wrong new IP: %q", ip)
+func TestSelfTerminateNotifiesRetire(t *testing.T) {
+	isolateRecovery(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/retire" {
+			t.Errorf("unexpected path %s", r.URL.Path)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("awaitIPChange must return once the public IP differs from the banned one")
-	}
-}
-
-// Параллельные 403 из нескольких циклов (heartbeat + globalping + metrics
-// могут словить kill одновременно) → ожидание входит ровно один раз
-// (ip_ban).
-func TestIPBanRecoverSingleFlight(t *testing.T) {
-	exited := stubExitProcess(t)
-	waited := stubIPBanWait(t, "9.9.9.9")
-
-	var wg sync.WaitGroup
+		calls.Add(1)
+	}))
+	defer srv.Close()
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
 	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			selfTerminate(nil, reasonIPBan, msgIPBan, "5.6.7.8")
-		}()
+		selfTerminate(cfg, reasonDead, "", "8.8.8.8")
 	}
-	select {
-	case <-waited:
-	case <-time.After(3 * time.Second):
-		t.Fatal("no await entered")
+	if calls.Load() != 0 {
+		t.Fatal("terminate performed blocking I/O")
 	}
-	<-exited
-	wg.Wait()
-	if len(waited) != 0 {
-		t.Fatalf("await-IP-change entered %d extra times — must be single-flight", len(waited))
-	}
-}
-
-// То же для dead: параллельные dead-верdictы входят в ожидание один раз.
-func TestDeadRecoverSingleFlight(t *testing.T) {
-	exited := stubExitProcess(t)
-	entered := stubDeadWait(t)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			selfTerminate(nil, reasonDead, msgDead, "5.6.7.8")
-		}()
-	}
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("no recovery wait entered")
-	}
-	<-exited
-	wg.Wait()
-	if len(entered) != 0 {
-		t.Fatalf("recovery wait entered %d extra times — must be single-flight", len(entered))
+	sendPendingRetire(cfg)
+	sendPendingRetire(cfg)
+	if calls.Load() != 1 {
+		t.Fatalf("retire requests=%d", calls.Load())
 	}
 }

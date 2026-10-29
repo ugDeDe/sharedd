@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="${BINARY_URL:-https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-node-agent}"
+BINARY_URL="${BINARY_URL:-}"
+# Канал сборки: main (stable, releases/latest) или dev (moving tag dev).
+# Пусто — спросим в интерактиве, без вопросов берём main.
+CHANNEL="${CHANNEL:-}"
 REGISTRY_URL_DEFAULT="https://registrar.ddproxy.xyz"
 
 set -euo pipefail
@@ -23,6 +26,7 @@ BIN_DEST="${SHAREDD_BIN_DEST:-/usr/local/bin/sharedd-node-agent}"               
 
 # ветки telemt: ваниль vs MTProxyL (как в install_node.sh)
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
+TELEMT_MTDD="/etc/mtdd/config.json"   # mtdd: JSON-конфиг, юнит mtdd.service
 MTPROXYL_DIR="/opt/mtproxyl"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
 detect_mtproxyl_config() {
@@ -46,7 +50,8 @@ MTPROXYL_MODE=0
 #                    с именем node (node-xxxxx)
 #   --registry-token=TOKEN  обязательный Node API token регистратора
 #   --binary-url=URL        ссылка на скачивание бинарника агента
-# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL.
+#   --channel=main|dev      канал сборки (по умолчанию main = stable-релиз; dev — ветка dev)
+# То же можно задать переменными окружения REGISTRY_URL / REGISTRY_TOKEN / NODE_NAME / BINARY_URL / CHANNEL.
 # Пример автоматизации:
 #   curl -fsSL .../install_node_web.sh | sudo bash -s -- --registry=https://reg.example.com --registry-token=TOKEN --name=ddproxy
 NODE_NAME="${NODE_NAME:-}"
@@ -54,15 +59,17 @@ REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 NONINTERACTIVE=0
 usage() {
     cat <<USAGE
-Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--binary-url=URL]
+Использование: sudo bash $0 [--registry=URL] [--registry-token=TOKEN] [--name=ИМЯ] [--channel=main|dev] [--binary-url=URL]
 
   --registry=URL   URL регистратора (без вопросов с клавиатуры — режим автоматизации)
   --registry-token=TOKEN  Node API token из панели регистратора
   --name=ИМЯ       имя ноды длиной 1..10; итоговый id: ИМЯ-xxxxx, напр. helsinki-6an4o
-  --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent
+  --channel=main|dev      канал сборки: main (последний релиз, он же stable) или dev (ветка dev);
+                          без флага в интерактиве спросим
+  --binary-url=URL ссылка на скачивание бинарника sharedd-node-agent (перекрывает канал)
   -h, --help       эта справка
 
-Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME, BINARY_URL (флаги имеют приоритет).
+Переменные окружения: REGISTRY_URL, REGISTRY_TOKEN, NODE_NAME, CHANNEL, BINARY_URL (флаги имеют приоритет).
 Через пайп: curl -fsSL ...install_node_web.sh | sudo bash -s -- --registry=URL --registry-token=TOKEN --name=ИМЯ
 USAGE
 }
@@ -80,14 +87,21 @@ while [ $# -gt 0 ]; do
         --binary-url=*) BINARY_URL="${1#*=}" ;;
         --binary-url) shift; [ $# -gt 0 ] || die "--binary-url требует URL"
                       BINARY_URL="$1" ;;
+        --channel=*)  CHANNEL="${1#*=}" ;;
+        --channel)    shift; [ $# -gt 0 ] || die "--channel требует main|dev"
+                      CHANNEL="$1" ;;
         -h|--help)    usage; exit 0 ;;
         *)            die "неизвестный параметр: $1 (справка: --help)" ;;
     esac
     shift
 done
+
 if [ -n "$NODE_NAME" ]; then
-    printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
-        || die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    # Короткое имя ИЛИ предсозданный полный node_id (NAME-HASH от регистратора).
+    if ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?$' \
+        && ! printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        die "недопустимое имя '$NODE_NAME' — 1..10 символов: латиница/цифры/._- (без ._- по краям)"
+    fi
 fi
 
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash $0"
@@ -101,6 +115,19 @@ hline; echo ""
 # curl|bash: stdin — пайп, поэтому интерактивность ловим по любому потоку,
 # а ответы читаем с /dev/tty — вопросы работают и в пайпе.
 TTY=0; { [ -t 0 ] || [ -t 1 ] || [ -t 2 ]; } && TTY=1
+
+# ── канал сборки: main (stable) или dev ──────────────────────────────────
+if [ -z "$CHANNEL" ] && [ -z "$BINARY_URL" ] && [ "$TTY" -eq 1 ] && [ "$NONINTERACTIVE" -eq 0 ]; then
+    echo -e "  ${DIM}Каналы: main — основной (последний релиз), dev — тестовый (ветка dev)${NC}"
+    read -r -p "  → Канал сборки (main/dev) [main]: " CHANNEL </dev/tty || true
+fi
+case "${CHANNEL:-main}" in
+    main|stable) CHANNEL=main; BIN_BASE="https://github.com/ugDeDe/sharedd/releases/latest/download" ;;
+    dev)         CHANNEL=dev;  BIN_BASE="https://github.com/ugDeDe/sharedd/releases/download/dev" ;;
+    *)           die "неизвестный канал: $CHANNEL (main|dev)" ;;
+esac
+[ -n "$BINARY_URL" ] || BINARY_URL="$BIN_BASE/sharedd-node-agent"
+ok "канал сборки: ${BOLD}${CHANNEL}${NC}"
 
 # ── регистратор ──────────────────────────────────────────────────────────
 REGISTRY_URL="${REGISTRY_URL:-}"
@@ -211,14 +238,19 @@ if [ -n "$NODE_NAME" ]; then
     ID_STATE_FILE="$STATE_DIR/node_id"
     OLD_ID=""
     [ ! -s "$ID_STATE_FILE" ] || OLD_ID="$(tr -d '[:space:]' <"$ID_STATE_FILE")"
-    old_suffix="${OLD_ID##*-}"
-    if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
-        NODE_ID="$OLD_ID"
+    # Предсозданный регистратором полный node_id (NAME-HASH) — как есть.
+    if printf '%s' "$NODE_NAME" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9._-]{0,8}[A-Za-z0-9])?-[a-z0-9]{5}$'; then
+        NODE_ID="$NODE_NAME"
     else
-        sfx="$(gen_suffix)"
-        [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
-        [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
-        NODE_ID="${NODE_NAME}-${sfx}"
+        old_suffix="${OLD_ID##*-}"
+        if [ "${OLD_ID%-*}" = "$NODE_NAME" ] && printf '%s' "$old_suffix" | grep -qE '^[a-z0-9]{5}$'; then
+            NODE_ID="$OLD_ID"
+        else
+            sfx="$(gen_suffix)"
+            [ "${#sfx}" -eq 5 ] || sfx="$(printf '%s%s' "$(date +%s%N)" "$$" | md5sum | tr -dc 'a-z0-9' | head -c 5 || true)"
+            [ "${#sfx}" -eq 5 ] || die "не удалось сгенерировать суффикс имени"
+            NODE_ID="${NODE_NAME}-${sfx}"
+        fi
     fi
 fi
 
@@ -321,6 +353,12 @@ apply_mtproxyl_from_registry() {
 }
 
 TELEMT_CONFIG="${TELEMT_CONFIG:-}"   # пустая = автоопределение
+# mtdd — только если других менеджеров на хосте нет (иначе выбор неоднозначен:
+# указывайте --preset mtdd / --telemt-config явно)
+if [ -z "$TELEMT_CONFIG" ] && [ -f "$TELEMT_MTDD" ] && [ ! -f "$TELEMT_CLASSIC" ] \
+    && [ ! -f "$TELEMT_MTPROXYL" ] && [ ! -d "$MTPROXYL_DIR" ] && ! mtproxyl_cli; then
+    TELEMT_CONFIG="$TELEMT_MTDD"
+fi
 if [ -z "$TELEMT_CONFIG" ]; then
     have_classic=0; have_mtproxyl=0
     [ -f "$TELEMT_CLASSIC" ] && have_classic=1
@@ -354,7 +392,7 @@ if [ -z "$TELEMT_CONFIG" ]; then
     fi
 fi
 if [ "$TELEMT_CONFIG" = "$TELEMT_MTPROXYL" ] || [ -d "$MTPROXYL_DIR" ] || mtproxyl_cli; then
-    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ]; then
+    if [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ] && [ "$TELEMT_CONFIG" != "$TELEMT_MTDD" ]; then
         MTPROXYL_MODE=1
         disable_superexpert_if_active
         TELEMT_CONFIG="$(detect_mtproxyl_config)"
@@ -407,7 +445,7 @@ fi
 cat > "$UNIT_DEST" <<UNIT
 [Unit]
 Description=sharedd — агент HA-ноды (MTProto proxy pool)
-After=network-online.target telemt.service
+After=network-online.target telemt.service mtdd.service
 Wants=network-online.target
 
 [Service]
@@ -451,7 +489,7 @@ systemctl enable sharedd-node-agent.service >>"$INSTALL_LOG" 2>&1
 # telemt.service; list-units его не видит, если юнит ещё не загружен):
 detect_proxy_unit() {
     local unit d luf
-    for unit in telemt.service mtproxy.service mtproxyl-telemt.service; do
+    for unit in telemt.service mtproxy.service mtproxyl-telemt.service mtdd.service; do
         # 1) юнит известен менеджеру (cat читает и незагруженные юнит-файлы)
         if systemctl cat "$unit" >/dev/null 2>&1; then
             printf '%s' "$unit"; return 0
@@ -502,6 +540,8 @@ fi
 PROXY_UNIT=""
 if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     [ "$MTPROXYL_MODE" -eq 0 ] && PROXY_UNIT="$(detect_proxy_unit || true)"
+    # на mtdd-ноде юнит известен точно (рядом может лежать чужой telemt.service)
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then PROXY_UNIT="mtdd.service"; fi
     [ -n "$PROXY_UNIT" ] && say "юнит прокси: ${BOLD}${PROXY_UNIT}${NC}"
 
     if ! grep -aq 'APPLY-ONCE:' "$BIN_DEST" 2>/dev/null; then
@@ -567,13 +607,21 @@ if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     elif [ -n "$mp" ]; then
         METRICS_URL="http://127.0.0.1:${mp}/metrics"
     fi
+    # mtdd: /metrics под Bearer-токеном, порт — control_port из JSON-конфига
+    METRICS_AUTH=()
+    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then
+        mdp=$(grep -oE '"control_port"[[:space:]]*:[[:space:]]*[0-9]+' "$TELEMT_CONFIG" 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
+        METRICS_URL="http://127.0.0.1:${mdp:-9090}/metrics"
+        mtok=$(sed -n 's/^\(export \)\{0,1\}MTDD_API_TOKEN=//p' /etc/mtdd/credentials.env 2>/dev/null | head -n1 || true)
+        [ -n "$mtok" ] && METRICS_AUTH=("Authorization: Bearer $mtok")
+    fi
     say "финальная проверка: жду ответа метрик прокси (${METRICS_URL}, до 120 с)..."
     UP=0
     for _ in $(seq 1 120); do
         if command -v curl &>/dev/null; then
-            curl -fsS --max-time 3 "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
+            curl -fsS --max-time 3 ${METRICS_AUTH[@]+-H "${METRICS_AUTH[0]}"} "$METRICS_URL" >/dev/null 2>&1 && { UP=1; break; }
         else
-            wget -q -T 3 -O /dev/null "$METRICS_URL" 2>/dev/null && { UP=1; break; }
+            wget -q -T 3 -O /dev/null ${METRICS_AUTH[@]+--header="${METRICS_AUTH[0]}"} "$METRICS_URL" 2>/dev/null && { UP=1; break; }
         fi
         sleep 1
     done

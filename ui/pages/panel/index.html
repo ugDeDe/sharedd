@@ -30,6 +30,7 @@
         <a href="#/dns" data-view="dns">Мастера и DNS</a>
         <a href="#/srmd" data-view="srmd" title="Система распределения и масштабирования доменов">СРМД</a>
         <a href="#/events" data-view="events">Журнал</a>
+        <a href="#/users" data-view="users">Пользователи</a>
         <a href="#/settings" data-view="settings">Настройки</a>
       </nav></div>
       <div class="topbar-right">
@@ -127,6 +128,7 @@
         </div>
         <div id="masters-full"></div>
       </section>
+      <div id="dns-sync"></div>
     </section>
 
     <!-- ═══ СРМД ════════════════════════════════════════════════════ -->
@@ -186,6 +188,96 @@
       </section>
     </section>
 
+    <!-- ═══ Пользователи ════════════════════════════════════════════ -->
+    <section class="view" id="view-users" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Пользователи</h2>
+          <span class="hint" style="margin-left:0">квота, ключи, освобождение мест</span>
+          <button class="btn primary" style="margin-left:auto" id="users-create">Создать пользователя</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Логин</th><th>Роль</th><th>Квота</th><th>Занято</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="users-body"><tr><td colspan="6"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-note">Нельзя заблокировать последнего активного администратора. Уменьшение квоты не удаляет существующие ноды, но блокирует новые сверх лимита. «Освободить место» нужно, когда нода удалена физически.</div>
+      </section>
+
+      <!-- ═══ Дефолтная квота (plan-ui-batch.md §1.3) ═══════════════ -->
+      <section class="card" id="quota-card">
+        <div class="card-head">
+          <h2>Квота по умолчанию</h2>
+          <span class="hint" style="margin-left:0">выдаётся новому пользователю без явной квоты</span>
+        </div>
+        <div class="card-body cfg-body">
+          <div class="field">
+            <label for="udq-max">Дефолтная квота</label>
+            <input type="number" id="udq-max" min="0" max="1000000">
+            <span class="help">Целое 0..1000000. 0 = прежнее поведение (новый пользователь без квоты). Применяется к регистрациям по приглашению и к созданию из панели без явного значения.</span>
+          </div>
+          <div class="banner bad" id="udq-err" role="alert" hidden style="margin:0"></div>
+        </div>
+        <div class="card-foot"><button class="btn primary" id="udq-save">Сохранить квоту</button></div>
+        <div class="card-note">Значение хранится в конфигурации регистратора (<span class="mono">[users] default_max_nodes</span>) и применяется на лету. Уже созданных пользователей не затрагивает.</div>
+      </section>
+
+      <!-- ═══ Приглашения (invitations-legacy-ui.md §3) ═════════════ -->
+      <section class="card" id="invites-card">
+        <div class="card-head">
+          <h2>Приглашения</h2>
+          <span class="hint" style="margin-left:0">ссылка на N регистраций</span>
+          <button class="btn primary" style="margin-left:auto" id="invites-create">Создать приглашение</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Приглашение</th><th>Создано</th><th>Действует до</th><th>Регистраций</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="invites-body"><tr><td colspan="6"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="banner warn" id="invites-stale" hidden style="margin:0 18px 12px">Список мог устареть: последнее обновление не удалось.</div>
+        <div class="card-note">Ссылка приглашения показывается один раз при создании и не хранится в панели: потерянную ссылку нельзя вернуть — отзовите приглашение и создайте новое. Каждое использование приближает исчерпание; исчерпанное приглашение терминально. Отзыв не удаляет уже созданные аккаунты.</div>
+      </section>
+
+      <!-- ═══ Совместимость агентов (invitations-legacy-ui.md §5) ═══ -->
+      <section class="card" id="legacy-card">
+        <div class="card-head">
+          <h2>Совместимость агентов</h2>
+          <span class="hint" style="margin-left:0">общий Bearer-токен для машинных маршрутов</span>
+        </div>
+        <div class="card-body cfg-body">
+          <div class="legacy-row" id="legacy-row" hidden>
+            <label class="check legacy-check">
+              <input type="checkbox" id="legacy-check">
+              <span class="box"></span> Разрешить общий секрет
+            </label>
+            <span id="legacy-state-badge"></span>
+          </div>
+          <div id="legacy-load"><div class="skeleton" style="height:20px;margin:2px 0"></div></div>
+          <div class="banner bad" id="legacy-err" role="alert" hidden style="margin:0"></div>
+          <div class="banner warn" id="legacy-warn" hidden style="margin:0"></div>
+        </div>
+        <div class="card-note">Включено: старые агенты могут обращаться к регистратору с общим токеном на время миграции. Выключено: персональные учётные данные обязательны на всех машинных маршрутах, включая регистрацию, heartbeat, отчёты, retire и получение конфигурации. Сам переключатель не отправляет команду остановки прокси и не разрывает существующие соединения намеренно. Непереведённые агенты потеряют доступ к API; возможны последующие изменения доступности нод по обычным правилам пула.</div>
+      </section>
+
+      <!-- ═══ Профили установки (addendum-profiles-vps.md §3) ═════════ -->
+      <section class="card" id="profiles-card">
+        <div class="card-head">
+          <h2>Профили установки</h2>
+          <span class="hint" style="margin-left:0">профили шагов для создания серверов · версии append-only</span>
+          <button class="btn primary" style="margin-left:auto" id="profiles-create">Создать профиль</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table-cards">
+            <thead><tr><th>Имя</th><th>Описание</th><th>Версий</th><th>Опубликован</th><th>Действия</th></tr></thead>
+            <tbody id="profiles-body"><tr><td colspan="5"><div class="skeleton" style="height:20px;margin:8px 0"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-note">Правка шагов создаёт новую версию — история версий не перезаписывается, а публикация сбрасывается: опубликуйте профиль заново. Шаги выполняются по SSH на VPS пользователя; первый упавший шаг прерывает профиль. Переменные профиля ({{ var }}) подставляются в шаги на сервере; значения, помеченные «секрет», маскируются в выводе операции.</div>
+      </section>
+    </section>
+
     <!-- ═══ Настройки ═══════════════════════════════════════════════ -->
     <section class="view" id="view-settings" hidden>
       <div class="card-head" style="border:0;padding-left:0;padding-right:0">
@@ -215,10 +307,19 @@
   <a href="#/dns" data-view="dns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><span>DNS</span></a>
   <a href="#/srmd" data-view="srmd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>СРМД</span></a>
   <a href="#/events" data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Журнал</span></a>
+  <a href="#/users" data-view="users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/></svg><span>Пользователи</span></a>
   <a href="#/settings" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Настройки</span></a>
 </nav>
 
-<div id="toast"></div>
+<div id="toast" aria-live="polite"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
 
 <div id="login-overlay" hidden>
   <div class="login-box glass">

@@ -172,6 +172,16 @@ func ensureProxyUp(cfg *config.NodeConfig) error {
 	if err := waitMetricsReady(cfg, ensureMetricsTimeout); err == nil {
 		return nil
 	}
+	if isMtddConfigPath(cfg.Telemt.ConfigPath) {
+		if !systemdAvailable() {
+			return fmt.Errorf("no systemd — start mtdd manually")
+		}
+		log.Printf("proxy not answering; restarting %s...", mtddUnit)
+		if err := proxyCtl("restart", mtddUnit); err != nil {
+			return err
+		}
+		return waitMetricsReady(cfg, proxyUpTimeout)
+	}
 	unit := ""
 	if systemdAvailable() {
 		unit = detectProxyUnit()
@@ -234,7 +244,7 @@ func waitMetricsReady(cfg *config.NodeConfig, timeout time.Duration) error {
 	client := &http.Client{Timeout: 3 * time.Second}
 	deadline := time.Now().Add(timeout)
 	for {
-		resp, herr := client.Get(url)
+		resp, herr := metricsGet(client, cfg, url)
 		if herr == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {

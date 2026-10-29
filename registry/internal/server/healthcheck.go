@@ -5,7 +5,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sharedd/registry/internal/machineapi"
 	"sharedd/registry/internal/state"
+	"strings"
 	"time"
 )
 
@@ -48,6 +50,11 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	var payload HealthReportPayload
 	if err := decodeNodeJSON(w, req, &payload); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	// Матрица machine-аутентификации (contract §1): OFF режет общий Bearer.
+	// После разбора (нужен node_id), до валидации тела — 401 раньше 400.
+	if !r.gateMachineAuth(w, req, payload.NodeID, "") {
 		return
 	}
 	if r.nodeAPISecurityEnabled() {
@@ -152,6 +159,15 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if expectedPort == 0 { // tests and legacy in-memory configs created before shared_proxy.port
 		expectedPort = 443
 	}
+	if candidate.Port != 0 && candidate.Port != payload.Port {
+		// Neither a GP measurement nor a TCP probe of the old port proves
+		// this endpoint ready. A verified GP result below can restore GP.
+		candidate.GlobalpingOK, candidate.Healthy = false, false
+		candidate.GlobalpingMeasurementID, candidate.LastGlobalpingAt = "", time.Time{}
+		candidate.GlobalpingMeasurementAt = time.Time{}
+		candidate.EndpointRegisteredAt = time.Now()
+		candidate.TCPHist = nil
+	}
 	candidate.Port = payload.Port
 	portCompatible := payload.Port == expectedPort
 	candidate.PortCompatible = &portCompatible
@@ -160,12 +176,26 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	// Отчёт засчитываем как "хороший" только если всё, что он несёт, в норме:
 	// metrics-отчёт — по MetricsOK, globalping-отчёт — по обоим. Несостоявшаяся
 	// верификация (inconclusive) отчёт не портит — нода тут ни при чём.
-	reportOK := payload.MetricsOK && (!verifyGP || !verifiedKnown || verifiedOK)
+	// specs/dc2-health.md: MetricsOK = dc2_ok для dc2-осведомлённых агентов
+	// (маркер — непустой dc2_reason, в т.ч. dc2_fallback_metrics); старые
+	// агенты (полей нет) — прежняя логика, авто-миграция не нужна.
+	metricsOK := payload.MetricsOK
+	if payload.DC2Reason != "" {
+		metricsOK = payload.DC2OK
+	}
+	reportOK := metricsOK && (!verifyGP || !verifiedKnown || verifiedOK)
 	if reportOK {
 		candidate.ReportsOK++
 	}
 	if verifyGP && verifiedKnown {
 		candidate.LastGlobalpingAt = time.Now()
+		// Keep legacy report/queue semantics, but destructive readiness uses only
+		// finished provider proof. Zero future-clock tolerance at receipt prevents
+		// a future timestamp from becoming usable merely by waiting for the clock.
+		candidate.GlobalpingMeasurementAt = time.Time{}
+		if measurement.Status == "finished" && !measurement.CreatedAt.After(candidate.LastGlobalpingAt) {
+			candidate.GlobalpingMeasurementAt = measurement.CreatedAt
+		}
 		candidate.LastGlobalpingRequestAt = time.Time{}
 		prevGP := candidate.GlobalpingOK
 		candidate.GlobalpingOK = verifiedOK
@@ -296,7 +326,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			}
 		}
 	}
-	candidate.MetricsOK = payload.MetricsOK
+	candidate.MetricsOK = metricsOK
 	// Metrics-защёлка по fail/recover-порогам (аналог TCP-защёлки
 	// Healthy в probeLoop). Одиночный сбойный отчёт fully-healthy НЕ роняет:
 	// отказ фиксируется только после fail_threshold ПОДРЯД плохих отчётов,
@@ -309,7 +339,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		var changed bool
 		candidate.MetricsHealthy, candidate.MetricsFailStreak, candidate.MetricsOKStreak, changed =
 			streakStep(candidate.MetricsHealthy, candidate.MetricsFailStreak, candidate.MetricsOKStreak,
-				payload.MetricsOK, failThr, recThr)
+				metricsOK, failThr, recThr)
 		if changed && candidate.MetricsHealthy {
 			r.addEventLocked(Event{
 				Type: EventMetricsUp, NodeID: candidate.NodeID, IP: candidate.IP,
@@ -329,14 +359,45 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	// report advances cumulative traffic baselines; otherwise an older cached
 	// counter racing a newer metrics report looks like a telemt reset.
 	if payload.MetricsSnapshot != nil && !verifyGP {
+		// telemt 3.5.9 emits octet counters with a _total suffix; old agents
+		// don't recognize them. Normalize both stored and incoming snapshots so
+		// traffic deltas, per-user rows and node detail work without an agent
+		// rollout. Idempotent, never clobbers real sharedd_* values.
+		candidate.MetricsSnapshot = normalizeTelemtMetrics(candidate.MetricsSnapshot)
+		payload.MetricsSnapshot = normalizeTelemtMetrics(payload.MetricsSnapshot)
 		if r.db != nil {
 			sameUsers := candidate.MetricsSnapshot[trafficUsersMetric] == payload.MetricsSnapshot[trafficUsersMetric]
 			ingress, egress := int64(0), int64(0)
 			if sameUsers {
 				ingress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficIngressMetric)
 				egress = trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, trafficEgressMetric)
+				// per-user 24ч-разбивка: одна вставка на пользователя за отчёт.
+				// sameUsers-gate выше отсекает telemt counter-reset артефакты.
+				for key := range payload.MetricsSnapshot {
+					suffix, ok := strings.CutPrefix(key, userIngressMetric+"{")
+					if !ok {
+						continue
+					}
+					user := metricUserFromKey(key)
+					if user == "" {
+						continue
+					}
+					inDelta := trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, key)
+					outDelta := trafficCounterDelta(candidate.MetricsSnapshot, payload.MetricsSnapshot, userEgressMetric+"{"+suffix)
+					r.db.RecordUserTraffic(time.Now(), candidate.NodeID, user, inDelta, outDelta)
+				}
 			}
 			r.db.RecordTraffic(time.Now(), candidate.NodeID, ingress, egress)
+			// host-история (CPU/RAM) — гейджи, sameUsers-гейт (counter-reset)
+			// к ним не относится: пишем, если есть хотя бы одна метрика.
+			var cpu, ram *float64
+			if v, ok := payload.MetricsSnapshot[hostCPUMetric]; ok {
+				cpu = &v
+			}
+			if v, ok := payload.MetricsSnapshot[hostRAMMetric]; ok {
+				ram = &v
+			}
+			r.db.RecordHostMetrics(time.Now(), candidate.NodeID, cpu, ram)
 		}
 		candidate.MetricsSnapshot = payload.MetricsSnapshot
 	}
@@ -347,12 +408,18 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			clients = int(v)
 		}
 		candidate.ReportHist = state.PushRing(candidate.ReportHist, ReportPoint{
-			At: time.Now(), MetricsOK: payload.MetricsOK,
+			At: time.Now(), MetricsOK: metricsOK,
 			Clients: clients, Writers: int(payload.MetricsSnapshot[writersMetric]),
 		}, reportHistCap)
 	}
 	candidate.LastReportAt = time.Now()
 	candidate.ReportError = payload.Error
+	if payload.DCStats != nil {
+		if r.dcStats == nil {
+			r.dcStats = make(map[string]machineapi.DCStats)
+		}
+		r.dcStats[payload.NodeID] = *payload.DCStats
+	}
 	r.persistStateLocked()
 	r.mu.Unlock()
 
@@ -382,6 +449,22 @@ func trafficCounterDelta(previous, current map[string]float64, key string) int64
 		return int64(curr) // telemt counter reset: count only bytes since reset
 	}
 	return int64(curr - prev)
+}
+
+// metricUserFromKey достаёт значение label'а user из ключа снапшота
+// (`...{user="X"}` → «X»). Простой разбор: per-user ключи строятся агентом
+// как name{<labels>}, где user идёт первым.
+func metricUserFromKey(key string) string {
+	i := strings.Index(key, `user="`)
+	if i < 0 {
+		return ""
+	}
+	rest := key[i+len(`user="`):]
+	j := strings.IndexByte(rest, '"')
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
 }
 
 func reportReplayed(c *Candidate, payload HealthReportPayload) bool {

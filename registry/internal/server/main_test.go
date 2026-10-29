@@ -163,6 +163,7 @@ func TestMetricsOnlyReportPreservesGlobalping(t *testing.T) {
 	r.state.Candidates["n1"].GlobalpingOK = true
 	r.state.Candidates["n1"].GlobalpingVerifiedRatio = 0.9
 	r.state.Candidates["n1"].GlobalpingMeasurementID = "m-old"
+	r.state.Candidates["n1"].Port = 443 // Existing GP proof is for this unchanged endpoint.
 	r.mu.Unlock()
 
 	payload := HealthReportPayload{NodeID: "n1", Port: 443, MetricsOK: true, CheckedAt: time.Now()}
@@ -303,7 +304,9 @@ func TestStatePersistAndLoad(t *testing.T) {
 
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	if _, ok := r2.state.Candidates["node-x"]; !ok {
 		t.Fatal("state must survive reload")
 	}
@@ -406,7 +409,7 @@ func TestQueueRepositioning(t *testing.T) {
 	if changes := r.evaluateAssignments(time.Now()); len(changes) != 0 {
 		t.Fatalf("A recovered but must NOT reclaim the domain; B stays, got changes=%+v", changes)
 	}
-	if r.state.Assignments["d1.example.com"] != "B" {
+	if firstMaster(r, "d1.example.com") != "B" {
 		t.Fatalf("B must still hold the domain, got %+v", r.state.Assignments)
 	}
 	posA2 := r.state.Candidates["A"].QueuedAt
@@ -443,7 +446,7 @@ func TestPerDomainMasters(t *testing.T) {
 	if len(changes) != 2 {
 		t.Fatalf("both domains must get masters on first pass, got %+v", changes)
 	}
-	if r.state.Assignments["d1.example.com"] != "A" || r.state.Assignments["d2.example.com"] != "B" {
+	if firstMaster(r, "d1.example.com") != "A" || firstMaster(r, "d2.example.com") != "B" {
 		t.Fatalf("1:1 split expected (d1->A, d2->B), got %+v", r.state.Assignments)
 	}
 
@@ -479,7 +482,7 @@ func TestPerDomainMasters(t *testing.T) {
 	r.state.Candidates["C"].MetricsHealthy = false // роняем защёлку
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "C", "A")
-	if r.state.Assignments["d1.example.com"] != "A" || r.state.Assignments["d2.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" || firstMaster(r, "d2.example.com") != "A" {
 		t.Fatalf("A must hold both domains, got %+v", r.state.Assignments)
 	}
 
@@ -489,7 +492,7 @@ func TestPerDomainMasters(t *testing.T) {
 	if changes := r.evaluateAssignments(time.Now()); len(changes) != 0 {
 		t.Fatalf("no healthy nodes -> assignments frozen, got %+v", changes)
 	}
-	if r.state.Assignments["d1.example.com"] != "A" || r.state.Assignments["d2.example.com"] != "A" {
+	if firstMaster(r, "d1.example.com") != "A" || firstMaster(r, "d2.example.com") != "A" {
 		t.Fatalf("assignments must stay on the last master, got %+v", r.state.Assignments)
 	}
 	if !r.state.Candidates["A"].MasterSince.IsZero() {
@@ -528,7 +531,7 @@ func TestFillEmptyRebalance(t *testing.T) {
 		t.Fatalf("sole node must take all 3 domains, got %+v", changes)
 	}
 	for _, d := range []string{"d1.example.com", "d2.example.com", "d3.example.com"} {
-		if r.state.Assignments[d] != "A" {
+		if firstMaster(r, d) != "A" {
 			t.Fatalf("A must hold %s, got %+v", d, r.state.Assignments)
 		}
 	}
@@ -541,7 +544,7 @@ func TestFillEmptyRebalance(t *testing.T) {
 	makeHealthy("B")
 	changes = r.evaluateAssignments(time.Now())
 	assertSingleChange(t, changes, "d1.example.com", "A", "B")
-	if r.state.Assignments["d2.example.com"] != "A" || r.state.Assignments["d3.example.com"] != "A" {
+	if firstMaster(r, "d2.example.com") != "A" || firstMaster(r, "d3.example.com") != "A" {
 		t.Fatalf("A must keep d2/d3, got %+v", r.state.Assignments)
 	}
 	// дальше не докручиваем: B уже занята, доноров для fill-empty снова нет
@@ -579,7 +582,7 @@ func TestRegisterCarriesAssignments(t *testing.T) {
 	c.Healthy, c.GlobalpingOK, c.MetricsOK, c.MetricsHealthy = true, true, true, true
 	c.LastReportAt = time.Now()
 	r.evaluateAssignments(time.Now())
-	if r.state.Assignments["d1.example.com"] != "old-id" {
+	if firstMaster(r, "d1.example.com") != "old-id" {
 		t.Fatalf("old-id must be the master, got %+v", r.state.Assignments)
 	}
 	sw := r.state.Counters.MasterSwitches
@@ -588,7 +591,7 @@ func TestRegisterCarriesAssignments(t *testing.T) {
 	eventsBefore := len(r.state.Events)
 	r.mu.RUnlock()
 	r.register(registerRequest{NodeID: "new-id", IP: "1.2.3.4"})
-	if r.state.Assignments["d1.example.com"] != "new-id" {
+	if firstMaster(r, "d1.example.com") != "new-id" {
 		t.Fatalf("domains must be carried to new-id, got %+v", r.state.Assignments)
 	}
 	if r.state.Counters.MasterSwitches != sw {
@@ -625,7 +628,7 @@ func TestDomainRemovedFromConfigPruned(t *testing.T) {
 	if _, ok := r.state.Assignments["d1.example.com"]; ok {
 		t.Fatalf("removed domain must be pruned from assignments, got %+v", r.state.Assignments)
 	}
-	if r.state.Assignments["d2.example.com"] != "A" {
+	if firstMaster(r, "d2.example.com") != "A" {
 		t.Fatalf("d2 must stay with A, got %+v", r.state.Assignments)
 	}
 }

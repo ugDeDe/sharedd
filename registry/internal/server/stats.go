@@ -4,8 +4,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
+	"sharedd/registry/internal/config"
+	"sharedd/registry/internal/control"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -65,6 +69,9 @@ func sanitizePublicDetail(s string) string {
 // publicNode — явный белый список полей карточки ноды для публичной выдачи.
 type publicNode struct {
 	NodeID            string    `json:"node_id"`
+	DisplayName       string    `json:"display_name,omitempty"`
+	OwnerUsername     string    `json:"owner_username,omitempty"`
+	OwnerNodeNumber   int64     `json:"owner_node_number,omitempty"`
 	IPMasked          string    `json:"ip"` // уже замаскирован — имя поля едино с приватным API
 	Port              int       `json:"port"`
 	IsMaster          bool      `json:"is_master"`
@@ -187,7 +194,15 @@ func (r *Registry) buildProxyLinksLocked() []proxyLink {
 		if _, folded := r.state.SRMD.CNames[d]; folded {
 			continue // свёрнут СРМД в CNAME: покажем, когда будет назначен мастер
 		}
-		c := r.state.Candidates[r.state.Assignments[d]]
+		// первый живой слот-мастер домена: ссылка ведёт на домен (DNS
+		// round-robin разложит клиентов по всем мастерам), порт общий
+		var c *Candidate
+		for _, id := range r.state.Assignments[d] {
+			if cc := r.state.Candidates[id]; cc != nil {
+				c = cc
+				break
+			}
+		}
 		if c == nil {
 			continue // своего мастера нет — в списке не показываем
 		}
@@ -231,16 +246,21 @@ func (r *Registry) resolvePublicNodeLocked(seg string) *Candidate {
 }
 
 // masterTTLRemainingLocked — сколько осталось до принудительной ротации
-// мастера по таймеру: минимум по доменам ноды. nil — TTL выключен либо
-// назначение ещё не отсчитано (since лениво инициализируется в evaluate).
-func (r *Registry) masterTTLRemainingLocked(domains []string, now time.Time) *int64 {
+// мастера по таймеру: минимум по слотам ноды (TTL считается ПО СЛОТУ,
+// AssignmentsSince[domain][слот ноды]). nil — TTL выключен либо назначение
+// ещё не отсчитано (since лениво инициализируется в evaluate).
+func (r *Registry) masterTTLRemainingLocked(nodeID string, domains []string, now time.Time) *int64 {
 	ttl := r.masterTTL()
 	if ttl <= 0 {
 		return nil
 	}
 	var best *int64
 	for _, d := range domains {
-		since := r.state.AssignmentsSince[d]
+		i := slices.Index(r.state.Assignments[d], nodeID)
+		if i < 0 || i >= len(r.state.AssignmentsSince[d]) {
+			continue
+		}
+		since := r.state.AssignmentsSince[d][i]
 		if since.IsZero() {
 			continue
 		}
@@ -279,7 +299,7 @@ func (r *Registry) buildPublicNodeLocked(c *Candidate, queuePos int, domains []s
 		MasterTimeSec:     c.MasterTimeSec(now),
 		NodeType:          c.NodeType,
 	}
-	n.MasterTTLRemainingSec = r.masterTTLRemainingLocked(domains, now)
+	n.MasterTTLRemainingSec = r.masterTTLRemainingLocked(c.NodeID, domains, now)
 	if !c.LastReportAt.IsZero() {
 		n.ReportAgeSec = int64(now.Sub(c.LastReportAt).Seconds())
 	}
@@ -311,6 +331,40 @@ func (r *Registry) publicEventsLocked(nodeID string, limit int) []publicEvent {
 		})
 	}
 	return out
+}
+
+// publicIdentityMap — пакетная подпись владельцев. Ошибка БД/отсутствие
+// control-режима не ломает публичную статистику: остаётся node_id.
+func (r *Registry) publicIdentityMap(nodeIDs []string) map[string]control.PublicNodeIdentity {
+	if r.control == nil || len(nodeIDs) == 0 {
+		return nil
+	}
+	m, err := r.control.PublicNodeIdentities(nodeIDs)
+	if err != nil {
+		log.Printf("public statistics: node identities unavailable: %v", err)
+		return nil
+	}
+	return m
+}
+
+func applyNodeIdentity(n *publicNode, id control.PublicNodeIdentity) {
+	n.DisplayName = id.DisplayName()
+	n.OwnerUsername = id.Username
+	n.OwnerNodeNumber = id.OwnerNodeNumber
+}
+
+func applyListItemIdentity(n *publicNodeListItem, id control.PublicNodeIdentity) {
+	n.DisplayName = id.DisplayName()
+	n.OwnerUsername = id.Username
+	n.OwnerNodeNumber = id.OwnerNodeNumber
+}
+
+func applyQuarantineIdentity(q *publicQuarantineItem, id control.PublicNodeIdentity) {
+	q.DisplayName = id.DisplayName()
+}
+
+func applyMasterIdentity(m *publicDomainMaster, id control.PublicNodeIdentity) {
+	m.DisplayName = id.DisplayName()
 }
 
 // handleStatsNode — GET /statistics/api/node?id=<node_id|hex>:
@@ -354,6 +408,14 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 	}
 	r.mu.RUnlock()
 
+	node.DisplayName = node.NodeID
+	if idm := r.publicIdentityMap([]string{node.NodeID}); idm != nil {
+		if id, ok := idm[node.NodeID]; ok {
+			applyNodeIdentity(&node, id)
+		}
+	}
+	resp["node"] = node
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(resp)
@@ -361,11 +423,14 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 
 // publicNodeListItem — строка публичного списка нод.
 type publicNodeListItem struct {
-	NodeID        string   `json:"node_id"`
-	IPMasked      string   `json:"ip"`
-	Port          int      `json:"port"`
-	IsMaster      bool     `json:"is_master"`
-	MasterDomains []string `json:"master_domains,omitempty"`
+	NodeID          string   `json:"node_id"`
+	DisplayName     string   `json:"display_name,omitempty"`
+	OwnerUsername   string   `json:"owner_username,omitempty"`
+	OwnerNodeNumber int64    `json:"owner_node_number,omitempty"`
+	IPMasked        string   `json:"ip"`
+	Port            int      `json:"port"`
+	IsMaster        bool     `json:"is_master"`
+	MasterDomains   []string `json:"master_domains,omitempty"`
 	// MasterTTLRemainingSec — через сколько мастер будет
 	// переключён по таймеру (минимум по доменам ноды); <0 — лимит истёк,
 	// ждём здоровую замену; nil — TTL выключен/не назначен.
@@ -380,8 +445,31 @@ type publicNodeListItem struct {
 	NodeType              string   `json:"node_type,omitempty"`
 }
 
+// publicDomainMaster — один слот-мастер managed-домена в публичном ответе.
+// IP уже замаскирован тем же маскировщиком, что nodes[].ip (maskPublicIP);
+// provider id/полный IP сюда не попадают.
+type publicDomainMaster struct {
+	NodeID      string `json:"node_id"`
+	DisplayName string `json:"display_name,omitempty"`
+	IPMasked    string `json:"ip_masked,omitempty"`
+	// Healthy — слот жив (нода есть и не полностью нездорова).
+	Healthy bool `json:"healthy"`
+	// TTLRemainingSec — остаток TTL слота; nil — TTL выключен/не отсчитан.
+	TTLRemainingSec *int64 `json:"ttl_remaining_sec,omitempty"`
+}
+
+// publicDomain — агрегат managed-домена: слоты-мастера + счётчик заполнения.
+type publicDomain struct {
+	Domain      string               `json:"domain"`
+	Port        int                  `json:"port"`
+	SlotsFilled string               `json:"slots_filled"`
+	SlotsTotal  int                  `json:"slots_total"`
+	Masters     []publicDomainMaster `json:"masters"`
+}
+
 type publicQuarantineItem struct {
 	NodeID      string    `json:"node_id"`
+	DisplayName string    `json:"display_name,omitempty"`
 	IPMasked    string    `json:"ip"`
 	EnteredAt   time.Time `json:"entered_at"`
 	AgeSec      int64     `json:"age_sec"`
@@ -390,6 +478,55 @@ type publicQuarantineItem struct {
 	LastRatio   float64   `json:"last_ratio"`
 	Stale       bool      `json:"stale"`
 	Reverify    bool      `json:"reverify"`
+}
+
+// buildPublicDomainsLocked — агрегат по managed-доменам (cloudflare.domains,
+// как в DNS reconcile) для публичного /statistics/api/list: домен → его слоты
+// назначения с замаскированным IP. Порядок слотов — порядок Assignments
+// (детерминированный); домены сортируются по имени. ВЫЗЫВАТЬ под r.mu
+// (минимум RLock); cfgMu берётся внутри.
+func (r *Registry) buildPublicDomainsLocked(now time.Time) []publicDomain {
+	r.cfgMu.RLock()
+	rawDomains := append([]string(nil), r.cfg.Cloudflare.Domains...)
+	port := r.cfg.SharedProxy.Port
+	freshnessTTL := r.cfg.ReportFreshnessTTL
+	mastersTotal := config.ResolveMastersPerDomain(r.cfg.Selection.MastersPerDomain)
+	ttl := time.Duration(resolveMasterTTLMinutes(r.cfg.Rotation.MasterTTLMinutes)) * time.Minute
+	r.cfgMu.RUnlock()
+	if port == 0 { // direct-constructed Registry в unit-тестах; прод дефолтит 443
+		port = 443
+	}
+
+	out := make([]publicDomain, 0, len(rawDomains))
+	seen := make(map[string]bool, len(rawDomains))
+	for _, d := range rawDomains {
+		d = strings.TrimSpace(d)
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		pd := publicDomain{
+			Domain: d, Port: port, SlotsTotal: mastersTotal,
+			Masters: make([]publicDomainMaster, 0),
+		}
+		sinceList := r.state.AssignmentsSince[d]
+		for i, id := range r.state.Assignments[d] {
+			pm := publicDomainMaster{NodeID: id}
+			if c := r.state.Candidates[id]; c != nil {
+				pm.IPMasked = maskPublicIP(c.IP)
+				pm.Healthy = c.IsFullyHealthy(freshnessTTL)
+			}
+			if ttl > 0 && i < len(sinceList) && !sinceList[i].IsZero() {
+				rem := int64(ttl.Seconds()) - int64(now.Sub(sinceList[i]).Seconds())
+				pm.TTLRemainingSec = &rem
+			}
+			pd.Masters = append(pd.Masters, pm)
+		}
+		pd.SlotsFilled = fmt.Sprintf("%d/%d", len(pd.Masters), mastersTotal)
+		out = append(out, pd)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Domain < out[j].Domain })
+	return out
 }
 
 // handleStatsList — GET /statistics/api/list: все ноды (обезличенные).
@@ -428,7 +565,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		it.MasterDomains = r.masterDomainsLocked(id)
 		it.IsMaster = len(it.MasterDomains) > 0
-		it.MasterTTLRemainingSec = r.masterTTLRemainingLocked(it.MasterDomains, now)
+		it.MasterTTLRemainingSec = r.masterTTLRemainingLocked(id, it.MasterDomains, now)
 		if !c.LastReportAt.IsZero() {
 			it.ReportAgeSec = int64(now.Sub(c.LastReportAt).Seconds())
 		}
@@ -438,8 +575,58 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		}
 		out = append(out, it)
 	}
-	resp := map[string]any{"nodes": out, "quarantine": quarantine}
+	domains := r.buildPublicDomainsLocked(now)
 	r.mu.RUnlock()
+
+	allIDs := make([]string, 0, len(out)+len(quarantine))
+	for i := range out {
+		allIDs = append(allIDs, out[i].NodeID)
+	}
+	for i := range quarantine {
+		allIDs = append(allIDs, quarantine[i].NodeID)
+	}
+	for i := range domains {
+		for j := range domains[i].Masters {
+			allIDs = append(allIDs, domains[i].Masters[j].NodeID)
+		}
+	}
+	if idm := r.publicIdentityMap(allIDs); idm != nil {
+		for i := range out {
+			if id, ok := idm[out[i].NodeID]; ok {
+				applyListItemIdentity(&out[i], id)
+			}
+		}
+		for i := range quarantine {
+			if id, ok := idm[quarantine[i].NodeID]; ok {
+				applyQuarantineIdentity(&quarantine[i], id)
+			}
+		}
+		for i := range domains {
+			for j := range domains[i].Masters {
+				if id, ok := idm[domains[i].Masters[j].NodeID]; ok {
+					applyMasterIdentity(&domains[i].Masters[j], id)
+				}
+			}
+		}
+	}
+	for i := range out {
+		if out[i].DisplayName == "" {
+			out[i].DisplayName = out[i].NodeID
+		}
+	}
+	for i := range quarantine {
+		if quarantine[i].DisplayName == "" {
+			quarantine[i].DisplayName = quarantine[i].NodeID
+		}
+	}
+	for i := range domains {
+		for j := range domains[i].Masters {
+			if domains[i].Masters[j].DisplayName == "" {
+				domains[i].Masters[j].DisplayName = domains[i].Masters[j].NodeID
+			}
+		}
+	}
+	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

@@ -123,6 +123,21 @@ function renderGrid(): void {
       <div class="cfg-foot"><button class="btn primary" id="s-rot-save">Сохранить ротацию</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="pool">
+      <div class="cfg-head">${icon(ICONS.masters)}<span>Мастера на домен</span></div>
+      <div class="cfg-body">
+        <div class="field">
+          <label for="s-sel-masters">Мастеров на домен</label>
+          <input type="number" id="s-sel-masters" min="1" max="8">
+          <span class="help">Число слотов-мастеров для каждого managed-домена (1–8). Это НЕ
+            <span class="mono">[srmd] max_nodes_per_domain</span>: слоты селекции и создание доменов СРМД не связаны.</span>
+        </div>
+        <div class="note">При изменении набор A-записей домена будет перестроен под новое число слотов. DNS клиентов обновится сам; прокси-ссылки не меняются.</div>
+        <div class="banner bad" id="s-sel-err" role="alert" hidden style="margin:0"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-sel-save">Сохранить слоты</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.health)}<span>Globalping</span></div>
       <div class="cfg-body">
@@ -233,6 +248,7 @@ export async function load(): Promise<void> {
   ($("s-nd-globalping") as HTMLInputElement).value = c.node_defaults.globalping_ms;
   ($("s-nd-metrics") as HTMLInputElement).value = c.node_defaults.metrics_ms;
   ($("s-nd-sync") as HTMLInputElement).value = c.node_defaults.sync_ms;
+  ($("s-sel-masters") as HTMLInputElement).value = c.selection ? c.selection.masters_per_domain : 1;
   ($("s-rot-ttl") as HTMLInputElement).value = c.rotation ? c.rotation.master_ttl_minutes : 30;
   ($("s-hc-quar") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
   ($("s-hc-gp-validity") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
@@ -349,6 +365,19 @@ export function init(): void {
         sync_ms: parseInt(($("s-nd-sync") as HTMLInputElement).value, 10) || 0,
       },
     }, "Интервалы сохранены").catch((e) => showToast(e.message, true));
+
+  $("s-sel-save").onclick = () => {
+    const errBox = $("s-sel-err");
+    errBox.hidden = true;
+    const n = parseInt(($("s-sel-masters") as HTMLInputElement).value, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 8) {
+      errBox.textContent = "Допустимо целое число 1..8.";
+      errBox.hidden = false;
+      return;
+    }
+    saveSection({ selection: { masters_per_domain: n } }, "Слоты мастеров сохранены")
+      .catch((e) => { errBox.textContent = e.message; errBox.hidden = false; });
+  };
 
   $("s-rot-save").onclick = () =>
     saveSection({ rotation: { master_ttl_minutes: Math.max(0, parseInt(($("s-rot-ttl") as HTMLInputElement).value, 10) || 0) } }, "Лимит мастерства сохранён")

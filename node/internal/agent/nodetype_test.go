@@ -18,9 +18,10 @@ func withManagerDirs(t *testing.T) (meko, mtproxyl string) {
 	dir := t.TempDir()
 	meko = filepath.Join(dir, "mtpr-simple")
 	mtproxyl = filepath.Join(dir, "mtproxyl")
-	oldM, oldP := mekoInstallDir, mtproxylInstallDir
+	oldM, oldP, oldD := mekoInstallDir, mtproxylInstallDir, mtddConfigPath
 	mekoInstallDir, mtproxylInstallDir = meko, mtproxyl
-	t.Cleanup(func() { mekoInstallDir, mtproxylInstallDir = oldM, oldP })
+	mtddConfigPath = filepath.Join(dir, "mtdd", "config.json")
+	t.Cleanup(func() { mekoInstallDir, mtproxylInstallDir, mtddConfigPath = oldM, oldP, oldD })
 	return meko, mtproxyl
 }
 

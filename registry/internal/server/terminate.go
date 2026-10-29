@@ -3,16 +3,16 @@ package server
 // Жёсткое завершение нод — заменяет бесконечные циклы
 // «заболел → молчит → протух → перерегистрировался → снова заболел».
 //
-// Два терминальных класса, оба завершают ноду НАВСЕГДА (она не должна
-// делать новую регистрацию) и фиксируются в БД (historyDB.bans):
+// Два класса health-блокировки, допускающие повторное восстановление;
+// события фиксируются в БД (historyDB.bans):
 //
 // 1. ip_ban — нода не прошла globalping (БЕЗ предусловий по
 // tcp/metrics): она уходит в КАРАНТИН (Candidate.Quarantine), регистратор
 // продолжает верифицировать её measurement'ы; quarantine_attempts (ум. 3,
 // правится из панели) подряд неудачных — бан по IP. Нода получает kill
 // при ближайшем обращении (heartbeat/report/register: HTTP 403
-// {"terminate":true,...}), пишет в лог сообщение MsgIPBan и останавливает
-// службу. Выход из карантина ЛЮБЫМ путём, кроме верифицированного
+// {"terminate":true,...}), пишет в лог сообщение MsgIPBan и продолжает GP.
+// Выход из карантина ЛЮБЫМ путём, кроме верифицированного
 // восстановления, считается баном: исчерпание попыток, expiry по
 // heartbeat-TTL («нода отвалилась») и dead-окно tcp+metrics во время
 // карантина — всё пишется в bans как ip_ban.
@@ -21,7 +21,7 @@ package server
 // сразу; регистрация с ТОГО ЖЕ (забаненного) ip — даёт одну
 // GP-перепроверку (reverify): нода возвращается в карантин с последней
 // попыткой, верифицированный ok снимает бан (ban_lifted), fail —
-// возвращает в бан навсегда. Защита от ложных глобалпингов и отладки
+// возвращает в бан до следующего cooldown. Защита от ложных глобалпингов и отладки
 // «прокси был выключен». В статистике один ip пишется баном ОДИН РАЗ:
 // повторные баны адреса строк не добавляют, а восстановившийся адрес
 // (reverify прошёл) свою строку из статистики убирает.
@@ -54,6 +54,8 @@ package server
 // На само завершение, блоки и события политика не влияет.
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"time"
@@ -62,7 +64,7 @@ import (
 // Точные тексты для лога ноды — ТЗ. Нода пишет их как есть (обёртка
 // log.Print добавляет только штамп времени).
 const (
-	MsgIPBan = "Бан по ip, запустите службу заново после его смены"
+	MsgIPBan = "Бан по ip; агент продолжает Globalping и повторит регистрацию после успешной проверки и cooldown"
 	MsgDead  = "Регистратор не достучался до порта и/или не получил метрики"
 )
 
@@ -110,6 +112,24 @@ func (r *Registry) terminateNodeLocked(c *Candidate, now time.Time, reason, caus
 		Type: EventNodeTerminated, NodeID: c.NodeID, IP: c.IP, Detail: detail,
 	})
 	delete(r.state.Candidates, c.NodeID)
+	r.releaseQuota(c.NodeID)
+	// Мульти-мастер: убираем ноду изо ВСЕХ слотов её доменов; желаемый
+	// DNS-набор сжимается, сверка набора подтянет записи. Пустой список
+	// слотов желаемое не меняет — «пустая очередь не снимает назначения»
+	// (A остаётся на последнем мастере до появления замены).
+	for d, ids := range r.state.Assignments {
+		nodes, since, removed := dropNodeFromSlots(ids, r.state.AssignmentsSince[d], c.NodeID)
+		if !removed {
+			continue
+		}
+		r.state.Assignments[d] = nodes
+		r.state.AssignmentsSince[d] = since
+		delete(r.ttlOverdue, d)
+		r.enqueueDNSDesiredFromAssignmentsLocked(d)
+	}
+	if reason == BanReasonIPBan {
+		r.recordBanEpisodeLocked(c.NodeID, c.IP)
+	}
 	log.Printf("node %s (%s) TERMINATED: %s (%s)", c.NodeID, c.IP, msg, reason)
 	r.persistStateLocked()
 }
@@ -251,6 +271,7 @@ func (r *Registry) quarantineIPChangeLocked(c *Candidate, newIP string, now time
 		Detail: fmt.Sprintf("нода сменила ip в карантине %s -> %s — старый ip заблокирован (lifetime %s)",
 			oldIP, newIP, now.Sub(c.RegisteredAt).Round(time.Second)),
 	})
+	r.recordBanEpisodeLocked(c.NodeID, oldIP)
 	c.Quarantine = nil
 	log.Printf("candidate %s changed ip in quarantine %s -> %s — old ip recorded as ip_ban",
 		c.NodeID, oldIP, newIP)
@@ -271,4 +292,27 @@ func (r *Registry) terminateLiftIfIPChangedLocked(id, ip string, now time.Time) 
 	})
 	log.Printf("termination of %s lifted: ip changed %s -> %s", id, t.IP, ip)
 	return t
+}
+
+// recordBanEpisodeLocked persists a stable ban episode id in the SAME path
+// where the ip_ban verdict is written. JSON state and control SQLite are not
+// atomic: the reconciler scans episodes and dedupes deliveries, so a crash
+// between the two stores is recovered by at-least-once delivery. Under r.mu.
+func (r *Registry) recordBanEpisodeLocked(nodeID, ip string) {
+	if r.control == nil || nodeID == "" {
+		return
+	}
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("ban episode id %s: %v", nodeID, err)
+		return
+	}
+	ep := "ep_" + hex.EncodeToString(b)
+	if rec := r.state.Terminated[nodeID]; rec != nil {
+		rec.EpisodeID = ep
+	}
+	if err := r.control.AddBanEpisode(nodeID, ip, ep); err != nil {
+		// Persisted in JSON state; retryBanEpisodePersistence replays it.
+		log.Printf("ban episode %s (%s): persist: %v (queued for retry)", nodeID, ip, err)
+	}
 }

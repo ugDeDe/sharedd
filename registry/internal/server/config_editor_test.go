@@ -282,21 +282,28 @@ func TestConfigEditorGetNodeOnboardingUsesConfiguredPublicURL(t *testing.T) {
 	}
 }
 
-// persistConfigLocked: если файл недоступен — APPLY всё равно происходит,
-// но ответ честно говорит persisted=false (рантайм не обваливается).
+// persistConfigLocked: если файл недоступен — рантайм всё равно применяется,
+// но ответ ЧЕСТНО отдаёт ошибку (не ok:true), чтобы панель показала «не
+// сохранено» вместо ложного успеха.
 func TestConfigPersistFailureStillApplies(t *testing.T) {
 	r := newTestRegistryWithConfigFile(t)
 	r.cfg.ConfigPath = filepath.Join(t.TempDir(), "no-such-dir", "registry.toml")
 
 	rec, resp := putConfig(t, r, `{"shared_proxy":{"tls_domain":"www.runtime-only.com","users":{"a":"0123456789abcdef0123456789abcdef"}}}`, "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("PUT must succeed even without persistence: %d", rec.Code)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("PUT must NOT report success when persist fails: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on persist failure, got %d", rec.Code)
+	}
+	if ok, _ := resp["ok"].(bool); ok {
+		t.Fatal("ok must be false when not persisted")
 	}
 	if persisted, _ := resp["persisted"].(bool); persisted {
 		t.Fatal("persisted must be false for unwritable path")
 	}
-	if resp["persist_warning"] == nil {
-		t.Fatal("persist_warning expected")
+	if resp["error"] == nil || !strings.Contains(resp["error"].(string), "не сохранено") {
+		t.Fatalf("clear «не сохранено» error expected, got %v", resp)
 	}
 	nc := getNodeFacingConfig(t, r)
 	if nc.TLSDomain != "www.runtime-only.com" {
@@ -384,5 +391,44 @@ func TestConfigEditorGlobalpingValidity(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("GP validity/interval conflict must be rejected: code=%d body=%s", rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// addendum §5.1 — selection.masters_per_domain через PUT конфига меняет
+// слоты (hot-apply); 0 и 9 → 400.
+func TestConfigEditorSelectionMastersPerDomain(t *testing.T) {
+	r := newTestRegistryWithConfigFile(t)
+	r.cfg.Selection.MastersPerDomain = 1
+
+	rec, resp := putConfig(t, r, `{"selection":{"masters_per_domain":4}}`, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT selection: %d %s", rec.Code, rec.Body.String())
+	}
+	if r.cfg.Selection.MastersPerDomain != 4 {
+		t.Fatalf("masters_per_domain = %d, want 4 (hot-apply)", r.cfg.Selection.MastersPerDomain)
+	}
+	if changed, _ := resp["changed"].([]any); len(changed) == 0 {
+		t.Fatalf("changed must report selection edit: %v", resp)
+	}
+
+	// GET возвращает эффективное значение.
+	getReq := httptest.NewRequest(http.MethodGet, "/panel/api/config", nil)
+	getReq.Header.Set("Authorization", "Bearer admintoken")
+	getRec := httptest.NewRecorder()
+	r.handleGetConfig(getRec, getReq)
+	if getRec.Code != http.StatusOK || !strings.Contains(getRec.Body.String(), `"masters_per_domain":4`) {
+		t.Fatalf("GET config must include selection: %d %s", getRec.Code, getRec.Body.String())
+	}
+
+	for _, bad := range []string{
+		`{"selection":{"masters_per_domain":0}}`,
+		`{"selection":{"masters_per_domain":9}}`,
+	} {
+		if rec, _ := putConfig(t, r, bad, ""); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s must be 400, got %d %s", bad, rec.Code, rec.Body.String())
+		}
+	}
+	if r.cfg.Selection.MastersPerDomain != 4 {
+		t.Fatal("rejected selection values must not be applied")
 	}
 }

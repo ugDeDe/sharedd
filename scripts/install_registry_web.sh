@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 
-BINARY_URL="https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-registry"
-INSTALLER_URL="https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_registry.sh"
+# Канал сборки: stable (releases/latest) или dev (moving tag dev).
+CHANNEL="${CHANNEL:-stable}"
+BINARY_URL="${BINARY_URL:-}"
+INSTALLER_URL="${INSTALLER_URL:-}"
 
 set -euo pipefail
 
@@ -11,6 +13,27 @@ BOLD='\033[1m'; NC='\033[0m'
 
 say() { echo -e "  ${CYAN}→${NC} $*"; }
 die() { echo -e "  ${RED}✗ $*${NC}" >&2; exit 1; }
+
+# Аргументы: --channel передаём и в install_registry.sh (он его игнорирует
+# безопасно? нет — фильтруем), поэтому вынимаем канал здесь.
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --channel=*) CHANNEL="${1#*=}" ;;
+        --channel)   shift; [ $# -gt 0 ] || die "--channel требует stable|dev"; CHANNEL="$1" ;;
+        *)           ARGS+=("$1") ;;
+    esac
+    shift
+done
+case "$CHANNEL" in
+    stable)
+        : "${BINARY_URL:=https://github.com/ugDeDe/sharedd/releases/latest/download/sharedd-registry}"
+        : "${INSTALLER_URL:=https://raw.githubusercontent.com/ugDeDe/sharedd/main/scripts/install_registry.sh}" ;;
+    dev)
+        : "${BINARY_URL:=https://github.com/ugDeDe/sharedd/releases/download/dev/sharedd-registry}"
+        : "${INSTALLER_URL:=https://raw.githubusercontent.com/ugDeDe/sharedd/dev/scripts/install_registry.sh}" ;;
+    *) die "неизвестный --channel: $CHANNEL (stable|dev)" ;;
+esac
 
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash $0"
 command -v systemctl &>/dev/null && [ -d /run/systemd/system ] || die "нужен systemd"
@@ -31,7 +54,7 @@ dl() { # dl <url> <file>
 }
 
 echo ""
-say "sharedd — установка регистратора (web): ${BOLD}$BINARY_URL${NC}"
+say "sharedd — установка регистратора (web, $CHANNEL): ${BOLD}$BINARY_URL${NC}"
 dl "$BINARY_URL" "$TMP/sharedd-registry"   || die "скачивание бинарника не удалось"
 dl "$INSTALLER_URL" "$TMP/install.sh"      || die "скачивание установщика не удалось"
 head -c 4 "$TMP/sharedd-registry" | grep -q $'\x7fELF' || die "по BINARY_URL не ELF-бинарник (проверьте ссылку)"
@@ -52,7 +75,7 @@ chmod +x "$TMP/sharedd-registry" "$TMP/install.sh"
 # интерактивные вопросы установщика: stdin может быть пайпом curl — его ask
 # читает с /dev/tty, но гарантировать подадим явно
 if [ -e /dev/tty ]; then
-    bash "$TMP/install.sh" --binary "$TMP/sharedd-registry" "$@" </dev/tty
+    bash "$TMP/install.sh" --binary "$TMP/sharedd-registry" "${ARGS[@]}" </dev/tty
 else
-    bash "$TMP/install.sh" --binary "$TMP/sharedd-registry" "$@"
+    bash "$TMP/install.sh" --binary "$TMP/sharedd-registry" "${ARGS[@]}"
 fi
