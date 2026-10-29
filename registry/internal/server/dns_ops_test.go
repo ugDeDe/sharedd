@@ -382,7 +382,9 @@ func TestDNSOperationPersistenceAndSRMDRecovery(t *testing.T) {
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
 	r2.cfg.Cloudflare.Domains = append([]string(nil), r.cfg.Cloudflare.Domains...)
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	r2.mu.Lock()
 	r2.recoverDNSDesiredLocked()
 	r2.mu.Unlock()

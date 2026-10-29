@@ -347,7 +347,9 @@ func TestEventsPersisted(t *testing.T) {
 
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	if len(r2.state.Events) == 0 {
 		t.Fatal("events must survive state reload")
 	}

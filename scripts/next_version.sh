@@ -22,7 +22,7 @@ IFS=. read -r major minor patch <<<"$last"
 if [ -n "$tag" ]; then range="$tag..HEAD"; else range="HEAD"; fi
 msgs=$(git log --format='%s%n%b%n--END--' "$range" 2>/dev/null || true)
 
-bump=patch
+bump="patch"
 if grep -qE '^[a-z]+(\([^)]*\))?!:|^BREAKING[ -]CHANGE' <<<"$msgs"; then
     bump=major
 elif grep -qE '^feat(\([^)]*\))?:' <<<"$msgs"; then

@@ -304,7 +304,9 @@ func TestStatePersistAndLoad(t *testing.T) {
 
 	r2 := newTestRegistry(t)
 	r2.cfg.State.File = r.cfg.State.File
-	r2.loadState()
+	if err := r2.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
 	if _, ok := r2.state.Candidates["node-x"]; !ok {
 		t.Fatal("state must survive reload")
 	}
