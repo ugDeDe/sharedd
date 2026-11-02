@@ -89,6 +89,9 @@ func (r *Registry) setupProvisioning() {
 	if _, err := r.control.EnsureDefaultProfile(); err != nil {
 		log.Printf("provisioning: ensure default profile: %v", err)
 	}
+	if _, err := r.control.EnsureMtddProfile(); err != nil {
+		log.Printf("provisioning: ensure mtdd profile: %v", err)
+	}
 }
 
 func (r *Registry) closeControl() {
