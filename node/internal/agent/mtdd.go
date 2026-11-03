@@ -339,7 +339,22 @@ func syncMtddUsers(c *mtddConfig, shared map[string]string, domain string) (chan
 		enc := url.PathEscape(name)
 		cur, ok := existing[name]
 		if h, dup := holder[secret]; dup && h != name {
-			continue
+			if _, stillShared := shared[h]; stillShared {
+				continue // секрет делят два общих имени — mtdd такое не принимает
+			}
+			// Переименование: тот же секрет у пользователя, которого в общем
+			// конфиге больше нет. Удаляем старое имя и создаём новое — иначе
+			// онлайн считается под старым именем и не доходит до регистратора.
+			if e := mtddAPI(c, http.MethodDelete, "/v1/users/"+url.PathEscape(h), nil); e != nil {
+				log.Printf("mtdd: remove renamed user %q: %v", h, e)
+				note(e)
+				continue
+			}
+			log.Printf("mtdd: user %q renamed to %q (same secret): old name removed", h, name)
+			delete(existing, h)
+			delete(holder, secret)
+			changed++
+			ok = false
 		}
 		if !ok {
 			body := map[string]any{"name": name, "secret": secret}

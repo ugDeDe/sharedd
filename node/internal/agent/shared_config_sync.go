@@ -163,6 +163,38 @@ func ensureUser(lines []string, username, secret string) ([]string, bool) {
 	return insertIntoSection(lines, endIdx, entry), true
 }
 
+// dropStaleAliases — переименование общего пользователя. Регистратор раздаёт
+// пару имя→секрет; при смене имени ensureUser добавляет новое имя, а старая
+// запись с ТЕМ ЖЕ секретом оставалась: telemt сопоставляет клиента с первой
+// подходящей записью, метрики шли под старым именем и не попадали в «онлайн»
+// (в счёт входят только имена из общего конфига). Убираем из [access.users]
+// записи, чей секрет совпадает с общим, а имени в общем конфиге нет. Записи с
+// другими секретами (локальные пользователи) не трогаем.
+func dropStaleAliases(lines []string, shared map[string]string) ([]string, []string, bool) {
+	headerIdx, endIdx, found := findSection(lines, "access.users")
+	if !found || len(shared) == 0 {
+		return lines, nil, false
+	}
+	secrets := make(map[string]bool, len(shared))
+	for _, sec := range shared {
+		secrets[sec] = true
+	}
+	out := make([]string, 0, len(lines))
+	var dropped []string
+	for i, ln := range lines {
+		if i > headerIdx && i < endIdx {
+			if key, val, ok := parseKeyValueLine(ln); ok && secrets[val] {
+				if _, isShared := shared[strings.Trim(key, `"`)]; !isShared {
+					dropped = append(dropped, strings.Trim(key, `"`))
+					continue
+				}
+			}
+		}
+		out = append(out, ln)
+	}
+	return out, dropped, len(dropped) > 0
+}
+
 // parseKeyValueLine — разбор строки `key = value` (учитывает quoted-ключи с
 // точками и хвостовые комментарии). Value возвращается без кавычек/комментария.
 func parseKeyValueLine(line string) (key, val string, ok bool) {
@@ -512,6 +544,12 @@ func computeSharedConfigPatch(cfg *config.NodeConfig, shared SharedConfig) (newL
 			log.Printf("synchronized secret for user %q in %s", username, path)
 			anyChange = true
 		}
+	}
+
+	if rest, dropped, ch := dropStaleAliases(lines, shared.Users); ch {
+		lines = rest
+		log.Printf("removed renamed shared user alias(es) %v from %s (same secret, name no longer in registry config)", dropped, path)
+		anyChange = true
 	}
 
 	if shared.TLSDomain != "" {

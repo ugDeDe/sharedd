@@ -350,3 +350,58 @@ func mustAtoi(t *testing.T, s string) int {
 	}
 	return n
 }
+
+// Переименование общего пользователя в регистраторе: старое имя с тем же
+// секретом удаляется, новое создаётся (иначе онлайн считался бы под старым).
+func TestSyncMtddUsersRenamesSharedUser(t *testing.T) {
+	a := strings.Repeat("a", 32)
+	other := strings.Repeat("9", 32)
+	f := newMtddFixture(t, `{"users":[`+
+		`{"name":"u0cb271","secret":"`+a+`","enabled":true},`+
+		`{"name":"local","secret":"`+other+`","enabled":true}]}`)
+	mc, err := loadMtddConfig(f.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := syncMtddUsers(mc, map[string]string{"user1": a}, ""); err != nil {
+		t.Fatal(err)
+	}
+	log := f.callLog()
+	iDel := strings.Index(log, "DELETE /v1/users/u0cb271")
+	iNew := strings.Index(log, `POST /v1/users {"name":"user1","secret":"`+a+`"}`)
+	if iDel < 0 || iNew < 0 || iDel > iNew {
+		t.Fatalf("expected delete of old name before create of new:\n%s", log)
+	}
+	if strings.Contains(log, "/v1/users/local") {
+		t.Fatalf("local user with another secret must stay untouched:\n%s", log)
+	}
+}
+
+func TestDropStaleAliases(t *testing.T) {
+	cfg := strings.Split(`[server]
+port = 443
+
+[access.users]
+u0cb271 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+user1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+local = "99999999999999999999999999999999"
+
+[general]
+x = 1`, "\n")
+	shared := map[string]string{"user1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	out, dropped, changed := dropStaleAliases(cfg, shared)
+	if !changed || len(dropped) != 1 || dropped[0] != "u0cb271" {
+		t.Fatalf("dropped=%v changed=%v", dropped, changed)
+	}
+	text := strings.Join(out, "\n")
+	if strings.Contains(text, "u0cb271") || !strings.Contains(text, "user1 =") || !strings.Contains(text, "local =") || !strings.Contains(text, "[general]") {
+		t.Fatalf("unexpected result:\n%s", text)
+	}
+	if _, _, ch := dropStaleAliases(out, shared); ch {
+		t.Fatal("second pass must be a no-op")
+	}
+	// Пустой общий конфиг ничего не удаляет.
+	if _, _, ch := dropStaleAliases(cfg, nil); ch {
+		t.Fatal("empty shared users must not drop anything")
+	}
+}
