@@ -110,6 +110,23 @@
   color: var(--fg); font-weight: 550; margin-left: auto;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Антискан: состояние сборки. Источники — длинные URL, поэтому отдельным
+   списком: короткое имя + статус, всё обрезается многоточием (полный текст
+   в подсказке), ничего не распирает карточку. */
+.as-status { min-width: 0; }
+.as-status .as-summary { padding: 0; grid-template-columns: 1fr; }
+.as-sources { display: flex; flex-direction: column; margin-top: 6px; }
+.as-src {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 7px 0; border-bottom: 1px solid var(--line-2); font-size: 12.5px;
+}
+.as-src-name, .as-src-stat {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.as-src-name { color: var(--fg); font-weight: 550; }
+.as-src-stat { color: var(--fg-3); }
+.as-src-stat.as-wrap { white-space: normal; overflow-wrap: anywhere; }
+.as-bad, .as-bad .as-src-stat { color: var(--bad); }
 /* ═══ Вход ════════════════════════════════════════════════════════════ */
 #login-overlay {
   position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 20px;

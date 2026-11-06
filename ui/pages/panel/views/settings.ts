@@ -187,7 +187,7 @@ function renderGrid(): void {
           <span class="help">RIPEstat country-resource-list или свой текстовый список CIDR. Пусто — RIPEstat по умолчанию.</span>
         </div>
         <div class="note">Регистратор оставляет из источников только российские адреса и подсети и раздаёт список нодам; ноды дропают их на общем порту прокси. Если источник недоступен, используется его последняя удачная копия.</div>
-        <div class="static-grid" id="s-as-status"></div>
+        <div class="as-status" id="s-as-status"></div>
       </div>
       <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
     </div>
@@ -313,23 +313,42 @@ function fmtTime(iso: string | undefined): string {
   return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
 }
 
+/* Короткое имя источника: домен + имя файла (полный URL — в подсказке). */
+function shortSource(u: string): string {
+  try {
+    const url = new URL(u);
+    const file = url.pathname.split("/").filter(Boolean).pop() || "";
+    return file ? `${url.host} · ${file}` : url.host;
+  } catch {
+    return u;
+  }
+}
+
 function renderAntiscanStatus(st: any): void {
   if (!st) { $("s-as-status").innerHTML = ""; return; }
   const row = (k: string, v: unknown, bad = false) =>
     `<div class="static-row"><span class="static-k">${esc(k)}</span>` +
-    `<span class="static-v mono"${bad ? ` style="color:var(--bad)"` : ""} title="${esc(v)}">${esc(v)}</span></div>`;
+    `<span class="static-v mono${bad ? " as-bad" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
   const rev = st.revision === "disabled" ? "выключен" : (st.revision || "ещё не собран");
   let html =
-    row("ревизия", rev) +
-    row("записей RU в списке", st.entries) +
-    row("собран", fmtTime(st.built_at)) +
-    row("последняя попытка", fmtTime(st.last_attempt)) +
-    row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) +
-    (st.geo_error ? row("geo", st.geo_error, true) : "");
-  for (const s of st.sources || []) {
-    html += row(s.url, s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`, !!s.error);
+    `<div class="static-grid as-summary">` +
+      row("ревизия", rev) +
+      row("записей RU", st.entries) +
+      row("собран", fmtTime(st.built_at)) +
+      row("последняя попытка", fmtTime(st.last_attempt)) +
+      row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) +
+      (st.geo_error ? row("geo", st.geo_error, true) : "") +
+    `</div>`;
+  const sources = st.sources || [];
+  if (sources.length) {
+    html += `<div class="as-sources">` + sources.map((s: any) => {
+      const status = s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`;
+      return `<div class="as-src${s.error ? " as-bad" : ""}">` +
+        `<span class="as-src-name mono" title="${esc(s.url)}">${esc(shortSource(s.url))}</span>` +
+        `<span class="as-src-stat" title="${esc(status)}">${esc(status)}</span></div>`;
+    }).join("") + `</div>`;
   }
-  if (st.last_error) html += row("ошибка", st.last_error, true);
+  if (st.last_error) html += `<div class="as-src as-bad"><span class="as-src-stat as-wrap">${esc(st.last_error)}</span></div>`;
   $("s-as-status").innerHTML = html;
 }
 
