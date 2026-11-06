@@ -24,6 +24,10 @@ const writersMetric = "telemt_me_writers_active_current"
 // метрики, т.е. [general.telemetry] user_enabled=true).
 const uniqueIPsMetric = "telemt_user_unique_ips_current"
 
+// userConnsMetric — сумма активных клиентских соединений по пользователям
+// (агент суммирует per-user серии так же, как уникальные IP).
+const userConnsMetric = "telemt_user_connections_current"
+
 const (
 	trafficIngressMetric = "sharedd_traffic_ingress_bytes_total"
 	trafficEgressMetric  = "sharedd_traffic_egress_bytes_total"

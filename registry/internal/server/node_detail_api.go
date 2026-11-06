@@ -183,40 +183,7 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 	absent := []string{}
 	resp := meNodeDetail{IPHistory: nil, Absent: absent}
 
-	// 24ч per-user тоталы из history (не под r.mu: чтение БД).
-	var userTraffic []nodeUserTraffic
-	if r.db != nil {
-		if rows, herr := r.db.UserTrafficSince(nodeID, now.Add(-24*time.Hour)); herr == nil {
-			sum := map[string]*nodeUserTraffic{}
-			for _, row := range rows {
-				t := sum[row.User]
-				if t == nil {
-					t = &nodeUserTraffic{User: row.User}
-					sum[row.User] = t
-				}
-				t.IngressBytes += row.Ingress
-				t.EgressBytes += row.Egress
-			}
-			userTraffic = make([]nodeUserTraffic, 0, len(sum))
-			for _, t := range sum {
-				userTraffic = append(userTraffic, *t)
-			}
-			sort.Slice(userTraffic, func(i, j int) bool { return userTraffic[i].User < userTraffic[j].User })
-		}
-	}
-
-	// 24ч-серии графиков из history (тоже вне r.mu). Пустые массивы, не null.
-	cpuRAMSeries := []nodeCPURAMPoint{}
-	netSeries := []nodeNetPoint{}
-	if r.db != nil {
-		since := now.Add(-24 * time.Hour)
-		if rows, herr := r.db.HostMetricsSince(nodeID, since); herr == nil {
-			cpuRAMSeries = buildCPURAMSeries(rows, since, now)
-		}
-		if rows, herr := r.db.TrafficSeriesSince(nodeID, since); herr == nil {
-			netSeries = buildNetSeries(rows, since, now)
-		}
-	}
+	hist := r.loadNodeHistory(nodeID, now)
 
 	r.mu.RLock()
 	c := r.state.Candidates[nodeID]
@@ -255,16 +222,8 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 			}
 		}
 		resp.Telemt = telemtObj
-		resp.Connections = buildNodeConnections(c)
-		resp.Users = buildNodeUsers(c, userTraffic)
-		resp.Hosting = &nodeHosting{
-			CPUPercent:      metricPtr(c, hostCPUMetric),
-			RAMPercent:      metricPtr(c, hostRAMMetric),
-			NetIngressBytes: metricPtr(c, trafficIngressMetric),
-			NetEgressBytes:  metricPtr(c, trafficEgressMetric),
-			CPURAMSeries:    cpuRAMSeries,
-			NetSeries:       netSeries,
-		}
+		load := buildNodeLoad(c, hist)
+		resp.Connections, resp.Users, resp.Hosting = load.Connections, load.Users, load.Hosting
 		for i := len(r.state.Events) - 1; i >= 0 && len(resp.Events) < 50; i-- {
 			ev := r.state.Events[i]
 			if ev.NodeID != nodeID {
@@ -320,6 +279,71 @@ func (r *Registry) handleMeNodeDetail(w http.ResponseWriter, req *http.Request) 
 		}
 	}
 	writeCabinetJSON(w, http.StatusOK, resp)
+}
+
+// nodeHistory — 24ч-история нагрузки ноды из SQLite. Читается ВНЕ r.mu.
+// Пустые серии, не nil; userTraffic nil — БД недоступна.
+type nodeHistory struct {
+	userTraffic []nodeUserTraffic
+	cpuRAM      []nodeCPURAMPoint
+	net         []nodeNetPoint
+}
+
+func (r *Registry) loadNodeHistory(nodeID string, now time.Time) nodeHistory {
+	h := nodeHistory{cpuRAM: []nodeCPURAMPoint{}, net: []nodeNetPoint{}}
+	if r.db == nil {
+		return h
+	}
+	since := now.Add(-24 * time.Hour)
+	if rows, err := r.db.UserTrafficSince(nodeID, since); err == nil {
+		sum := map[string]*nodeUserTraffic{}
+		for _, row := range rows {
+			t := sum[row.User]
+			if t == nil {
+				t = &nodeUserTraffic{User: row.User}
+				sum[row.User] = t
+			}
+			t.IngressBytes += row.Ingress
+			t.EgressBytes += row.Egress
+		}
+		h.userTraffic = make([]nodeUserTraffic, 0, len(sum))
+		for _, t := range sum {
+			h.userTraffic = append(h.userTraffic, *t)
+		}
+		sort.Slice(h.userTraffic, func(i, j int) bool { return h.userTraffic[i].User < h.userTraffic[j].User })
+	}
+	if rows, err := r.db.HostMetricsSince(nodeID, since); err == nil {
+		h.cpuRAM = buildCPURAMSeries(rows, since, now)
+	}
+	if rows, err := r.db.TrafficSeriesSince(nodeID, since); err == nil {
+		h.net = buildNetSeries(rows, since, now)
+	}
+	return h
+}
+
+// nodeLoad — нагрузка ноды: хостинг (CPU/RAM/сеть), клиенты и соединения,
+// разбивка по MTProto-пользователям. Общая для кабинета и публичной
+// статистики (/statistics/api/node).
+type nodeLoad struct {
+	Hosting     *nodeHosting     `json:"hosting"`
+	Connections *nodeConnections `json:"connections_24h"`
+	Users       *nodeUsers       `json:"users"`
+}
+
+// buildNodeLoad — под r.mu (читает кандидата); история — из loadNodeHistory.
+func buildNodeLoad(c *Candidate, h nodeHistory) nodeLoad {
+	return nodeLoad{
+		Hosting: &nodeHosting{
+			CPUPercent:      metricPtr(c, hostCPUMetric),
+			RAMPercent:      metricPtr(c, hostRAMMetric),
+			NetIngressBytes: metricPtr(c, trafficIngressMetric),
+			NetEgressBytes:  metricPtr(c, trafficEgressMetric),
+			CPURAMSeries:    h.cpuRAM,
+			NetSeries:       h.net,
+		},
+		Connections: buildNodeConnections(c),
+		Users:       buildNodeUsers(c, h.userTraffic),
+	}
 }
 
 func nonNilStrings(s []string) []string {
@@ -470,7 +494,7 @@ func buildNodeConnections(c *Candidate) *nodeConnections {
 	conn := &nodeConnections{
 		CurrentWriters:         metricPtr(c, writersMetric),
 		CurrentUniqueIPs:       metricPtr(c, uniqueIPsMetric),
-		CurrentUserConnections: metricPtr(c, "telemt_user_connections_current"),
+		CurrentUserConnections: metricPtr(c, userConnsMetric),
 		Series:                 make([]nodeConnPoint, 0, len(c.ReportHist)),
 	}
 	for _, p := range c.ReportHist {

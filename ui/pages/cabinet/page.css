@@ -5,6 +5,7 @@
 @import "../../components/card.css";
 @import "../../components/table.css";
 @import "../../components/badge.css";
+@import "../../components/charts.css";
 @import "../../components/form.css";
 @import "../../components/vars.css";
 @import "../../components/misc.css";
@@ -142,72 +143,6 @@
 .chart-cap { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 7px; font-size: 11.5px; color: var(--fg-3); }
 .chart-cap:first-child { margin-top: 0; }
 .chart-cap .hint { margin-left: auto; }
-
-/* ═══ Графики (specs/node-stats.md §4, DESIGN.md §13) ═════════════════
-   SVG тянется по ширине (preserveAspectRatio="none"); подписи осей — HTML:
-   внутри SVG текст растянулся бы по горизонтали. Цвета — только токены. */
-.chart-wrap { width: 100%; }
-.chart-plot { display: flex; gap: 6px; }
-.chart-y {
-  display: flex; flex-direction: column; justify-content: space-between;
-  flex: none; font-size: 10px; color: var(--fg-3); white-space: nowrap;
-}
-.chart-svg { display: block; width: 100%; height: 160px; }
-.chart-svg .chart-line {
-  fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-}
-.chart-svg .bar { fill: var(--fg-3); }
-.chart-svg .bar.ok { fill: var(--ok); }
-.chart-svg .bar.warn { fill: var(--warn); }
-.chart-svg .bar.bad { fill: var(--bad); }
-.chart-x { display: flex; margin-top: 4px; }
-.chart-x > span {
-  flex: 1 1 0; min-width: 0; text-align: center; font-size: 10px;
-  color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
-.legend-static { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-2); }
-.legend-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.legend-static b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-/* Пончик сети (specs/node-stats.md — граф D, «Сеть»): доли-дуги, старт сверху.
-   Числа (% и байты) — текстом в легенде: цвет не единственный сигнал. */
-.donut-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
-.donut { display: block; flex: none; }
-.donut .donut-track { stroke: var(--surf-3); }
-.donut-legend { flex-direction: column; gap: 6px; margin-bottom: 0; }
-/* График E — горизонтальные столбики (текущий снимок). */
-.h-bars { display: flex; flex-direction: column; gap: 7px; }
-.h-bar { display: grid; grid-template-columns: minmax(56px, 22%) 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
-.h-bar-k { color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.h-bar-track { height: 9px; border-radius: var(--r-xs); background: var(--surf-3); overflow: hidden; }
-.h-bar-fill { display: block; height: 100%; background: var(--acc); border-radius: var(--r-xs); }
-.h-bar-v { color: var(--fg); font-variant-numeric: tabular-nums; }
-.h-bar:hover .h-bar-track { box-shadow: 0 0 0 2px var(--acc-soft); }
-
-/* ═══ Наведение на линейные графики (chart.ts liveLineChart) ══════════
-   Оверлей поверх SVG: кроссхэйр, точки серий, тултип. Позиции — в % от
-   .chart-canvas (та же линейная шкала, что у растянутого SVG). */
-.chart-canvas { position: relative; flex: 1 1 0; min-width: 0; }
-.chart-cross {
-  position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px;
-  background: var(--fg-3); opacity: .55; pointer-events: none;
-}
-.chart-dots { position: absolute; inset: 0; pointer-events: none; }
-.chart-dots .chart-dot {
-  position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--surf);
-}
-.chart-tip {
-  position: absolute; top: 4px; z-index: 5; pointer-events: none;
-  transform: translateX(-50%); padding: 6px 8px; border-radius: var(--r-sm);
-  border: 1px solid var(--line); background: var(--surf); box-shadow: var(--sh-pop);
-  font-size: 11px; color: var(--fg); max-width: 100%; white-space: normal;
-}
-.chart-tip .tip-t { color: var(--fg-3); margin-bottom: 3px; }
-.chart-tip .tip-r { display: flex; align-items: center; gap: 6px; }
-.chart-tip .tip-r b { margin-left: auto; font-variant-numeric: tabular-nums; }
-.chart-tip .tip-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 
 /* ═══ Свои серверы (addendum-manual-servers.md §3) ════════════════════
    Только раскладка поверх существующих .card/.field/.btn/.seg/.node-card. */

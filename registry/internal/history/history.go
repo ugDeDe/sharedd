@@ -273,6 +273,34 @@ func (d *DB) HostMetricsSince(nodeID string, since time.Time) ([]HostMetricsRow,
 	return out, rows.Err()
 }
 
+// TrafficTotal — сумма дельт трафика ноды за окно.
+type TrafficTotal struct {
+	Ingress int64
+	Egress  int64
+}
+
+// TrafficTotalsSince — суммы трафика всех нод новее since одной выборкой
+// (сводка публичной статистики), по node_id.
+func (d *DB) TrafficTotalsSince(since time.Time) (map[string]TrafficTotal, error) {
+	rows, err := d.sql.Query(
+		`SELECT node_id, SUM(ingress_bytes), SUM(egress_bytes) FROM traffic WHERE ts >= ? GROUP BY node_id`,
+		since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]TrafficTotal{}
+	for rows.Next() {
+		var node string
+		var t TrafficTotal
+		if err := rows.Scan(&node, &t.Ingress, &t.Egress); err != nil {
+			return nil, err
+		}
+		out[node] = t
+	}
+	return out, rows.Err()
+}
+
 func (d *DB) TrafficSince(since time.Time) ([]TrafficRow, error) {
 	rows, err := d.sql.Query(`SELECT ts, ingress_bytes, egress_bytes FROM traffic WHERE ts >= ? ORDER BY ts ASC, id ASC`, since.Unix())
 	if err != nil {

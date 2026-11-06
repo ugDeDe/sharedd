@@ -580,3 +580,69 @@ func TestStatsListDomainsDeadSlot(t *testing.T) {
 		t.Fatalf("missing candidate must not leak an ip, got %q", d.Masters[2].IPMasked)
 	}
 }
+
+func TestStatsPublicLoadAndPoolSummary(t *testing.T) {
+	r := statsFixtureRegistry(t)
+	r.db = openHistoryDB(t.TempDir() + "/hist.db")
+	now := time.Now()
+	r.mu.Lock()
+	c := r.state.Candidates["node-abcdef1234567890"]
+	c.MetricsSnapshot = map[string]float64{
+		uniqueIPsMetric: 42, userConnsMetric: 77, hostCPUMetric: 35, hostRAMMetric: 60,
+		uniqueIPsMetric + `{user="pool1"}`: 42,
+	}
+	r.mu.Unlock()
+	r.db.RecordTraffic(now.Add(-time.Hour), c.NodeID, 1000, 5000)
+	r.db.RecordHostMetrics(now.Add(-time.Hour), c.NodeID, ptrF(30), ptrF(55))
+	r.db.RecordUserTraffic(now.Add(-time.Hour), c.NodeID, "pool1", 1000, 5000)
+
+	rec := httptest.NewRecorder()
+	r.handleStatsNode(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/node?id="+c.NodeID, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("node: %d", rec.Code)
+	}
+	var node struct {
+		Load nodeLoad `json:"load"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &node); err != nil {
+		t.Fatal(err)
+	}
+	h := node.Load.Hosting
+	if h == nil || h.CPUPercent == nil || *h.CPUPercent != 35 || len(h.CPURAMSeries) != 1 || len(h.NetSeries) != 1 {
+		t.Fatalf("hosting load missing: %+v", h)
+	}
+	if conn := node.Load.Connections; conn == nil || conn.CurrentUserConnections == nil || *conn.CurrentUserConnections != 77 {
+		t.Fatalf("connections missing: %+v", conn)
+	}
+	if u := node.Load.Users; u == nil || len(u.TrafficByUser) != 1 || u.TrafficByUser[0].EgressBytes != 5000 {
+		t.Fatalf("per-user traffic missing: %+v", u)
+	}
+	if strings.Contains(rec.Body.String(), "203.0.113.7") {
+		t.Fatal("load block must not leak the node IP")
+	}
+
+	rec = httptest.NewRecorder()
+	r.handleStatsList(rec, httptest.NewRequest(http.MethodGet, "/statistics/api/list", nil))
+	var list struct {
+		Nodes   []publicNodeListItem `json:"nodes"`
+		Summary publicPoolSummary    `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	s := list.Summary
+	if s.Nodes == 0 || s.Traffic24hIn != 1000 || s.Traffic24hOut != 5000 || s.ClientsSum < 42 || s.AvgCPU == nil {
+		t.Fatalf("pool summary: %+v", s)
+	}
+	var item *publicNodeListItem
+	for i := range list.Nodes {
+		if list.Nodes[i].NodeID == c.NodeID {
+			item = &list.Nodes[i]
+		}
+	}
+	if item == nil || item.CPUPercent == nil || *item.CPUPercent != 35 || item.Traffic24hOut != 5000 {
+		t.Fatalf("node row load: %+v", item)
+	}
+}
+
+func ptrF(v float64) *float64 { return &v }

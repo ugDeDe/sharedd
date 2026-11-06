@@ -57,3 +57,23 @@ func TestUserTrafficRetention(t *testing.T) {
 		t.Fatalf("row older than 35d must be purged, got %d rows", len(rows))
 	}
 }
+
+func TestTrafficTotalsSinceGroupsByNode(t *testing.T) {
+	d := Open(t.TempDir() + "/hist.db")
+	if d == nil {
+		t.Fatal("history db failed to open")
+	}
+	defer d.Close()
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d.RecordTraffic(base.Add(-2*time.Hour), "n1", 1000, 1000) // вне окна
+	d.RecordTraffic(base, "n1", 100, 900)
+	d.RecordTraffic(base.Add(time.Minute), "n1", 50, 400)
+	d.RecordTraffic(base, "n2", 7, 8)
+	got, err := d.TrafficTotalsSince(base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["n1"] != (TrafficTotal{Ingress: 150, Egress: 1300}) || got["n2"] != (TrafficTotal{Ingress: 7, Egress: 8}) || len(got) != 2 {
+		t.Fatalf("totals mismatch: %+v", got)
+	}
+}

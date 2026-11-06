@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sharedd/registry/internal/config"
 	"sharedd/registry/internal/control"
+	"sharedd/registry/internal/history"
 	"slices"
 	"sort"
 	"strings"
@@ -379,6 +380,20 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 	now := time.Now()
 	r.mu.RLock()
 	c := r.resolvePublicNodeLocked(id)
+	nodeID := ""
+	if c != nil {
+		nodeID = c.NodeID
+	}
+	r.mu.RUnlock()
+	if nodeID == "" {
+		http.Error(w, "unknown node", http.StatusNotFound)
+		return
+	}
+	// 24ч-история нагрузки — чтение БД вне r.mu.
+	hist := r.loadNodeHistory(nodeID, now)
+
+	r.mu.RLock()
+	c = r.state.Candidates[nodeID]
 	if c == nil {
 		r.mu.RUnlock()
 		http.Error(w, "unknown node", http.StatusNotFound)
@@ -399,7 +414,11 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 		"gp_hist":     c.GPHist,
 		"report_hist": c.ReportHist,
 		"gp_last":     gpLast,
-		"events":      r.publicEventsLocked(c.NodeID, 100),
+		// Нагрузка: CPU/RAM, трафик, клиенты, разбивка по MTProto-
+		// пользователям пула (имена из shared_proxy.users публичны по решению
+		// владельца пула; IP и секреты сюда не попадают).
+		"load":   buildNodeLoad(c, hist),
+		"events": r.publicEventsLocked(c.NodeID, 100),
 		"hc": map[string]int{
 			"fail_threshold":    max(1, r.cfg.Healthcheck.FailThreshold),
 			"recover_threshold": max(1, r.cfg.Healthcheck.RecoverThreshold),
@@ -443,6 +462,26 @@ type publicNodeListItem struct {
 	ClientsUniqueIPs      *float64 `json:"clients_unique_ips,omitempty"`
 	ReportAgeSec          int64    `json:"report_age_sec"`
 	NodeType              string   `json:"node_type,omitempty"`
+	// Нагрузка: текущие CPU/RAM из последнего отчёта, трафик за 24 ч.
+	CPUPercent      *float64 `json:"cpu_percent,omitempty"`
+	RAMPercent      *float64 `json:"ram_percent,omitempty"`
+	Traffic24hIn    int64    `json:"traffic_24h_in"`
+	Traffic24hOut   int64    `json:"traffic_24h_out"`
+	UserConnections *float64 `json:"user_connections,omitempty"`
+}
+
+// publicPoolSummary — сводка пула на главной статистики.
+type publicPoolSummary struct {
+	Nodes           int      `json:"nodes"`
+	Healthy         int      `json:"healthy"` // fully healthy (в очереди мастерства)
+	Masters         int      `json:"masters"`
+	Quarantine      int      `json:"quarantine"`
+	ClientsSum      float64  `json:"clients_sum"` // сумма уникальных IP по нодам (клиент на двух нодах — дважды)
+	UserConnections float64  `json:"user_connections"`
+	Traffic24hIn    int64    `json:"traffic_24h_in"`
+	Traffic24hOut   int64    `json:"traffic_24h_out"`
+	AvgCPU          *float64 `json:"avg_cpu,omitempty"`
+	AvgRAM          *float64 `json:"avg_ram,omitempty"`
 }
 
 // publicDomainMaster — один слот-мастер managed-домена в публичном ответе.
@@ -532,6 +571,14 @@ func (r *Registry) buildPublicDomainsLocked(now time.Time) []publicDomain {
 // handleStatsList — GET /statistics/api/list: все ноды (обезличенные).
 func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	now := time.Now()
+	// Трафик за 24 ч всех нод одной выборкой — вне r.mu.
+	var traffic map[string]history.TrafficTotal
+	if r.db != nil {
+		traffic, _ = r.db.TrafficTotalsSince(now.Add(-24 * time.Hour))
+	}
+	summary := publicPoolSummary{}
+	var cpuSum, ramSum float64
+	var cpuN, ramN int
 	r.mu.RLock()
 	ids := make([]string, 0, len(r.state.Candidates))
 	for id := range r.state.Candidates {
@@ -542,7 +589,13 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	quarantine := make([]publicQuarantineItem, 0)
 	for _, id := range ids {
 		c := r.state.Candidates[id]
+		summary.Nodes++
+		if t, ok := traffic[id]; ok {
+			summary.Traffic24hIn += t.Ingress
+			summary.Traffic24hOut += t.Egress
+		}
 		if c.Quarantine != nil {
+			summary.Quarantine++
 			quarantine = append(quarantine, publicQuarantineItem{
 				NodeID: c.NodeID, IPMasked: maskPublicIP(c.IP), EnteredAt: c.Quarantine.EnteredAt,
 				AgeSec:   max(int64(0), int64(now.Sub(c.Quarantine.EnteredAt).Seconds())),
@@ -572,6 +625,29 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		if v, ok := c.MetricsSnapshot[uniqueIPsMetric]; ok {
 			vv := v
 			it.ClientsUniqueIPs = &vv
+			summary.ClientsSum += v
+		}
+		it.CPUPercent, it.RAMPercent = metricPtr(c, hostCPUMetric), metricPtr(c, hostRAMMetric)
+		it.UserConnections = metricPtr(c, userConnsMetric)
+		if t, ok := traffic[id]; ok {
+			it.Traffic24hIn, it.Traffic24hOut = t.Ingress, t.Egress
+		}
+		if it.CPUPercent != nil {
+			cpuSum += *it.CPUPercent
+			cpuN++
+		}
+		if it.RAMPercent != nil {
+			ramSum += *it.RAMPercent
+			ramN++
+		}
+		if it.UserConnections != nil {
+			summary.UserConnections += *it.UserConnections
+		}
+		if it.IsMaster {
+			summary.Masters++
+		}
+		if c.IsFullyHealthy(r.cfg.ReportFreshnessTTL) {
+			summary.Healthy++
 		}
 		out = append(out, it)
 	}
@@ -626,7 +702,15 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains}
+	if cpuN > 0 {
+		v := cpuSum / float64(cpuN)
+		summary.AvgCPU = &v
+	}
+	if ramN > 0 {
+		v := ramSum / float64(ramN)
+		summary.AvgRAM = &v
+	}
+	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains, "summary": summary}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
