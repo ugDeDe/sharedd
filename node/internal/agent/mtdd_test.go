@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ type mtddFixture struct {
 	mu      sync.Mutex
 	calls   []string
 	nodeCfg *config.NodeConfig
+	oldAPI  bool // прежняя сборка mtdd: 400 unknown_field на поле tls_domain
 }
 
 func newMtddFixture(t *testing.T, users string) *mtddFixture {
@@ -38,7 +40,13 @@ func newMtddFixture(t *testing.T, users string) *mtddFixture {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.calls = append(f.calls, r.Method+" "+r.URL.Path+" "+string(body))
+		old := f.oldAPI
 		f.mu.Unlock()
+		if old && strings.Contains(string(body), "tls_domain") {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"ok":false,"error":{"type":"unknown_field","message":"tls_domain"}}`)
+			return
+		}
 		if r.URL.Path == "/metrics" {
 			_, _ = io.WriteString(w, "mtdd_me_pool_ready{dc=\"2\"} 3\n")
 			return
@@ -152,12 +160,12 @@ func TestSyncMtddUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := syncMtddUsers(mc, map[string]string{
+	n, unsupported, err := syncMtddUsers(mc, map[string]string{
 		"same": a, "rot": strings.ToUpper(strings.Repeat("e", 32)), "off": b, "new": c, "bad": "zz",
 		"dupe": a, // секрет a уже у "same"/"rot" — не создаём (409 в реальном mtdd)
-	})
-	if err != nil {
-		t.Fatal(err)
+	}, "")
+	if err != nil || unsupported {
+		t.Fatalf("err=%v unsupported=%v", err, unsupported)
 	}
 	if n != 3 {
 		t.Fatalf("changes = %d, want 3 (rotate, enable, create)", n)
@@ -178,7 +186,10 @@ func TestSyncMtddUsers(t *testing.T) {
 }
 
 func TestApplyMtddSharedTLSDomainRollback(t *testing.T) {
+	// Прежний mtdd без персонального tls_domain: запасной путь правит конфиг.
 	f := newMtddFixture(t, `{"users":[]}`)
+	f.oldAPI = true
+	users := map[string]string{"u1": strings.Repeat("a", 32)}
 	origText, _ := os.ReadFile(f.cfgPath)
 
 	oldCtl, oldSD, oldWait := applyProxyCtl, applySystemdAvailable, applyWaitMetrics
@@ -195,7 +206,7 @@ func TestApplyMtddSharedTLSDomainRollback(t *testing.T) {
 
 	// успех: tls_domain записан, прочие ключи сохранены, рестарт один
 	applyWaitMetrics = func(*config.NodeConfig, time.Duration) error { return nil }
-	if err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "new.example"}); err != nil {
+	if err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "new.example", Users: users}); err != nil {
 		t.Fatal(err)
 	}
 	var doc map[string]any
@@ -210,7 +221,7 @@ func TestApplyMtddSharedTLSDomainRollback(t *testing.T) {
 		t.Fatalf("restarts = %d", restarts)
 	}
 	// повтор без изменений не рестартует
-	if err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "new.example"}); err != nil || restarts != 1 {
+	if err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "new.example", Users: users}); err != nil || restarts != 1 {
 		t.Fatalf("idempotent apply: err=%v restarts=%d", err, restarts)
 	}
 
@@ -219,7 +230,7 @@ func TestApplyMtddSharedTLSDomainRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyWaitMetrics = func(*config.NodeConfig, time.Duration) error { return os.ErrDeadlineExceeded }
-	err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "broken.example"})
+	err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "broken.example", Users: users})
 	if err == nil || !strings.Contains(err.Error(), "rolled back") {
 		t.Fatalf("expected rollback error, got %v", err)
 	}
@@ -244,5 +255,153 @@ func TestDetectNodeTypeMtdd(t *testing.T) {
 	}
 	if nodeTypeLabel(NodeTypeMTDD) != "mtdd" {
 		t.Fatal("label")
+	}
+}
+
+// Современный mtdd: SNI выставляется персонально через API — без правки
+// конфига и рестарта.
+func TestApplyMtddSharedPersonalSNIViaAPI(t *testing.T) {
+	a := strings.Repeat("a", 32)
+	b := strings.Repeat("b", 32)
+	f := newMtddFixture(t, `{"users":[`+
+		`{"name":"keep","secret":"`+a+`","enabled":true,"tls_domain":"new.example"},`+
+		`{"name":"move","secret":"`+b+`","enabled":true,"tls_domain":"old.example"}]}`)
+	origText, _ := os.ReadFile(f.cfgPath)
+
+	oldCtl, oldSD := applyProxyCtl, applySystemdAvailable
+	t.Cleanup(func() { applyProxyCtl, applySystemdAvailable = oldCtl, oldSD })
+	applyProxyCtl = func(action, unit string) error {
+		t.Fatalf("no restart expected, got systemctl %s %s", action, unit)
+		return nil
+	}
+	applySystemdAvailable = func() bool { return true }
+
+	users := map[string]string{"keep": a, "move": b, "fresh": strings.Repeat("c", 32)}
+	if err := applyMtddShared(f.nodeCfg, SharedConfig{TLSDomain: "New.Example", Users: users}); err != nil {
+		t.Fatal(err)
+	}
+	log := f.callLog()
+	for _, want := range []string{
+		`PATCH /v1/users/move {"tls_domain":"new.example"}`,
+		`"name":"fresh"`,
+		`"tls_domain":"new.example"`,
+	} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("missing %q in:\n%s", want, log)
+		}
+	}
+	if strings.Contains(log, "/v1/users/keep") {
+		t.Fatalf("user already on the right SNI must not be touched:\n%s", log)
+	}
+	if got, _ := os.ReadFile(f.cfgPath); string(got) != string(origText) {
+		t.Fatalf("config must stay untouched: %s", got)
+	}
+
+	// Совпадает с глобальным tls_domain — персональное значение снимается.
+	f2 := newMtddFixture(t, `{"users":[{"name":"keep","secret":"`+a+`","enabled":true,"tls_domain":"x.example"}]}`)
+	if err := applyMtddShared(f2.nodeCfg, SharedConfig{TLSDomain: "old.example", Users: map[string]string{"keep": a}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f2.callLog(), `PATCH /v1/users/keep {"tls_domain":""}`) {
+		t.Fatalf("personal SNI not cleared:\n%s", f2.callLog())
+	}
+}
+
+func TestMtddSplitMetricsUsesMetricsToken(t *testing.T) {
+	f := newMtddFixture(t, `{"users":[]}`)
+	metricsTok := "fedcba9876543210fedcba9876543210"
+	var gotAuth string
+	ms := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = io.WriteString(w, "mtdd_me_pool_ready{dc=\"2\"} 1\n")
+	}))
+	defer ms.Close()
+	host, port, _ := strings.Cut(strings.TrimPrefix(ms.URL, "http://"), ":")
+	raw, _ := os.ReadFile(f.cfgPath)
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["metrics_host"], doc["metrics_port"], doc["metrics_token_env"] = host, mustAtoi(t, port), "MTDD_METRICS_TOKEN"
+	out, _ := json.Marshal(doc)
+	if err := os.WriteFile(f.cfgPath, out, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mtddCredsPath, []byte("MTDD_API_TOKEN="+mtddTestToken+"\nMTDD_METRICS_TOKEN="+metricsTok+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u, err := metricsURLForConfig(f.nodeCfg)
+	if err != nil || u != ms.URL+"/metrics" {
+		t.Fatalf("metrics url = %q err=%v, want %s/metrics", u, err, ms.URL)
+	}
+	if err := waitMetricsReady(f.nodeCfg, 0); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer "+metricsTok {
+		t.Fatalf("metrics scrape must use the metrics token, got %q", gotAuth)
+	}
+}
+
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// Переименование общего пользователя в регистраторе: старое имя с тем же
+// секретом удаляется, новое создаётся (иначе онлайн считался бы под старым).
+func TestSyncMtddUsersRenamesSharedUser(t *testing.T) {
+	a := strings.Repeat("a", 32)
+	other := strings.Repeat("9", 32)
+	f := newMtddFixture(t, `{"users":[`+
+		`{"name":"u0cb271","secret":"`+a+`","enabled":true},`+
+		`{"name":"local","secret":"`+other+`","enabled":true}]}`)
+	mc, err := loadMtddConfig(f.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := syncMtddUsers(mc, map[string]string{"user1": a}, ""); err != nil {
+		t.Fatal(err)
+	}
+	log := f.callLog()
+	iDel := strings.Index(log, "DELETE /v1/users/u0cb271")
+	iNew := strings.Index(log, `POST /v1/users {"name":"user1","secret":"`+a+`"}`)
+	if iDel < 0 || iNew < 0 || iDel > iNew {
+		t.Fatalf("expected delete of old name before create of new:\n%s", log)
+	}
+	if strings.Contains(log, "/v1/users/local") {
+		t.Fatalf("local user with another secret must stay untouched:\n%s", log)
+	}
+}
+
+func TestDropStaleAliases(t *testing.T) {
+	cfg := strings.Split(`[server]
+port = 443
+
+[access.users]
+u0cb271 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+user1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+local = "99999999999999999999999999999999"
+
+[general]
+x = 1`, "\n")
+	shared := map[string]string{"user1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	out, dropped, changed := dropStaleAliases(cfg, shared)
+	if !changed || len(dropped) != 1 || dropped[0] != "u0cb271" {
+		t.Fatalf("dropped=%v changed=%v", dropped, changed)
+	}
+	text := strings.Join(out, "\n")
+	if strings.Contains(text, "u0cb271") || !strings.Contains(text, "user1 =") || !strings.Contains(text, "local =") || !strings.Contains(text, "[general]") {
+		t.Fatalf("unexpected result:\n%s", text)
+	}
+	if _, _, ch := dropStaleAliases(out, shared); ch {
+		t.Fatal("second pass must be a no-op")
+	}
+	// Пустой общий конфиг ничего не удаляет.
+	if _, _, ch := dropStaleAliases(cfg, nil); ch {
+		t.Fatal("empty shared users must not drop anything")
 	}
 }
