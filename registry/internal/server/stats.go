@@ -389,8 +389,9 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "unknown node", http.StatusNotFound)
 		return
 	}
-	// 24ч-история нагрузки — чтение БД вне r.mu.
+	// 24ч-история нагрузки и «цена соединений» — чтение БД вне r.mu.
 	hist := r.loadNodeHistory(nodeID, now)
+	cost := r.connCosts(now)[nodeID]
 
 	r.mu.RLock()
 	c = r.state.Candidates[nodeID]
@@ -417,7 +418,16 @@ func (r *Registry) handleStatsNode(w http.ResponseWriter, req *http.Request) {
 		// Нагрузка: CPU/RAM, трафик, клиенты, разбивка по MTProto-
 		// пользователям пула (имена из shared_proxy.users публичны по решению
 		// владельца пула; IP и секреты сюда не попадают).
-		"load":   buildNodeLoad(c, hist),
+		"load": buildNodeLoad(c, hist),
+		// «Цена 1000 соединений» (conn_cost.go) и размер хоста/процесса прокси.
+		"conn_cost": cost,
+		"proxy_host": map[string]*float64{
+			"cpu_count":       metricPtr(c, hostCPUCountMetric),
+			"ram_total_bytes": metricPtr(c, hostRAMTotalMetric),
+			"proxy_processes": metricPtr(c, proxyProcsMetric),
+			"proxy_cpu_cores": metricPtr(c, proxyCPUCoresMetric),
+			"proxy_rss_bytes": metricPtr(c, proxyRSSMetric),
+		},
 		"events": r.publicEventsLocked(c.NodeID, 100),
 		"hc": map[string]int{
 			"fail_threshold":    max(1, r.cfg.Healthcheck.FailThreshold),
@@ -576,6 +586,8 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	if r.db != nil {
 		traffic, _ = r.db.TrafficTotalsSince(now.Add(-24 * time.Hour))
 	}
+	costs := r.connCosts(now)
+	nodeTypes := map[string]string{}
 	summary := publicPoolSummary{}
 	var cpuSum, ramSum float64
 	var cpuN, ramN int
@@ -590,6 +602,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 	for _, id := range ids {
 		c := r.state.Candidates[id]
 		summary.Nodes++
+		nodeTypes[id] = c.NodeType
 		if t, ok := traffic[id]; ok {
 			summary.Traffic24hIn += t.Ingress
 			summary.Traffic24hOut += t.Egress
@@ -710,7 +723,8 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 		v := ramSum / float64(ramN)
 		summary.AvgRAM = &v
 	}
-	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains, "summary": summary}
+	resp := map[string]any{"nodes": out, "quarantine": quarantine, "domains": domains, "summary": summary,
+		"conn_cost_by_type": buildCostByType(costs, nodeTypes)}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

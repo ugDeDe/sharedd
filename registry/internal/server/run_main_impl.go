@@ -139,6 +139,10 @@ type Registry struct {
 
 	// scan — собранный список сканеров для агентов (antiscan.go).
 	scan antiscanRuntime
+	// loadAcc/costCache — «цена 1000 соединений» (conn_cost.go): трафик с
+	// прошлой точки по нодам (под r.mu) и кэш оценок для статистики.
+	loadAcc   map[string]*loadAccum
+	costCache connCostCache
 
 	// cfgMu защищает "горячие" поля cfg (панель их правит на лету).
 	// ПОРЯДОК ЛОКОВ: сначала mu, потом cfgMu — никогда наоборот.

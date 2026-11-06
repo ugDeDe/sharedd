@@ -783,6 +783,25 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 		if v, ok := hostRAMPercent(); ok {
 			snapshot[hostRAMMetricName] = v
 		}
+		// Ресурсы самого прокси и размер хоста — для «цены 1000 соединений»
+		// на регистраторе (сравнение прокси на разных серверах).
+		if n, ok := hostCPUCount(); ok {
+			snapshot[hostCPUCountMetricName] = float64(n)
+		}
+		if v, ok := hostRAMTotalBytes(); ok {
+			snapshot[hostRAMTotalMetricName] = v
+		}
+		port := sharedConfigCache.Get().ProxyPort
+		if port == 0 {
+			port = 443
+		}
+		if cores, rss, procs, cpuOK := proxyResources(port, time.Now()); procs > 0 {
+			snapshot[proxyRSSMetricName] = rss
+			snapshot[proxyProcsMetricName] = float64(procs)
+			if cpuOK {
+				snapshot[proxyCPUCoresMetricName] = cores
+			}
+		}
 
 		v, ok := values[healthMetricName]
 		if !ok {

@@ -118,7 +118,17 @@ CREATE TABLE IF NOT EXISTS host_metrics (
  cpu_percent REAL,
  ram_percent REAL
 );
-CREATE INDEX IF NOT EXISTS idx_host_metrics_node_ts ON host_metrics(node_id, ts);`
+CREATE INDEX IF NOT EXISTS idx_host_metrics_node_ts ON host_metrics(node_id, ts);
+CREATE TABLE IF NOT EXISTS load_samples (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ ts INTEGER NOT NULL,
+ node_id TEXT NOT NULL,
+ conns REAL NOT NULL,
+ cpu_cores REAL,
+ rss_bytes REAL,
+ net_bps REAL
+);
+CREATE INDEX IF NOT EXISTS idx_load_samples_ts ON load_samples(ts);`
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("history db %s: schema failed: %v — continuing WITHOUT persistent history", path, err)
 		_ = db.Close()
@@ -341,6 +351,62 @@ func (d *DB) PruneEvents(olderThan time.Time) {
 	if _, err := d.sql.Exec(`DELETE FROM host_metrics WHERE ts < ?`, cutoff); err != nil {
 		log.Printf("history db: host metrics retention: %v", err)
 	}
+	if _, err := d.sql.Exec(`DELETE FROM load_samples WHERE ts < ?`, time.Now().Add(-LoadSamplesRetention).Unix()); err != nil {
+		log.Printf("history db: load samples retention: %v", err)
+	}
+}
+
+// LoadSamplesRetention — точки «цены соединений» нужны только окну расчёта.
+const LoadSamplesRetention = 48 * time.Hour
+
+// LoadSample — нагрузка прокси при данном числе соединений (точка в минуту).
+// CPU/RSS/сеть — указатели: агент без нужной телеметрии их не присылает.
+type LoadSample struct {
+	TS       time.Time
+	NodeID   string
+	Conns    float64
+	CPUCores *float64
+	RSSBytes *float64
+	NetBps   *float64
+}
+
+func (d *DB) RecordLoadSample(s LoadSample) {
+	if _, err := d.sql.Exec(`INSERT INTO load_samples (ts, node_id, conns, cpu_cores, rss_bytes, net_bps) VALUES (?,?,?,?,?,?)`,
+		s.TS.Unix(), s.NodeID, s.Conns, s.CPUCores, s.RSSBytes, s.NetBps); err != nil {
+		log.Printf("history db: record load sample for %s: %v", s.NodeID, err)
+	}
+}
+
+// LoadSamplesSince — точки всех нод новее since, по node_id и времени.
+func (d *DB) LoadSamplesSince(since time.Time) ([]LoadSample, error) {
+	rows, err := d.sql.Query(
+		`SELECT ts, node_id, conns, cpu_cores, rss_bytes, net_bps FROM load_samples WHERE ts >= ? ORDER BY node_id, ts, id`,
+		since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []LoadSample{}
+	for rows.Next() {
+		var s LoadSample
+		var ts int64
+		var cpu, rss, net sql.NullFloat64
+		if err := rows.Scan(&ts, &s.NodeID, &s.Conns, &cpu, &rss, &net); err != nil {
+			return nil, err
+		}
+		s.TS = time.Unix(ts, 0)
+		for _, x := range []struct {
+			v   sql.NullFloat64
+			dst **float64
+		}{{cpu, &s.CPUCores}, {rss, &s.RSSBytes}, {net, &s.NetBps}} {
+			if x.v.Valid {
+				v := x.v.Float64
+				*x.dst = &v
+			}
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // bansSince — блокировки новее since, по возрастанию времени. reasonFilter:

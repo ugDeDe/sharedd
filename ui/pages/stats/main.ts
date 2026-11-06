@@ -223,6 +223,7 @@ async function renderListView(): Promise<void> {
   $("root").innerHTML = `
     <div class="banner info">${icon(ICONS.info, 16)}<span>Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</span></div>
     ${d.summary ? summaryHTML(d.summary) : ""}
+    ${Array.isArray(d.conn_cost_by_type) ? costByTypeHTML(d.conn_cost_by_type) : ""}
     ${domainsCard}
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
@@ -381,6 +382,7 @@ async function renderNodeView(id: string): Promise<void> {
     </div>
     <div class="metrics" style="margin-bottom:16px">${stats}</div>
     ${loadHTML(d.load ?? null)}
+    ${connCostHTML(d.conn_cost ?? null, d.proxy_host ?? null)}
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
       ${gpSide}${probesTbl}
@@ -415,6 +417,81 @@ function loadHTML(load: NodeLoad | null): string {
       </div>
     </section>`;
   return `<div class="load-stack">${hostingCardHTML(load)}${connectionsCardHTML(load)}${users}</div>`;
+}
+
+/* ── «Цена 1000 соединений» ────────────────────────────────────────────
+   CPU и память — самого процесса прокси (не всего хоста), сеть — трафик
+   прокси. «В среднем» = средний ресурс / среднее число соединений × 1000
+   (вместе с фоном процесса); «предельная» = наклон регрессии × 1000 —
+   сколько добавляет тысяча соединений сверх фона. */
+
+const COST_ROWS: { key: "cpu_cores" | "ram_mb" | "net_mbps"; label: string; unit: string; digits: number }[] = [
+  { key: "cpu_cores", label: "CPU", unit: "ядра", digits: 3 },
+  { key: "ram_mb", label: "Память", unit: "МБ", digits: 1 },
+  { key: "net_mbps", label: "Сеть", unit: "Мбит/с", digits: 2 },
+];
+
+function costVal(v: number | null | undefined, digits: number, unit: string): string {
+  return v === null || v === undefined ? "—" : `${v.toFixed(digits)} ${unit}`;
+}
+
+function connCostHTML(c: any, host: any): string {
+  const head = `<div class="card-head"><h2>Цена 1000 соединений</h2><span class="hint">процесс прокси · ${c ? c.window_hours : 24} ч</span></div>`;
+  if (!c) {
+    return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — нужен агент с телеметрией процесса прокси</div></section>`;
+  }
+  const rows = COST_ROWS.map((r) => {
+    const f = c[r.key] || {};
+    const r2 = f.r2 == null ? "—" : f.r2.toFixed(2);
+    const base = f.baseline == null ? "—" : `${f.baseline.toFixed(r.digits)} ${r.unit}`;
+    return `<tr>
+      <td data-label="Ресурс">${esc(r.label)}</td>
+      <td class="num mono" data-label="В среднем">${costVal(f.avg_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Предельная">${costVal(f.marginal_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Фон">${base}</td>
+      <td class="num mono" data-label="R²">${r2}</td>
+    </tr>`;
+  }).join("");
+  const hostBits: string[] = [];
+  if (host?.cpu_count != null) hostBits.push(`${host.cpu_count} ${plural(host.cpu_count, "ядро", "ядра", "ядер")}`);
+  if (host?.ram_total_bytes != null) hostBits.push(`RAM ${fmtBytes(host.ram_total_bytes)}`);
+  if (host?.proxy_processes != null) hostBits.push(`процессов прокси ${host.proxy_processes}`);
+  return `<section class="card" style="margin-bottom:16px">${head}
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Ресурс</th><th class="num" title="средний ресурс / среднее число соединений × 1000, вместе с фоном">В среднем</th>
+        <th class="num" title="наклон регрессии × 1000: сколько добавляет тысяча соединений сверх фона">Предельная</th>
+        <th class="num" title="ресурс процесса при нуле соединений (оценка)">Фон</th><th class="num" title="насколько линейная модель объясняет данные (1 — идеально)">R²</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="card-note">По ${c.points} ${plural(c.points, "точке", "точкам", "точкам")} (точка в минуту): соединений от ${fmtNum0(c.conns_min)} до ${fmtNum0(c.conns_max)}, в среднем ${fmtNum0(c.conns_avg)}.
+      Предельная цена появляется, когда соединений было заметно разное число.${hostBits.length ? " Хост: " + esc(hostBits.join(" · ")) + "." : ""}</div>
+  </section>`;
+}
+
+const TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd", unknown: "неизвестно" };
+
+function costByTypeHTML(list: any[]): string {
+  const head = `<div class="card-head"><h2>Цена 1000 соединений по типам прокси</h2><span class="hint">медиана по нодам · 24 ч</span></div>`;
+  if (!list.length) {
+    return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — нужны агенты с телеметрией процесса прокси</div></section>`;
+  }
+  const cell = (s: any, digits: number, unit: string): string => {
+    const avg = costVal(s?.avg_per_1k, digits, unit);
+    const marg = s?.marginal_per_1k == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal_per_1k, digits, unit)} (${s.marginal_nodes})</div>`;
+    return `${avg}${marg}`;
+  };
+  const rows = list.map((t) => `<tr>
+      <td data-label="Тип">${esc(TYPE_LABEL[t.node_type] || t.node_type)}</td>
+      <td class="num mono" data-label="Нод">${t.nodes}</td>
+      <td class="num mono" data-label="CPU">${cell(t.cpu_cores, 3, "ядра")}</td>
+      <td class="num mono" data-label="Память">${cell(t.ram_mb, 1, "МБ")}</td>
+      <td class="num mono" data-label="Сеть">${cell(t.net_mbps, 2, "Мбит/с")}</td>
+    </tr>`).join("");
+  return `<section class="card" style="margin-bottom:16px">${head}
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU</th><th class="num">Память</th><th class="num">Сеть</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="card-note">CPU и память — самого процесса прокси (не всего сервера), поэтому ноды на разных серверах сравнимы. Сеть зависит от того, что делают клиенты, а не только от прокси.</div>
+  </section>`;
 }
 
 /* ---------------- каркас ---------------- */
