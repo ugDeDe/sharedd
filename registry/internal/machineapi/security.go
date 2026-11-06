@@ -147,7 +147,18 @@ type SharedConfigResponse struct {
 	// подтверждение применённых настроек на /api/node/settings/status.
 	NodeSettingsProtocol int           `json:"node_settings_protocol,omitempty"`
 	NodeSettings         *NodeSettings `json:"node_settings,omitempty"`
+	// AntiscanRevision — ревизия списка сканеров (GET /antiscan). Пусто —
+	// списка нет (агент держит последний применённый set), AntiscanDisabled —
+	// антискан выключен (агент снимает хук и set), иначе — ревизия содержимого:
+	// агент скачивает список, только когда она отличается от применённой.
+	AntiscanRevision string `json:"antiscan_revision,omitempty"`
 }
+
+// Антискан: маркер выключения в /config и заголовок ревизии ответа GET /antiscan.
+const (
+	AntiscanDisabled       = "disabled"
+	AntiscanRevisionHeader = "X-ShareDD-Antiscan-Revision"
+)
 
 // NodeSettings — индивидуальные runtime-настройки ноды. Передаются только
 // агенту, аутентифицированному персональным секретом владельца.

@@ -137,6 +137,9 @@ type Registry struct {
 	bpInterval     time.Duration
 	bpPollInterval time.Duration
 
+	// scan — собранный список сканеров для агентов (antiscan.go).
+	scan antiscanRuntime
+
 	// cfgMu защищает "горячие" поля cfg (панель их правит на лету).
 	// ПОРЯДОК ЛОКОВ: сначала mu, потом cfgMu — никогда наоборот.
 	cfgMu sync.RWMutex
@@ -204,6 +207,7 @@ func Run() {
 		startedAt:  time.Now(),
 		ttlOverdue: make(map[string]bool),
 	}
+	reg.scan.kick = make(chan struct{}, 1)
 	// A missing state file is a valid first start. An existing but unreadable
 	// or corrupt file must abort startup: continuing would persist an empty
 	// state over the only copy of assignments, DNS operations and bans.
@@ -259,6 +263,8 @@ func Run() {
 	// Continue fleets accepted before a restart. The in-process workers died
 	// with the old process; the persisted idempotency keys make the replay safe.
 	go reg.resumeFleets(ctx)
+	// Список сканеров для нод: abuse-листы ∩ RU-диапазоны (antiscan.go).
+	go reg.antiscanLoop(ctx)
 	bpDone := make(chan struct{})
 	go func() {
 		defer close(bpDone)
@@ -582,6 +588,9 @@ func (r *Registry) buildMux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	})))
 
+	// Список сканеров (antiscan.go): та же machine-аутентификация, что у /config.
+	mux.Handle("GET /antiscan", r.requireNodeAuth(http.HandlerFunc(r.handleAntiscanList)))
+
 	mux.Handle("GET /config", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		// Матрица machine-аутентификации: node_id маршрута — заголовок
 		// X-ShareDD-Node-ID (OFF требует совпадения с владельцем секрета).
@@ -607,6 +616,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			},
 		}
 		r.cfgMu.RUnlock()
+		resp.AntiscanRevision = r.antiscanRevision()
 		nodeID := req.Header.Get("X-ShareDD-Node-ID")
 		if nodeID != "" {
 			now := time.Now()

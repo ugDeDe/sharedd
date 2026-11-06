@@ -168,6 +168,30 @@ function renderGrid(): void {
       <div class="cfg-foot"><button class="btn primary" id="s-hc-quar-save">Сохранить карантин</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="antiscan">
+      <div class="cfg-head">${icon(ICONS.ban)}<span>Антискан · сканеры из abuse-листов</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-as-enabled"><span class="box"></span> Блокировать сканеры на нодах</label>
+        <div class="field">
+          <label for="s-as-sources">Источники</label>
+          <textarea id="s-as-sources" class="mono" spellcheck="false"></textarea>
+          <span class="help">По одному URL в строке: IPv4-адреса, подсети CIDR или диапазоны a-b, по записи на строку (формат ipsum подходит).</span>
+        </div>
+        <div class="field">
+          <label for="s-as-interval">Интервал обновления, мин</label>
+          <input type="number" id="s-as-interval" min="5" max="1440">
+        </div>
+        <div class="field">
+          <label for="s-as-geo">Российские диапазоны (geo_url)</label>
+          <input type="text" id="s-as-geo" class="mono" spellcheck="false">
+          <span class="help">RIPEstat country-resource-list или свой текстовый список CIDR. Пусто — RIPEstat по умолчанию.</span>
+        </div>
+        <div class="note">Регистратор оставляет из источников только российские адреса и подсети и раздаёт список нодам; ноды дропают их на общем порту прокси. Если источник недоступен, используется его последняя удачная копия.</div>
+        <div class="static-grid" id="s-as-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="system">
       <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
       <div class="cfg-body">
@@ -253,6 +277,12 @@ export async function load(): Promise<void> {
   ($("s-hc-quar") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
   ($("s-hc-gp-validity") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
   ($("s-gp-base") as HTMLInputElement).value = c.globalping.api_base;
+  const as = c.antiscan || {};
+  ($("s-as-enabled") as HTMLInputElement).checked = as.enabled !== false;
+  ($("s-as-sources") as HTMLTextAreaElement).value = (as.sources || []).join("\n");
+  ($("s-as-interval") as HTMLInputElement).value = as.interval_min || 30;
+  ($("s-as-geo") as HTMLInputElement).value = as.geo_url || "";
+  renderAntiscanStatus(data.antiscan_status);
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
   // Раньше это был моноширинный дамп в рамке. Те же значения читаются
@@ -275,6 +305,32 @@ export async function load(): Promise<void> {
       row("report_freshness", st.report_freshness_min + " мин") +
       row("prune_unhealthy", st.prune_unhealthy_min + " мин") +
     `</div>`;
+}
+
+/* ── антискан: состояние сборки списка ────────────────────────────── */
+
+function fmtTime(iso: string | undefined): string {
+  return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
+}
+
+function renderAntiscanStatus(st: any): void {
+  if (!st) { $("s-as-status").innerHTML = ""; return; }
+  const row = (k: string, v: unknown, bad = false) =>
+    `<div class="static-row"><span class="static-k">${esc(k)}</span>` +
+    `<span class="static-v mono"${bad ? ` style="color:var(--bad)"` : ""} title="${esc(v)}">${esc(v)}</span></div>`;
+  const rev = st.revision === "disabled" ? "выключен" : (st.revision || "ещё не собран");
+  let html =
+    row("ревизия", rev) +
+    row("записей RU в списке", st.entries) +
+    row("собран", fmtTime(st.built_at)) +
+    row("последняя попытка", fmtTime(st.last_attempt)) +
+    row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) +
+    (st.geo_error ? row("geo", st.geo_error, true) : "");
+  for (const s of st.sources || []) {
+    html += row(s.url, s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`, !!s.error);
+  }
+  if (st.last_error) html += row("ошибка", st.last_error, true);
+  $("s-as-status").innerHTML = html;
 }
 
 /* ── DNS-push (кнопка «Перезаписать DNS сейчас») ──────────────────── */
@@ -392,6 +448,18 @@ export function init(): void {
 
   $("s-gp-save").onclick = () =>
     saveSection({ globalping: { api_base: ($("s-gp-base") as HTMLInputElement).value.trim() } }, "Globalping сохранён")
+      .catch((e) => showToast(e.message, true));
+
+  $("s-as-save").onclick = () =>
+    saveSection({ antiscan: {
+      enabled: ($("s-as-enabled") as HTMLInputElement).checked,
+      sources: ($("s-as-sources") as HTMLTextAreaElement).value.split("\n").map((s) => s.trim()).filter(Boolean),
+      interval_min: parseInt(($("s-as-interval") as HTMLInputElement).value, 10) || 30,
+      geo_url: ($("s-as-geo") as HTMLInputElement).value.trim(),
+    } }, "Антискан сохранён — список пересобирается")
+      // Пересборка идёт в фоне (скачивание источников); состояние подтянется
+      // со следующим перечитыванием настроек.
+      .then(() => setTimeout(() => load().catch(() => {}), 5000))
       .catch((e) => showToast(e.message, true));
 
   $("s-panel-save").onclick = () => {

@@ -3114,7 +3114,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="d38b0bad3938f3ef">
+  <meta name="sharedd-build" content="dd76593383d074bd">
 </head>
 <body>
 
@@ -3394,6 +3394,7 @@
         <button type="button" data-settings-tab="proxy">Прокси</button>
         <button type="button" data-settings-tab="pool">DNS и пул</button>
         <button type="button" data-settings-tab="globalping">Globalping</button>
+        <button type="button" data-settings-tab="antiscan">Антискан</button>
         <button type="button" data-settings-tab="system">Система</button>
       </nav>
       <div class="settings-grid" id="settings-grid"></div>
@@ -4872,6 +4873,30 @@
       <div class="cfg-foot"><button class="btn primary" id="s-hc-quar-save">Сохранить карантин</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="antiscan">
+      <div class="cfg-head">${icon(ICONS.ban)}<span>Антискан · сканеры из abuse-листов</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-as-enabled"><span class="box"></span> Блокировать сканеры на нодах</label>
+        <div class="field">
+          <label for="s-as-sources">Источники</label>
+          <textarea id="s-as-sources" class="mono" spellcheck="false"></textarea>
+          <span class="help">По одному URL в строке: IPv4-адреса, подсети CIDR или диапазоны a-b, по записи на строку (формат ipsum подходит).</span>
+        </div>
+        <div class="field">
+          <label for="s-as-interval">Интервал обновления, мин</label>
+          <input type="number" id="s-as-interval" min="5" max="1440">
+        </div>
+        <div class="field">
+          <label for="s-as-geo">Российские диапазоны (geo_url)</label>
+          <input type="text" id="s-as-geo" class="mono" spellcheck="false">
+          <span class="help">RIPEstat country-resource-list или свой текстовый список CIDR. Пусто — RIPEstat по умолчанию.</span>
+        </div>
+        <div class="note">Регистратор оставляет из источников только российские адреса и подсети и раздаёт список нодам; ноды дропают их на общем порту прокси. Если источник недоступен, используется его последняя удачная копия.</div>
+        <div class="static-grid" id="s-as-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="system">
       <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
       <div class="cfg-body">
@@ -4948,10 +4973,33 @@
     $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
     $("s-hc-gp-validity").value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
     $("s-gp-base").value = c.globalping.api_base;
+    const as = c.antiscan || {};
+    $("s-as-enabled").checked = as.enabled !== false;
+    $("s-as-sources").value = (as.sources || []).join("\n");
+    $("s-as-interval").value = as.interval_min || 30;
+    $("s-as-geo").value = as.geo_url || "";
+    renderAntiscanStatus(data.antiscan_status);
     $("s-panel-token").value = c.panel.token;
     $("s-panel-events").value = c.panel.events_max;
     const row = (k, v, mono = true) => `<div class="static-row"><span class="static-k">${k}</span><span class="static-v${mono ? " mono" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
     $("s-static").innerHTML = `<div class="static-head">Требуют рестарта регистратора</div><div class="static-grid">` + row("http.addr", st.http_addr) + row("state.file", st.state_file) + row("probe_interval", st.probe_interval_ms + " мс") + row("probe_timeout", st.probe_timeout_ms + " мс") + row("selection_interval", st.selection_interval_ms + " мс") + row("heartbeat_ttl", st.heartbeat_ttl_sec + " с") + row("fail_threshold", st.fail_threshold) + row("recover_threshold", st.recover_threshold) + row("report_freshness", st.report_freshness_min + " мин") + row("prune_unhealthy", st.prune_unhealthy_min + " мин") + `</div>`;
+  }
+  function fmtTime(iso) {
+    return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
+  }
+  function renderAntiscanStatus(st) {
+    if (!st) {
+      $("s-as-status").innerHTML = "";
+      return;
+    }
+    const row = (k, v, bad = false) => `<div class="static-row"><span class="static-k">${esc(k)}</span><span class="static-v mono"${bad ? ` style="color:var(--bad)"` : ""} title="${esc(v)}">${esc(v)}</span></div>`;
+    const rev = st.revision === "disabled" ? "выключен" : st.revision || "ещё не собран";
+    let html = row("ревизия", rev) + row("записей RU в списке", st.entries) + row("собран", fmtTime(st.built_at)) + row("последняя попытка", fmtTime(st.last_attempt)) + row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) + (st.geo_error ? row("geo", st.geo_error, true) : "");
+    for (const s of st.sources || []) {
+      html += row(s.url, s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`, !!s.error);
+    }
+    if (st.last_error) html += row("ошибка", st.last_error, true);
+    $("s-as-status").innerHTML = html;
   }
   async function dnsPush2() {
     try {
@@ -5048,6 +5096,13 @@
       globalping_validity_min: Math.max(1, parseInt($("s-hc-gp-validity").value, 10) || 15)
     } }, "Карантин сохранён").catch((e) => showToast(e.message, true));
     $("s-gp-save").onclick = () => saveSection({ globalping: { api_base: $("s-gp-base").value.trim() } }, "Globalping сохранён").catch((e) => showToast(e.message, true));
+    $("s-as-save").onclick = () => saveSection({ antiscan: {
+      enabled: $("s-as-enabled").checked,
+      sources: $("s-as-sources").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      interval_min: parseInt($("s-as-interval").value, 10) || 30,
+      geo_url: $("s-as-geo").value.trim()
+    } }, "Антискан сохранён — список пересобирается").then(() => setTimeout(() => load2().catch(() => {
+    }), 5e3)).catch((e) => showToast(e.message, true));
     $("s-panel-save").onclick = () => {
       const newTok = $("s-panel-token").value.trim();
       saveSection({ panel: { token: newTok, events_max: parseInt($("s-panel-events").value, 10) || 500 } }, "Параметры панели сохранены").then(() => {
