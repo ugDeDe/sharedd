@@ -154,6 +154,36 @@ type SharedConfigResponse struct {
 	AntiscanRevision string `json:"antiscan_revision,omitempty"`
 }
 
+// HeartbeatRequest — тело POST /heartbeat. AdPauseState агент присылает,
+// только получив от регистратора ответ с ad_pause (прежние регистраторы
+// отвергают неизвестные поля).
+type HeartbeatRequest struct {
+	NodeID       string `json:"node_id"`
+	AdPauseState string `json:"ad_pause_state,omitempty"`
+}
+
+// HeartbeatResponse — тело 200 на POST /heartbeat (прежние регистраторы
+// отвечали пустым телом). Наличие AdPause означает, что регистратор знает
+// ad_pause_state.
+type HeartbeatResponse struct {
+	AdPause *AdPauseDirective `json:"ad_pause,omitempty"`
+}
+
+// AdPauseDirective — какой тег держать сейчас: Active — рекламный тег пула
+// (Tag), иначе — собственный тег ноды.
+type AdPauseDirective struct {
+	Active bool   `json:"active"`
+	Tag    string `json:"tag,omitempty"`
+}
+
+// Состояния тега, которые подтверждает агент.
+const (
+	AdPauseStatePool        = "pool"
+	AdPauseStateOwn         = "own"
+	AdPauseStateUnsupported = "unsupported"
+	AdPauseStateFailed      = "failed"
+)
+
 // Антискан: маркер выключения в /config и заголовок ревизии ответа GET /antiscan.
 const (
 	AntiscanDisabled       = "disabled"

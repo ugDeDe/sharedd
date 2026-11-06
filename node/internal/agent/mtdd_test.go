@@ -27,6 +27,7 @@ type mtddFixture struct {
 	calls   []string
 	nodeCfg *config.NodeConfig
 	oldAPI  bool // прежняя сборка mtdd: 400 unknown_field на поле tls_domain
+	noAdTag bool // прежняя сборка mtdd: нет маршрута /v1/ad-tag (404)
 }
 
 func newMtddFixture(t *testing.T, users string) *mtddFixture {
@@ -40,8 +41,12 @@ func newMtddFixture(t *testing.T, users string) *mtddFixture {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.calls = append(f.calls, r.Method+" "+r.URL.Path+" "+string(body))
-		old := f.oldAPI
+		old, noAdTag := f.oldAPI, f.noAdTag
 		f.mu.Unlock()
+		if noAdTag && r.URL.Path == "/v1/ad-tag" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if old && strings.Contains(string(body), "tls_domain") {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"ok":false,"error":{"type":"unknown_field","message":"tls_domain"}}`)

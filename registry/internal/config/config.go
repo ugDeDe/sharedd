@@ -242,6 +242,18 @@ type RegistryConfig struct {
 		IntervalMin int      `toml:"interval_min"`
 		GeoURL      string   `toml:"geo_url"`
 	} `toml:"antiscan"`
+
+	// AdPause — рекламная пауза пула: SharePercent процентов времени
+	// мастерства каждой ноды она показывает рекламный тег пула (Tag) вместо
+	// своего. Регистратор решает раз в master_ttl внутри мастерства, по
+	// накопленному подтверждённому времени — доля одинакова для всех нод.
+	// Поддерживают ноды mtdd с подменой тега на лету (/v1/ad-tag).
+	// Enabled: nil = выключено.
+	AdPause struct {
+		Enabled      *bool  `toml:"enabled"`
+		Tag          string `toml:"tag"`
+		SharePercent int    `toml:"share_percent"`
+	} `toml:"ad_pause"`
 }
 
 type Resolved struct {
@@ -453,6 +465,9 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if err := ValidateAntiscan(cfg.Antiscan.Sources, cfg.Antiscan.IntervalMin, cfg.Antiscan.GeoURL); err != nil {
 		return err
 	}
+	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.SharePercent); err != nil {
+		return err
+	}
 	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase} {
 		u, err := url.ParseRequestURI(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -587,6 +602,9 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.Antiscan.GeoURL == "" {
 		cfg.Antiscan.GeoURL = DefaultAntiscanGeoURL
 	}
+	if cfg.AdPause.SharePercent == 0 {
+		cfg.AdPause.SharePercent = DefaultAdPauseSharePercent
+	}
 }
 
 // ── валидационные хелперы, разделяемые с сервером ────────────────
@@ -691,6 +709,33 @@ func ValidateAntiscan(sources []string, intervalMin int, geoURL string) error {
 	}
 	if intervalMin < MinAntiscanIntervalMin || intervalMin > MaxAntiscanIntervalMin {
 		return fmt.Errorf("antiscan.interval_min: допустимо %d..%d", MinAntiscanIntervalMin, MaxAntiscanIntervalMin)
+	}
+	return nil
+}
+
+// [ad_pause]: доля по умолчанию и границы (панель валидирует тем же ValidateAdPause).
+const (
+	DefaultAdPauseSharePercent = 10
+	MaxAdPauseSharePercent     = 50
+)
+
+var adTagRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// ValidAdTag — рекламный тег Telegram: 32 hex, не все нули.
+func ValidAdTag(tag string) bool {
+	return adTagRe.MatchString(tag) && strings.Trim(tag, "0") != ""
+}
+
+// ValidateAdPause — доля 1..MaxAdPauseSharePercent; включённой паузе нужен тег.
+func ValidateAdPause(enabled bool, tag string, sharePercent int) error {
+	if sharePercent < 1 || sharePercent > MaxAdPauseSharePercent {
+		return fmt.Errorf("ad_pause.share_percent: допустимо 1..%d", MaxAdPauseSharePercent)
+	}
+	if tag != "" && !ValidAdTag(tag) {
+		return fmt.Errorf("ad_pause.tag: 32 hex-символа, не все нули")
+	}
+	if enabled && tag == "" {
+		return fmt.Errorf("ad_pause.tag обязателен при enabled = true")
 	}
 	return nil
 }

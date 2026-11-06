@@ -474,9 +474,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 	})))
 
 	mux.Handle("POST /heartbeat", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		var body struct {
-			NodeID string `json:"node_id"`
-		}
+		var body machineapi.HeartbeatRequest
 		if err := decodeNodeJSON(w, req, &body); err != nil || body.NodeID == "" {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
@@ -490,12 +488,17 @@ func (r *Registry) buildMux() *http.ServeMux {
 		if !r.gateMachineAuth(w, req, body.NodeID, "") {
 			return
 		}
+		adPause := r.adPauseSettings()
+		var directive *machineapi.AdPauseDirective
 		r.mu.Lock()
 		c, ok := r.state.Candidates[body.NodeID]
 		if ok {
-			c.LastHeartbeat = time.Now()
+			now := time.Now()
+			c.LastHeartbeat = now
 			c.HeartbeatsTotal++
 			r.state.Counters.Heartbeats++
+			r.noteAdPauseStateLocked(c, body.AdPauseState, now)
+			directive = adPauseDirectiveLocked(c, adPause)
 		}
 		// Heartbeat от убитой по ip_ban ноды — kill-сигнал (403+terminate);
 		// dead-запись блока не даёт — кандидат отсутствует, обычный 410
@@ -523,7 +526,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			http.Error(w, "unknown node_id, re-register", http.StatusGone)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
+		writeHeartbeatOK(w, directive)
 	})))
 
 	mux.Handle("POST /report", r.requireNodeAuth(http.HandlerFunc(r.handleHealthReport)))
@@ -1152,6 +1155,8 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	reassignDead(view, domains, r.cfg.ReportFreshnessTTL, now, &sink)
 	fillEmpty(view, now, &sink)
 	reconcileStints(r.state.Candidates, healthyByID, holds, now, &sink)
+	// Рекламная пауза: решения внутри мастерства (ad_pause.go).
+	adChanged := r.scheduleAdPauseLocked(now, r.adPauseSettings())
 
 	// сброс побочных эффектов проходов под локом
 	r.state.Counters.MasterSwitches += sink.switches
@@ -1161,6 +1166,9 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		r.addEventLocked(ev)
 	}
 
+	if adChanged && len(changes) == 0 && len(joined) == 0 && !srmdChanged {
+		r.persistStateLocked()
+	}
 	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
 		// желаемый DNS-набор — ПОЛНЫЙ список мастеров домена (порядок не
 		// важен); домен с изменившимся слотом переписывает весь набор.

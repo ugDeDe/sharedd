@@ -135,6 +135,14 @@ type editableAntiscan struct {
 	GeoURL      string   `json:"geo_url"`
 }
 
+// editableAdPause — [ad_pause]: рекламная пауза пула. Hot-apply: тик
+// селекции читает секцию заново (ad_pause.go).
+type editableAdPause struct {
+	Enabled      bool   `json:"enabled"`
+	Tag          string `json:"tag"`
+	SharePercent int    `json:"share_percent"`
+}
+
 // maxDefaultMaxNodes — верхняя граница [users] default_max_nodes
 // (config.Load валидирует то же значение).
 const maxDefaultMaxNodes = 1000000
@@ -156,6 +164,8 @@ type editableConfig struct {
 	Users *editableUsers `json:"users,omitempty"`
 	// Список сканеров для нод (antiscan.go).
 	Antiscan *editableAntiscan `json:"antiscan,omitempty"`
+	// Рекламная пауза пула (ad_pause.go).
+	AdPause *editableAdPause `json:"ad_pause,omitempty"`
 }
 
 var (
@@ -287,6 +297,12 @@ func validateEditable(in *editableConfig) error {
 			return err
 		}
 	}
+	if a := in.AdPause; a != nil {
+		a.Tag = strings.ToLower(strings.TrimSpace(a.Tag))
+		if err := config.ValidateAdPause(a.Enabled, a.Tag, a.SharePercent); err != nil {
+			return err
+		}
+	}
 	if u := in.Users; u != nil {
 		if u.DefaultMaxNodes < 0 || u.DefaultMaxNodes > maxDefaultMaxNodes {
 			return fmt.Errorf("users.default_max_nodes: допустимо 0..%d, получено %d",
@@ -395,6 +411,11 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		Users: &editableUsers{
 			DefaultMaxNodes: r.cfg.Users.DefaultMaxNodes,
 		},
+		AdPause: &editableAdPause{
+			Enabled:      r.cfg.AdPause.Enabled != nil && *r.cfg.AdPause.Enabled,
+			Tag:          r.cfg.AdPause.Tag,
+			SharePercent: r.cfg.AdPause.SharePercent,
+		},
 		Antiscan: &editableAntiscan{
 			Enabled:     config.ResolveAntiscanEnabled(r.cfg.Antiscan.Enabled),
 			Sources:     append([]string(nil), r.cfg.Antiscan.Sources...),
@@ -421,9 +442,11 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 	onboarding.InstallCommand = nodeInstallCommand(onboarding.RegistryURL, onboarding.Token)
 	r.cfgMu.RUnlock()
 	scanStatus := r.antiscanStatusSnapshot(cfg.Antiscan.Sources)
+	adStatus := r.adPauseStatusSnapshot(time.Now())
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding, "antiscan_status": scanStatus})
+	_ = json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding,
+		"antiscan_status": scanStatus, "ad_pause_status": adStatus})
 }
 
 func mapsClone(m map[string]string) map[string]string {
@@ -585,6 +608,15 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		// Hot-apply: читается при регистрации и admin-создании пользователя.
 		r.cfg.Users.DefaultMaxNodes = u.DefaultMaxNodes
 		changed = append(changed, fmt.Sprintf("users(default_max_nodes=%d)", u.DefaultMaxNodes))
+	}
+	if a := in.AdPause; a != nil {
+		// Hot-apply: тик селекции читает секцию заново; доля и тег действуют
+		// со следующего решения каждой ноды (раз в master_ttl).
+		enabled := a.Enabled
+		r.cfg.AdPause.Enabled = &enabled
+		r.cfg.AdPause.Tag = a.Tag
+		r.cfg.AdPause.SharePercent = a.SharePercent
+		changed = append(changed, fmt.Sprintf("ad_pause(enabled=%t,share=%d%%)", enabled, a.SharePercent))
 	}
 	if a := in.Antiscan; a != nil {
 		// Hot-apply: antiscanLoop читает секцию на каждой сборке; kick ниже

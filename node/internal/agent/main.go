@@ -184,6 +184,7 @@ func Run() {
 
 	go syncLoop(cfg)
 	go antiscanLoop(cfg)
+	go adPauseLoop(cfg)
 	go heartbeatLoop(client, cfg, ipr)
 	metricsLoop(cfg, ipr) // блокирующий, в main goroutine
 }
@@ -319,6 +320,9 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 		}
 
 		payload := map[string]string{"node_id": nodeID}
+		if st := adPauseHeartbeatState(); st != "" {
+			payload["ad_pause_state"] = st
+		}
 		data, _ := json.Marshal(payload)
 		resp, err := registryRequest(client, cfg, http.MethodPost, "/heartbeat", bytes.NewReader(data))
 		if err != nil {
@@ -344,6 +348,8 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 			if resp.StatusCode != http.StatusOK {
 				log.Printf("heartbeat rejected (status=%d), re-registering", resp.StatusCode)
 				tryRegister(ip)
+			} else {
+				noteHeartbeatResponse(hbBody)
 			}
 		}
 		time.Sleep(intervals.Heartbeat())

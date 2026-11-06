@@ -192,6 +192,25 @@ function renderGrid(): void {
       <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="adpause">
+      <div class="cfg-head">${icon(ICONS.swap)}<span>Рекламная пауза пула</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-ad-enabled"><span class="box"></span> Показывать рекламу пула на нодах</label>
+        <div class="field">
+          <label for="s-ad-tag">Рекламный тег пула</label>
+          <input type="text" id="s-ad-tag" class="mono" spellcheck="false" maxlength="32" placeholder="32 hex от @MTProxybot">
+        </div>
+        <div class="field">
+          <label for="s-ad-share">Доля времени мастерства, %</label>
+          <input type="number" id="s-ad-share" min="1" max="50">
+          <span class="help">Одинаковая для всех нод. Реклама идёт только пока нода мастер и чередуется периодами длиной master_ttl: нода с недобором получает рекламный период, с перебором — нет.</span>
+        </div>
+        <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd с подменой тега на лету — клиенты не переподключаются. Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
+        <div class="as-status" id="s-ad-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-ad-save">Сохранить рекламу</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="system">
       <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
       <div class="cfg-body">
@@ -283,6 +302,11 @@ export async function load(): Promise<void> {
   ($("s-as-interval") as HTMLInputElement).value = as.interval_min || 30;
   ($("s-as-geo") as HTMLInputElement).value = as.geo_url || "";
   renderAntiscanStatus(data.antiscan_status);
+  const ad = c.ad_pause || {};
+  ($("s-ad-enabled") as HTMLInputElement).checked = !!ad.enabled;
+  ($("s-ad-tag") as HTMLInputElement).value = ad.tag || "";
+  ($("s-ad-share") as HTMLInputElement).value = ad.share_percent || 10;
+  renderAdPauseStatus(data.ad_pause_status);
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
   // Раньше это был моноширинный дамп в рамке. Те же значения читаются
@@ -350,6 +374,29 @@ function renderAntiscanStatus(st: any): void {
   }
   if (st.last_error) html += `<div class="as-src as-bad"><span class="as-src-stat as-wrap">${esc(st.last_error)}</span></div>`;
   $("s-as-status").innerHTML = html;
+}
+
+/* ── рекламная пауза: фактическая доля по нодам ──────────────────── */
+
+function fmtDur(sec: number): string {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}
+
+const AD_STATE: Record<string, string> = {
+  pool: "тег пула", own: "свой тег", unsupported: "не поддерживает", failed: "ошибка", "": "нет данных",
+};
+
+function renderAdPauseStatus(list: any[]): void {
+  if (!list || list.length === 0) { $("s-ad-status").innerHTML = ""; return; }
+  $("s-ad-status").innerHTML = `<div class="as-sources">` + list.map((n: any) => {
+    const state = AD_STATE[n.state ?? ""] ?? n.state;
+    const now = n.active ? " · сейчас период рекламы" : (n.master ? " · мастер" : "");
+    const stat = `${state}${now} · реклама ${fmtDur(n.ad_sec)} из ${fmtDur(n.master_sec)} мастерства (${n.share.toFixed(1)}%)`;
+    return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}">` +
+      `<span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span>` +
+      `<span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
+  }).join("") + `</div>`;
 }
 
 /* ── DNS-push (кнопка «Перезаписать DNS сейчас») ──────────────────── */
@@ -479,6 +526,15 @@ export function init(): void {
       // Пересборка идёт в фоне (скачивание источников); состояние подтянется
       // со следующим перечитыванием настроек.
       .then(() => setTimeout(() => load().catch(() => {}), 5000))
+      .catch((e) => showToast(e.message, true));
+
+  $("s-ad-save").onclick = () =>
+    saveSection({ ad_pause: {
+      enabled: ($("s-ad-enabled") as HTMLInputElement).checked,
+      tag: ($("s-ad-tag") as HTMLInputElement).value.trim(),
+      share_percent: parseInt(($("s-ad-share") as HTMLInputElement).value, 10) || 10,
+    } }, "Рекламная пауза сохранена")
+      .then(() => load().catch(() => {}))
       .catch((e) => showToast(e.message, true));
 
   $("s-panel-save").onclick = () => {
