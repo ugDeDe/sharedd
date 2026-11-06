@@ -56,7 +56,7 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 	r := newTestRegistry(t)
 	r.db = openHistoryDB(t.TempDir() + "/hist.db")
 	now := time.Unix(1_800_000_000, 0)
-	snap := map[string]float64{userConnsMetric: 1200, proxyCPUCoresMetric: 0.4, proxyRSSMetric: 300 << 20}
+	snap := map[string]float64{userConnsMetric: 1200, proxyCPUCoresMetric: 0.4, proxyRSSMetric: 300 << 20, hostCPUMetric: 60}
 	r.recordLoadSampleLocked("n1", snap, 0, now)                                    // первая точка: сети нет
 	r.recordLoadSampleLocked("n1", snap, 3_000_000, now.Add(30*time.Second))        // рано
 	r.recordLoadSampleLocked("n1", snap, 4_500_000, now.Add(60*time.Second))        // 7.5 МБ за 60 с
@@ -69,7 +69,11 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 		t.Fatalf("net rate: first=%v second=%v (want 1 Mbit/s)", rows[0].NetBps, rows[1].NetBps)
 	}
 	c := estimateConnCost(rows)
-	near(t, "ram avg", c.RAM.AvgPer1k, 250, 0.01) // 300 МиБ на 1200 соединений
+	near(t, "ram avg", c.RAM.AvgPer1k, 250, 0.01)         // 300 МиБ на 1200 соединений
+	near(t, "host cpu avg", c.HostCPU.AvgPer1k, 50, 0.01) // 60% сервера на 1200 соединений
+	if c.HostRAM.Points != 0 {
+		t.Fatal("no host RAM metric — no host RAM points")
+	}
 }
 
 func TestCostByTypeMedians(t *testing.T) {

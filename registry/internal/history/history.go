@@ -126,7 +126,9 @@ CREATE TABLE IF NOT EXISTS load_samples (
  conns REAL NOT NULL,
  cpu_cores REAL,
  rss_bytes REAL,
- net_bps REAL
+ net_bps REAL,
+ host_cpu_pct REAL,
+ host_ram_pct REAL
 );
 CREATE INDEX IF NOT EXISTS idx_load_samples_ts ON load_samples(ts);`
 	if _, err := db.Exec(schema); err != nil {
@@ -368,11 +370,15 @@ type LoadSample struct {
 	CPUCores *float64
 	RSSBytes *float64
 	NetBps   *float64
+	// Загрузка всего сервера, % — есть у всех агентов (процесс прокси — только
+	// у новых).
+	HostCPUPct *float64
+	HostRAMPct *float64
 }
 
 func (d *DB) RecordLoadSample(s LoadSample) {
-	if _, err := d.sql.Exec(`INSERT INTO load_samples (ts, node_id, conns, cpu_cores, rss_bytes, net_bps) VALUES (?,?,?,?,?,?)`,
-		s.TS.Unix(), s.NodeID, s.Conns, s.CPUCores, s.RSSBytes, s.NetBps); err != nil {
+	if _, err := d.sql.Exec(`INSERT INTO load_samples (ts, node_id, conns, cpu_cores, rss_bytes, net_bps, host_cpu_pct, host_ram_pct) VALUES (?,?,?,?,?,?,?,?)`,
+		s.TS.Unix(), s.NodeID, s.Conns, s.CPUCores, s.RSSBytes, s.NetBps, s.HostCPUPct, s.HostRAMPct); err != nil {
 		log.Printf("history db: record load sample for %s: %v", s.NodeID, err)
 	}
 }
@@ -380,7 +386,7 @@ func (d *DB) RecordLoadSample(s LoadSample) {
 // LoadSamplesSince — точки всех нод новее since, по node_id и времени.
 func (d *DB) LoadSamplesSince(since time.Time) ([]LoadSample, error) {
 	rows, err := d.sql.Query(
-		`SELECT ts, node_id, conns, cpu_cores, rss_bytes, net_bps FROM load_samples WHERE ts >= ? ORDER BY node_id, ts, id`,
+		`SELECT ts, node_id, conns, cpu_cores, rss_bytes, net_bps, host_cpu_pct, host_ram_pct FROM load_samples WHERE ts >= ? ORDER BY node_id, ts, id`,
 		since.Unix())
 	if err != nil {
 		return nil, err
@@ -390,15 +396,15 @@ func (d *DB) LoadSamplesSince(since time.Time) ([]LoadSample, error) {
 	for rows.Next() {
 		var s LoadSample
 		var ts int64
-		var cpu, rss, net sql.NullFloat64
-		if err := rows.Scan(&ts, &s.NodeID, &s.Conns, &cpu, &rss, &net); err != nil {
+		var cpu, rss, net, hcpu, hram sql.NullFloat64
+		if err := rows.Scan(&ts, &s.NodeID, &s.Conns, &cpu, &rss, &net, &hcpu, &hram); err != nil {
 			return nil, err
 		}
 		s.TS = time.Unix(ts, 0)
 		for _, x := range []struct {
 			v   sql.NullFloat64
 			dst **float64
-		}{{cpu, &s.CPUCores}, {rss, &s.RSSBytes}, {net, &s.NetBps}} {
+		}{{cpu, &s.CPUCores}, {rss, &s.RSSBytes}, {net, &s.NetBps}, {hcpu, &s.HostCPUPct}, {hram, &s.HostRAMPct}} {
 			if x.v.Valid {
 				v := x.v.Float64
 				*x.dst = &v

@@ -1,6 +1,8 @@
 package server
 
 // «Цена 1000 соединений»: сколько CPU (ядер), памяти и сети обходится прокси
+// (плюс загрузка всего сервера в % — она есть у любых агентов, процесс
+// прокси присылают только новые)
 // на 1000 клиентских соединений — для сравнения прокси (classic, MEKO,
 // MTProxyL, mtdd) на разных серверах. CPU и память — самого процесса прокси
 // (агент находит его по слушающему сокету), не всего хоста: фон ОС и соседей
@@ -49,6 +51,10 @@ type connCost struct {
 	CPU         costFit `json:"cpu_cores"`
 	RAM         costFit `json:"ram_mb"`
 	Net         costFit `json:"net_mbps"`
+	// Загрузка всего сервера, % — по данным любых агентов. Сравнима между
+	// нодами только на серверах одного размера.
+	HostCPU costFit `json:"host_cpu_pct"`
+	HostRAM costFit `json:"host_ram_pct"`
 }
 
 // fitCost — оценки по парам (соединения, ресурс), ресурс уже в единицах вывода.
@@ -101,7 +107,7 @@ func estimateConnCost(samples []history.LoadSample) *connCost {
 	}
 	c := &connCost{WindowHours: int(connCostWindow.Hours()), Points: len(samples), ConnsMin: math.Inf(1)}
 	var sum float64
-	var cpuX, cpuY, ramX, ramY, netX, netY []float64
+	var cpuX, cpuY, ramX, ramY, netX, netY, hcX, hcY, hrX, hrY []float64
 	for _, s := range samples {
 		sum += s.Conns
 		c.ConnsMin = math.Min(c.ConnsMin, s.Conns)
@@ -115,9 +121,16 @@ func estimateConnCost(samples []history.LoadSample) *connCost {
 		if s.NetBps != nil {
 			netX, netY = append(netX, s.Conns), append(netY, *s.NetBps/1e6)
 		}
+		if s.HostCPUPct != nil {
+			hcX, hcY = append(hcX, s.Conns), append(hcY, *s.HostCPUPct)
+		}
+		if s.HostRAMPct != nil {
+			hrX, hrY = append(hrX, s.Conns), append(hrY, *s.HostRAMPct)
+		}
 	}
 	c.ConnsAvg = sum / float64(len(samples))
 	c.CPU, c.RAM, c.Net = fitCost(cpuX, cpuY), fitCost(ramX, ramY), fitCost(netX, netY)
+	c.HostCPU, c.HostRAM = fitCost(hcX, hcY), fitCost(hrX, hrY)
 	return c
 }
 
@@ -153,6 +166,12 @@ func (r *Registry) recordLoadSampleLocked(nodeID string, snap map[string]float64
 	}
 	if v, ok := snap[proxyRSSMetric]; ok {
 		s.RSSBytes = &v
+	}
+	if v, ok := snap[hostCPUMetric]; ok {
+		s.HostCPUPct = &v
+	}
+	if v, ok := snap[hostRAMMetric]; ok {
+		s.HostRAMPct = &v
 	}
 	// Сеть — за полный интервал с прошлой точки (первая точка после старта
 	// регистратора интервала не имеет).
@@ -206,6 +225,8 @@ type costByType struct {
 	CPU      costTypeStats `json:"cpu_cores"`
 	RAM      costTypeStats `json:"ram_mb"`
 	Net      costTypeStats `json:"net_mbps"`
+	HostCPU  costTypeStats `json:"host_cpu_pct"`
+	HostRAM  costTypeStats `json:"host_ram_pct"`
 }
 
 type costTypeStats struct {
@@ -256,11 +277,13 @@ func buildCostByType(costs map[string]*connCost, nodeTypes map[string]string) []
 	}
 	out := make([]costByType, 0, len(group))
 	for t, cs := range group {
-		var cpu, ram, netF []costFit
+		var cpu, ram, netF, hc, hr []costFit
 		for _, c := range cs {
 			cpu, ram, netF = append(cpu, c.CPU), append(ram, c.RAM), append(netF, c.Net)
+			hc, hr = append(hc, c.HostCPU), append(hr, c.HostRAM)
 		}
-		out = append(out, costByType{NodeType: t, Nodes: len(cs), CPU: typeStats(cpu), RAM: typeStats(ram), Net: typeStats(netF)})
+		out = append(out, costByType{NodeType: t, Nodes: len(cs), CPU: typeStats(cpu), RAM: typeStats(ram), Net: typeStats(netF),
+			HostCPU: typeStats(hc), HostRAM: typeStats(hr)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].NodeType < out[j].NodeType })
 	return out
