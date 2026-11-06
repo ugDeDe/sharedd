@@ -12,7 +12,7 @@
 
 ## Verification
 
-- Match CI for each application module: `cd registry && go vet ./... && go test -race ./... && go build -mod=readonly ./... && golangci-lint run ./...`, then repeat in `node/`. Code must be `gofmt`-clean.
+- Match CI for each application module: `cd registry && go vet ./... && go test -race -timeout 20m ./... && go build -mod=readonly ./... && golangci-lint run ./...`, then repeat in `node/`. Code must be `gofmt`-clean.
 - Run one test with `cd registry && go test -race -run '^TestName$' .` (or the same command in `node/`). Tests use local `httptest` servers and do not require live Cloudflare, Globalping, telemt, or systemd.
 - Validate installers and build scripts with `bash -n scripts/*.sh` plus `shellcheck -S warning scripts/*.sh`; keep both clean — CI enforces them and `bash scripts/check_installer_parity.sh` (byte-identical pipeline functions across `install_node.sh` / `install_node_web.sh`).
 - If `ui/` changed, run `bash scripts/build_ui.sh` and commit regenerated `registry/internal/webassets/*.html`; CI runs `build_ui.sh -check` and fails on stale generated files.
