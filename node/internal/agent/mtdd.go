@@ -180,10 +180,15 @@ func metricsGet(client *http.Client, cfg *config.NodeConfig, target string) (*ht
 // сумма mtdd_me_pool_ready по DC (готовые ME-соединения); если серии пула нет
 // вообще, telemt_me_writers_active_current не эмитится — «метрика не найдена»
 // отличается от «0 готовых».
+//
+// Уникальные IP: аналог telemt_user_unique_ips_current — накопленные
+// mtdd_user_unique_ips_seen (active — только текущие соединения, заметно
+// меньше). Старый mtdd без _seen — fallback на _active.
 func translateMtddSamples(in []promSample) []promSample {
 	out := make([]promSample, 0, len(in))
 	var ready, reconnects float64
 	var readySeen, reconnSeen bool
+	var ipsSeen, ipsActive []promSample
 	for _, s := range in {
 		switch s.name {
 		case "mtdd_me_pool_ready":
@@ -192,8 +197,10 @@ func translateMtddSamples(in []promSample) []promSample {
 		case "mtdd_me_reconnects_total":
 			reconnects += s.value
 			reconnSeen = true
+		case "mtdd_user_unique_ips_seen":
+			ipsSeen = append(ipsSeen, promSample{name: uniqueIPsMetricName, labels: s.labels, value: s.value})
 		case "mtdd_user_unique_ips_active":
-			out = append(out, promSample{name: uniqueIPsMetricName, labels: s.labels, value: s.value})
+			ipsActive = append(ipsActive, promSample{name: uniqueIPsMetricName, labels: s.labels, value: s.value})
 		case "mtdd_user_connections_active":
 			out = append(out, promSample{name: userConnsMetricName, labels: s.labels, value: s.value})
 		case "mtdd_user_payload_bytes_received_total":
@@ -209,6 +216,11 @@ func translateMtddSamples(in []promSample) []promSample {
 				out = append(out, promSample{name: userOctetsToMetricName, labels: labels, value: s.value})
 			}
 		}
+	}
+	if len(ipsSeen) > 0 {
+		out = append(out, ipsSeen...)
+	} else {
+		out = append(out, ipsActive...)
 	}
 	if readySeen {
 		out = append(out, promSample{name: healthMetricName, value: ready})
