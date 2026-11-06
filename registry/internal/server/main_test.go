@@ -11,7 +11,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"sharedd/registry/internal/control"
 )
+
+// Под -race bcrypt cost 10 — ~0.4с на хеш; кабинетные тесты хешируют на
+// каждом логине/создании пользователя, а стойкость хеша им не нужна.
+func TestMain(m *testing.M) {
+	control.UseMinBcryptCostForTests()
+	os.Exit(m.Run())
+}
 
 func newTestRegistry(t *testing.T) *Registry {
 	t.Helper()
@@ -28,7 +37,7 @@ func newTestRegistry(t *testing.T) *Registry {
 	cfg.Panel.EventsMax = 500
 	cfg.QuarantineAttempts = 3 // как ставит applyRegistryDefaults в проде
 	cfg.SharedProxy.TLSDomain = "front.example.com"
-	return &Registry{
+	r := &Registry{
 		cfg: cfg,
 		state: State{
 			Candidates: make(map[string]*Candidate),
@@ -36,6 +45,18 @@ func newTestRegistry(t *testing.T) *Registry {
 		},
 		startedAt: time.Now(),
 	}
+	// Тесты открывают control/history SQLite прямо в r (openControl,
+	// openHistoryDB); незакрытые sql.DB копились сотнями connectionOpener-
+	// горутин на весь прогон пакета. Закрываем то, что лежит в r на конце теста.
+	t.Cleanup(func() {
+		if r.control != nil {
+			r.control.Close()
+		}
+		if r.db != nil {
+			r.db.Close()
+		}
+	})
+	return r
 }
 
 func TestRegisterDedupByIP(t *testing.T) {
