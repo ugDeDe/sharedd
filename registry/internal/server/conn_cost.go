@@ -31,15 +31,16 @@ const (
 	connCostCacheTTL  = time.Minute
 	connCostMinConns  = 50 // средняя цена на горстке соединений — шум фона
 	connCostMinPoints = 30 // минимум точек для наклона
+	netCostMinMbps    = 5  // CPU на 100 Мбит/с при почти нулевом трафике — шум фона
 )
 
 // costFit — оценка одного ресурса. nil-поля — посчитать честно нельзя.
 type costFit struct {
-	AvgPer1k      *float64 `json:"avg_per_1k"`
-	MarginalPer1k *float64 `json:"marginal_per_1k"`
-	Baseline      *float64 `json:"baseline"`
-	R2            *float64 `json:"r2"`
-	Points        int      `json:"points"`
+	Avg      *float64 `json:"avg"`      // на единицу (1000 соединений / 100 Мбит/с)
+	Marginal *float64 `json:"marginal"` // наклон × единица
+	Baseline *float64 `json:"baseline"`
+	R2       *float64 `json:"r2"`
+	Points   int      `json:"points"`
 }
 
 type connCost struct {
@@ -55,10 +56,26 @@ type connCost struct {
 	// нодами только на серверах одного размера.
 	HostCPU costFit `json:"host_cpu_pct"`
 	HostRAM costFit `json:"host_ram_pct"`
+	// CPU на 100 Мбит/с трафика прокси: сервер (%) и процесс прокси (ядра).
+	HostCPUPerNet costFit `json:"host_cpu_pct_per_100mbps"`
+	CPUPerNet     costFit `json:"cpu_cores_per_100mbps"`
 }
 
-// fitCost — оценки по парам (соединения, ресурс), ресурс уже в единицах вывода.
+// fitCost — цена 1000 соединений по парам (соединения, ресурс).
 func fitCost(xs, ys []float64) costFit {
+	return fitPer(xs, ys, 1000, connCostMinConns, 25)
+}
+
+// fitPerNet — CPU на 100 Мбит/с по парам (Мбит/с, CPU): убирает разницу в
+// том, сколько качают клиенты, — остаётся цена байта (в основном шифрование).
+func fitPerNet(xs, ys []float64) costFit {
+	return fitPer(xs, ys, 100, netCostMinMbps, 2)
+}
+
+// fitPer — средняя (mean(y)/mean(x)·unit, при mean(x) ≥ minMean) и
+// предельная (наклон·unit, при разбросе x ≥ max(minStd, 5% среднего))
+// оценки ресурса y на unit единиц нагрузки x.
+func fitPer(xs, ys []float64, unit, minMean, minStd float64) costFit {
 	f := costFit{Points: len(xs)}
 	n := float64(len(xs))
 	if len(xs) == 0 {
@@ -70,9 +87,9 @@ func fitCost(xs, ys []float64) costFit {
 		sy += ys[i]
 	}
 	mx, my := sx/n, sy/n
-	if mx >= connCostMinConns {
-		v := my / mx * 1000
-		f.AvgPer1k = &v
+	if mx >= minMean && mx > 0 {
+		v := my / mx * unit
+		f.Avg = &v
 	}
 	if len(xs) < connCostMinPoints {
 		return f
@@ -84,14 +101,14 @@ func fitCost(xs, ys []float64) costFit {
 		sxy += dx * dy
 		syy += dy * dy
 	}
-	// Наклон — только при заметном разбросе соединений.
-	if std := math.Sqrt(sxx / n); std < math.Max(25, 0.05*mx) {
+	// Наклон — только при заметном разбросе нагрузки.
+	if std := math.Sqrt(sxx / n); std < math.Max(minStd, 0.05*mx) {
 		return f
 	}
 	slope := sxy / sxx
 	intercept := my - slope*mx
-	m := slope * 1000
-	f.MarginalPer1k, f.Baseline = &m, &intercept
+	m := slope * unit
+	f.Marginal, f.Baseline = &m, &intercept
 	r2 := 1.0
 	if syy > 0 {
 		r2 = sxy * sxy / (sxx * syy)
@@ -108,6 +125,7 @@ func estimateConnCost(samples []history.LoadSample) *connCost {
 	c := &connCost{WindowHours: int(connCostWindow.Hours()), Points: len(samples), ConnsMin: math.Inf(1)}
 	var sum float64
 	var cpuX, cpuY, ramX, ramY, netX, netY, hcX, hcY, hrX, hrY []float64
+	var hnX, hnY, pnX, pnY []float64 // CPU сервера / процесса от Мбит/с
 	for _, s := range samples {
 		sum += s.Conns
 		c.ConnsMin = math.Min(c.ConnsMin, s.Conns)
@@ -127,10 +145,17 @@ func estimateConnCost(samples []history.LoadSample) *connCost {
 		if s.HostRAMPct != nil {
 			hrX, hrY = append(hrX, s.Conns), append(hrY, *s.HostRAMPct)
 		}
+		if s.NetBps != nil && s.HostCPUPct != nil {
+			hnX, hnY = append(hnX, *s.NetBps/1e6), append(hnY, *s.HostCPUPct)
+		}
+		if s.NetBps != nil && s.CPUCores != nil {
+			pnX, pnY = append(pnX, *s.NetBps/1e6), append(pnY, *s.CPUCores)
+		}
 	}
 	c.ConnsAvg = sum / float64(len(samples))
 	c.CPU, c.RAM, c.Net = fitCost(cpuX, cpuY), fitCost(ramX, ramY), fitCost(netX, netY)
 	c.HostCPU, c.HostRAM = fitCost(hcX, hcY), fitCost(hrX, hrY)
+	c.HostCPUPerNet, c.CPUPerNet = fitPerNet(hnX, hnY), fitPerNet(pnX, pnY)
 	return c
 }
 
@@ -230,12 +255,15 @@ type costByType struct {
 	Net      costTypeStats `json:"net_mbps"`
 	HostCPU  costTypeStats `json:"host_cpu_pct"`
 	HostRAM  costTypeStats `json:"host_ram_pct"`
+	// CPU на 100 Мбит/с.
+	HostCPUPerNet costTypeStats `json:"host_cpu_pct_per_100mbps"`
+	CPUPerNet     costTypeStats `json:"cpu_cores_per_100mbps"`
 }
 
 type costTypeStats struct {
-	AvgPer1k      *float64 `json:"avg_per_1k"`      // медиана средних по нодам
-	AvgNodes      int      `json:"avg_nodes"`       // нод с оценкой
-	MarginalPer1k *float64 `json:"marginal_per_1k"` // медиана предельных
+	Avg           *float64 `json:"avg"`       // медиана средних по нодам
+	AvgNodes      int      `json:"avg_nodes"` // нод с оценкой
+	Marginal      *float64 `json:"marginal"`  // медиана предельных
 	MarginalNodes int      `json:"marginal_nodes"`
 }
 
@@ -255,14 +283,14 @@ func median(v []float64) *float64 {
 func typeStats(fits []costFit) costTypeStats {
 	var avg, marg []float64
 	for _, f := range fits {
-		if f.AvgPer1k != nil {
-			avg = append(avg, *f.AvgPer1k)
+		if f.Avg != nil {
+			avg = append(avg, *f.Avg)
 		}
-		if f.MarginalPer1k != nil {
-			marg = append(marg, *f.MarginalPer1k)
+		if f.Marginal != nil {
+			marg = append(marg, *f.Marginal)
 		}
 	}
-	return costTypeStats{AvgPer1k: median(avg), AvgNodes: len(avg), MarginalPer1k: median(marg), MarginalNodes: len(marg)}
+	return costTypeStats{Avg: median(avg), AvgNodes: len(avg), Marginal: median(marg), MarginalNodes: len(marg)}
 }
 
 // buildCostByType — nodeTypes: node_id → тип ("" → "unknown").
@@ -280,13 +308,14 @@ func buildCostByType(costs map[string]*connCost, nodeTypes map[string]string) []
 	}
 	out := make([]costByType, 0, len(group))
 	for t, cs := range group {
-		var cpu, ram, netF, hc, hr []costFit
+		var cpu, ram, netF, hc, hr, hn, pn []costFit
 		for _, c := range cs {
 			cpu, ram, netF = append(cpu, c.CPU), append(ram, c.RAM), append(netF, c.Net)
 			hc, hr = append(hc, c.HostCPU), append(hr, c.HostRAM)
+			hn, pn = append(hn, c.HostCPUPerNet), append(pn, c.CPUPerNet)
 		}
 		out = append(out, costByType{NodeType: t, Nodes: len(cs), CPU: typeStats(cpu), RAM: typeStats(ram), Net: typeStats(netF),
-			HostCPU: typeStats(hc), HostRAM: typeStats(hr)})
+			HostCPU: typeStats(hc), HostRAM: typeStats(hr), HostCPUPerNet: typeStats(hn), CPUPerNet: typeStats(pn)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].NodeType < out[j].NodeType })
 	return out
