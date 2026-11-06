@@ -362,21 +362,26 @@ printf '%s' "$LOCAL_PROXY_PORT" | grep -qE '^[0-9]+$' || die "агент вер�
     || die "порт прокси $LOCAL_PROXY_PORT не совпадает с общим портом регистратора $REGISTRY_PROXY_PORT"
 ok "общий порт прокси подтверждён регистратором: ${BOLD}${REGISTRY_PROXY_PORT}${NC}"
 
-if ! command -v ipset >/dev/null 2>&1 || ! command -v iptables >/dev/null 2>&1; then
+# Зависимости антискана агента (ipset/iptables). Код возврата — есть ли обе
+# утилиты после попытки установки; реакция на отказ — у вызывающего.
+ensure_antiscan_deps() {
+    if command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1; then
+        return 0
+    fi
     say "Устанавливаю зависимости antiscan (ipset, iptables)..."
     if command -v apt-get >/dev/null 2>&1; then
-        DEBIAN_FRONTEND=noninteractive apt-get update -qq >>"$INSTALL_LOG" 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ipset iptables >>"$INSTALL_LOG" 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq >>"$INSTALL_LOG" 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ipset iptables >>"$INSTALL_LOG" 2>&1 || true
     elif command -v dnf >/dev/null 2>&1; then
-        dnf install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
+        dnf install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1 || true
     elif command -v yum >/dev/null 2>&1; then
-        yum install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1
-    else
-        die "для antiscan нужны ipset и iptables; пакетный менеджер не найден"
+        yum install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache ipset iptables >>"$INSTALL_LOG" 2>&1 || true
     fi
-fi
-command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1 \
-    || die "не удалось установить ipset/iptables — см. $INSTALL_LOG"
+    command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1
+}
+ensure_antiscan_deps || die "для antiscan нужны ipset и iptables — установить не удалось, см. $INSTALL_LOG"
 
 # --- установка ---
 say "Устанавливаю sharedd-node-agent..."

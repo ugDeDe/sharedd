@@ -137,6 +137,13 @@ type Registry struct {
 	bpInterval     time.Duration
 	bpPollInterval time.Duration
 
+	// scan — собранный список сканеров для агентов (antiscan.go).
+	scan antiscanRuntime
+	// loadAcc/costCache — «цена 1000 соединений» (conn_cost.go): трафик с
+	// прошлой точки по нодам (под r.mu) и кэш оценок для статистики.
+	loadAcc   map[string]*loadAccum
+	costCache connCostCache
+
 	// cfgMu защищает "горячие" поля cfg (панель их правит на лету).
 	// ПОРЯДОК ЛОКОВ: сначала mu, потом cfgMu — никогда наоборот.
 	cfgMu sync.RWMutex
@@ -204,6 +211,7 @@ func Run() {
 		startedAt:  time.Now(),
 		ttlOverdue: make(map[string]bool),
 	}
+	reg.scan.kick = make(chan struct{}, 1)
 	// A missing state file is a valid first start. An existing but unreadable
 	// or corrupt file must abort startup: continuing would persist an empty
 	// state over the only copy of assignments, DNS operations and bans.
@@ -259,6 +267,8 @@ func Run() {
 	// Continue fleets accepted before a restart. The in-process workers died
 	// with the old process; the persisted idempotency keys make the replay safe.
 	go reg.resumeFleets(ctx)
+	// Список сканеров для нод: abuse-листы ∩ RU-диапазоны (antiscan.go).
+	go reg.antiscanLoop(ctx)
 	bpDone := make(chan struct{})
 	go func() {
 		defer close(bpDone)
@@ -468,9 +478,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 	})))
 
 	mux.Handle("POST /heartbeat", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		var body struct {
-			NodeID string `json:"node_id"`
-		}
+		var body machineapi.HeartbeatRequest
 		if err := decodeNodeJSON(w, req, &body); err != nil || body.NodeID == "" {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
@@ -484,12 +492,17 @@ func (r *Registry) buildMux() *http.ServeMux {
 		if !r.gateMachineAuth(w, req, body.NodeID, "") {
 			return
 		}
+		adPause := r.adPauseSettings()
+		var directive *machineapi.AdPauseDirective
 		r.mu.Lock()
 		c, ok := r.state.Candidates[body.NodeID]
 		if ok {
-			c.LastHeartbeat = time.Now()
+			now := time.Now()
+			c.LastHeartbeat = now
 			c.HeartbeatsTotal++
 			r.state.Counters.Heartbeats++
+			r.noteAdPauseStateLocked(c, body.AdPauseState, now)
+			directive = adPauseDirectiveLocked(c, adPause)
 		}
 		// Heartbeat от убитой по ip_ban ноды — kill-сигнал (403+terminate);
 		// dead-запись блока не даёт — кандидат отсутствует, обычный 410
@@ -517,7 +530,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			http.Error(w, "unknown node_id, re-register", http.StatusGone)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
+		writeHeartbeatOK(w, directive)
 	})))
 
 	mux.Handle("POST /report", r.requireNodeAuth(http.HandlerFunc(r.handleHealthReport)))
@@ -582,6 +595,9 @@ func (r *Registry) buildMux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	})))
 
+	// Список сканеров (antiscan.go): та же machine-аутентификация, что у /config.
+	mux.Handle("GET /antiscan", r.requireNodeAuth(http.HandlerFunc(r.handleAntiscanList)))
+
 	mux.Handle("GET /config", r.requireNodeAuth(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		// Матрица machine-аутентификации: node_id маршрута — заголовок
 		// X-ShareDD-Node-ID (OFF требует совпадения с владельцем секрета).
@@ -607,6 +623,7 @@ func (r *Registry) buildMux() *http.ServeMux {
 			},
 		}
 		r.cfgMu.RUnlock()
+		resp.AntiscanRevision = r.antiscanRevision()
 		nodeID := req.Header.Get("X-ShareDD-Node-ID")
 		if nodeID != "" {
 			now := time.Now()
@@ -1142,6 +1159,8 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 	reassignDead(view, domains, r.cfg.ReportFreshnessTTL, now, &sink)
 	fillEmpty(view, now, &sink)
 	reconcileStints(r.state.Candidates, healthyByID, holds, now, &sink)
+	// Рекламная пауза: решения внутри мастерства (ad_pause.go).
+	adChanged := r.scheduleAdPauseLocked(now, r.adPauseSettings())
 
 	// сброс побочных эффектов проходов под локом
 	r.state.Counters.MasterSwitches += sink.switches
@@ -1151,6 +1170,9 @@ func (r *Registry) evaluateAssignments(now time.Time) []domainChange {
 		r.addEventLocked(ev)
 	}
 
+	if adChanged && len(changes) == 0 && len(joined) == 0 && !srmdChanged {
+		r.persistStateLocked()
+	}
 	if len(changes) > 0 || len(joined) > 0 || srmdChanged {
 		// желаемый DNS-набор — ПОЛНЫЙ список мастеров домена (порядок не
 		// важен); домен с изменившимся слотом переписывает весь набор.

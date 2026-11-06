@@ -380,6 +380,9 @@ type SharedConfig struct {
 	Intervals       NodeIntervals     `json:"intervals"`
 	ForceGlobalping bool              `json:"force_globalping"`
 	NodeSettings    *NodeSettings     `json:"node_settings,omitempty"`
+	// AntiscanRevision — ревизия списка сканеров регистратора (GET /antiscan):
+	// "" — списка нет, "disabled" — снять антискан (antiscan.go).
+	AntiscanRevision string `json:"antiscan_revision,omitempty"`
 }
 
 type SharedConfigCache struct {
@@ -486,9 +489,9 @@ func fetchSharedConfig(cfg *config.NodeConfig) (SharedConfig, error) {
 // Запись файла идёт через applySharedConfigManaged — с остановкой и
 // рестартом прокси (конфиг на работающем прокси не применяется сам).
 func applySharedConfig(cfg *config.NodeConfig, shared SharedConfig) {
-	previousPort := sharedConfigCache.Get().ProxyPort
+	previous := sharedConfigCache.Get()
 	sharedConfigCache.Set(shared)
-	if previousPort != shared.ProxyPort {
+	if previous.ProxyPort != shared.ProxyPort || previous.AntiscanRevision != shared.AntiscanRevision {
 		kickAntiscan()
 	}
 	intervals.apply(shared.Intervals)

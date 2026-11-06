@@ -577,6 +577,30 @@ if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     fi
 fi
 
+# Зависимости антискана агента (ipset/iptables). Код возврата — есть ли обе
+# утилиты после попытки установки; реакция на отказ — у вызывающего.
+ensure_antiscan_deps() {
+    if command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1; then
+        return 0
+    fi
+    say "Устанавливаю зависимости antiscan (ipset, iptables)..."
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq >>"$INSTALL_LOG" 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ipset iptables >>"$INSTALL_LOG" 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y -q ipset iptables >>"$INSTALL_LOG" 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache ipset iptables >>"$INSTALL_LOG" 2>&1 || true
+    fi
+    command -v ipset >/dev/null 2>&1 && command -v iptables >/dev/null 2>&1
+}
+if ! ensure_antiscan_deps; then
+    warn "не удалось поставить ipset/iptables (см. $INSTALL_LOG) — прокси работает, но antiscan"
+    warn "на ноде не включится, пока их не установить вручную."
+fi
+
 # ── теперь агент ──────────────────────────────────────────────────────────
 systemctl restart sharedd-node-agent.service
 sleep 2

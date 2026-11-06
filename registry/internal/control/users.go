@@ -20,9 +20,17 @@ const (
 	MinPasswordLen = 10
 	// MaxUserNodes — контракт §2: max_nodes 0..10000 (legacy не ограничен этим).
 	MaxUserNodes = 10000
-	// bcrypt cost: 10 — дефолт библиотеки, ~65мс на Современном CPU.
-	bcryptCost = 10
 )
+
+// bcryptCost: 10 — дефолт библиотеки, ~65мс на современном CPU. var, а не
+// const: тесты снижают его через UseMinBcryptCostForTests (под -race cost 10
+// стоит ~0.4с на хеш, а кабинетные тесты хешируют на каждом шагу).
+var bcryptCost = 10
+
+// UseMinBcryptCostForTests — только для TestMain тестов (control, server).
+// Проверка пароля берёт cost из самого хеша, так что снижение затрагивает
+// лишь новые хеши.
+func UseMinBcryptCostForTests() { bcryptCost = bcrypt.MinCost }
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
 
@@ -48,23 +56,22 @@ type UserPatch struct {
 }
 
 func (s *Store) ensureLegacyUser(legacyMaxNodes int) error {
+	// Строка уже есть (каждый Open после первого) — bcrypt не нужен: INSERT
+	// ниже всё равно ничего бы не сделал, а хеш стоил заметную долю Open.
+	if err := s.sql.QueryRow(`SELECT id FROM users WHERE username = ?`, LegacyUsername).Scan(&s.legacyUserID); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(randomSecret(24)), bcryptCost)
 	if err != nil {
 		return err
 	}
-	res, err := s.sql.Exec(
+	if _, err := s.sql.Exec(
 		`INSERT INTO users (username, password_hash, role, max_nodes, disabled, created_at)
 		 VALUES (?, ?, 'user', ?, 0, ?) ON CONFLICT(username) DO NOTHING`,
-		LegacyUsername, string(hash), legacyMaxNodes, time.Now().Unix())
-	if err != nil {
+		LegacyUsername, string(hash), legacyMaxNodes, time.Now().Unix()); err != nil {
 		return err
-	}
-	if n, _ := res.RowsAffected(); n == 1 {
-		row := s.sql.QueryRow(`SELECT id FROM users WHERE username = ?`, LegacyUsername)
-		if err := row.Scan(&s.legacyUserID); err != nil {
-			return err
-		}
-		return nil
 	}
 	row := s.sql.QueryRow(`SELECT id FROM users WHERE username = ?`, LegacyUsername)
 	if err := row.Scan(&s.legacyUserID); err != nil {

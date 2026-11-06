@@ -2572,6 +2572,49 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .as-status {
+    min-width: 0;
+  }
+  .as-status .as-summary {
+    padding: 0;
+    grid-template-columns: 1fr;
+  }
+  .as-sources {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+  }
+  .as-src {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line-2);
+    font-size: 12.5px;
+  }
+  .as-src-name,
+  .as-src-stat {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .as-src-name {
+    color: var(--fg);
+    font-weight: 550;
+  }
+  .as-src-stat {
+    color: var(--fg-3);
+  }
+  .as-src-stat.as-wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .as-bad,
+  .as-bad .as-src-stat {
+    color: var(--bad);
+  }
   #login-overlay {
     position: fixed;
     inset: 0;
@@ -3114,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="d38b0bad3938f3ef">
+  <meta name="sharedd-build" content="c2148b4d1d682fd4">
 </head>
 <body>
 
@@ -3394,6 +3437,8 @@
         <button type="button" data-settings-tab="proxy">Прокси</button>
         <button type="button" data-settings-tab="pool">DNS и пул</button>
         <button type="button" data-settings-tab="globalping">Globalping</button>
+        <button type="button" data-settings-tab="antiscan">Антискан</button>
+        <button type="button" data-settings-tab="adpause">Реклама</button>
         <button type="button" data-settings-tab="system">Система</button>
       </nav>
       <div class="settings-grid" id="settings-grid"></div>
@@ -4872,6 +4917,49 @@
       <div class="cfg-foot"><button class="btn primary" id="s-hc-quar-save">Сохранить карантин</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="antiscan">
+      <div class="cfg-head">${icon(ICONS.ban)}<span>Антискан · сканеры из abuse-листов</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-as-enabled"><span class="box"></span> Блокировать сканеры на нодах</label>
+        <div class="field">
+          <label for="s-as-sources">Источники</label>
+          <textarea id="s-as-sources" class="mono" spellcheck="false"></textarea>
+          <span class="help">По одному URL в строке: IPv4-адреса, подсети CIDR или диапазоны a-b, по записи на строку (формат ipsum подходит).</span>
+        </div>
+        <div class="field">
+          <label for="s-as-interval">Интервал обновления, мин</label>
+          <input type="number" id="s-as-interval" min="5" max="1440">
+        </div>
+        <div class="field">
+          <label for="s-as-geo">Российские диапазоны (geo_url)</label>
+          <input type="text" id="s-as-geo" class="mono" spellcheck="false">
+          <span class="help">RIPEstat country-resource-list или свой текстовый список CIDR. Пусто — RIPEstat по умолчанию.</span>
+        </div>
+        <div class="note">Регистратор оставляет из источников только российские адреса и подсети и раздаёт список нодам; ноды дропают их на общем порту прокси. Если источник недоступен, используется его последняя удачная копия.</div>
+        <div class="as-status" id="s-as-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="adpause">
+      <div class="cfg-head">${icon(ICONS.swap)}<span>Рекламная пауза пула</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-ad-enabled"><span class="box"></span> Показывать рекламу пула на нодах</label>
+        <div class="field">
+          <label for="s-ad-tag">Рекламный тег пула</label>
+          <input type="text" id="s-ad-tag" class="mono" spellcheck="false" maxlength="32" placeholder="32 hex от @MTProxybot">
+        </div>
+        <div class="field">
+          <label for="s-ad-share">Доля времени мастерства, %</label>
+          <input type="number" id="s-ad-share" min="1" max="50">
+          <span class="help">Одинаковая для всех нод. Реклама идёт только пока нода мастер и чередуется периодами длиной master_ttl: нода с недобором получает рекламный период, с перебором — нет.</span>
+        </div>
+        <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd с подменой тега на лету — клиенты не переподключаются. Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
+        <div class="as-status" id="s-ad-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-ad-save">Сохранить рекламу</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="system">
       <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
       <div class="cfg-body">
@@ -4948,10 +5036,75 @@
     $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
     $("s-hc-gp-validity").value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
     $("s-gp-base").value = c.globalping.api_base;
+    const as = c.antiscan || {};
+    $("s-as-enabled").checked = as.enabled !== false;
+    $("s-as-sources").value = (as.sources || []).join("\n");
+    $("s-as-interval").value = as.interval_min || 30;
+    $("s-as-geo").value = as.geo_url || "";
+    renderAntiscanStatus(data.antiscan_status);
+    const ad = c.ad_pause || {};
+    $("s-ad-enabled").checked = !!ad.enabled;
+    $("s-ad-tag").value = ad.tag || "";
+    $("s-ad-share").value = ad.share_percent || 10;
+    renderAdPauseStatus(data.ad_pause_status);
     $("s-panel-token").value = c.panel.token;
     $("s-panel-events").value = c.panel.events_max;
     const row = (k, v, mono = true) => `<div class="static-row"><span class="static-k">${k}</span><span class="static-v${mono ? " mono" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
     $("s-static").innerHTML = `<div class="static-head">Требуют рестарта регистратора</div><div class="static-grid">` + row("http.addr", st.http_addr) + row("state.file", st.state_file) + row("probe_interval", st.probe_interval_ms + " мс") + row("probe_timeout", st.probe_timeout_ms + " мс") + row("selection_interval", st.selection_interval_ms + " мс") + row("heartbeat_ttl", st.heartbeat_ttl_sec + " с") + row("fail_threshold", st.fail_threshold) + row("recover_threshold", st.recover_threshold) + row("report_freshness", st.report_freshness_min + " мин") + row("prune_unhealthy", st.prune_unhealthy_min + " мин") + `</div>`;
+  }
+  function fmtTime(iso) {
+    return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
+  }
+  function shortSource(u) {
+    try {
+      const url = new URL(u);
+      const file = url.pathname.split("/").filter(Boolean).pop() || "";
+      return file ? `${url.host} · ${file}` : url.host;
+    } catch {
+      return u;
+    }
+  }
+  function renderAntiscanStatus(st) {
+    if (!st) {
+      $("s-as-status").innerHTML = "";
+      return;
+    }
+    const row = (k, v, bad = false) => `<div class="static-row"><span class="static-k">${esc(k)}</span><span class="static-v mono${bad ? " as-bad" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
+    const rev = st.revision === "disabled" ? "выключен" : st.revision || "ещё не собран";
+    let html = `<div class="static-grid as-summary">` + row("ревизия", rev) + row("записей RU", st.entries) + row("собран", fmtTime(st.built_at)) + row("последняя попытка", fmtTime(st.last_attempt)) + row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) + (st.geo_error ? row("geo", st.geo_error, true) : "") + `</div>`;
+    const sources = st.sources || [];
+    if (sources.length) {
+      html += `<div class="as-sources">` + sources.map((s) => {
+        const status = s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`;
+        return `<div class="as-src${s.error ? " as-bad" : ""}"><span class="as-src-name mono" title="${esc(s.url)}">${esc(shortSource(s.url))}</span><span class="as-src-stat" title="${esc(status)}">${esc(status)}</span></div>`;
+      }).join("") + `</div>`;
+    }
+    if (st.last_error) html += `<div class="as-src as-bad"><span class="as-src-stat as-wrap">${esc(st.last_error)}</span></div>`;
+    $("s-as-status").innerHTML = html;
+  }
+  function fmtDur2(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
+    return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+  }
+  var AD_STATE = {
+    pool: "тег пула",
+    own: "свой тег",
+    unsupported: "не поддерживает",
+    failed: "ошибка",
+    "": "нет данных"
+  };
+  function renderAdPauseStatus(list) {
+    if (!list || list.length === 0) {
+      $("s-ad-status").innerHTML = "";
+      return;
+    }
+    $("s-ad-status").innerHTML = `<div class="as-sources">` + list.map((n) => {
+      var _a, _b;
+      const state3 = (_b = AD_STATE[(_a = n.state) != null ? _a : ""]) != null ? _b : n.state;
+      const now = n.active ? " · сейчас период рекламы" : n.master ? " · мастер" : "";
+      const stat = `${state3}${now} · реклама ${fmtDur2(n.ad_sec)} из ${fmtDur2(n.master_sec)} мастерства (${n.share.toFixed(1)}%)`;
+      return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}"><span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span><span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
+    }).join("") + `</div>`;
   }
   async function dnsPush2() {
     try {
@@ -5048,6 +5201,19 @@
       globalping_validity_min: Math.max(1, parseInt($("s-hc-gp-validity").value, 10) || 15)
     } }, "Карантин сохранён").catch((e) => showToast(e.message, true));
     $("s-gp-save").onclick = () => saveSection({ globalping: { api_base: $("s-gp-base").value.trim() } }, "Globalping сохранён").catch((e) => showToast(e.message, true));
+    $("s-as-save").onclick = () => saveSection({ antiscan: {
+      enabled: $("s-as-enabled").checked,
+      sources: $("s-as-sources").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      interval_min: parseInt($("s-as-interval").value, 10) || 30,
+      geo_url: $("s-as-geo").value.trim()
+    } }, "Антискан сохранён — список пересобирается").then(() => setTimeout(() => load2().catch(() => {
+    }), 5e3)).catch((e) => showToast(e.message, true));
+    $("s-ad-save").onclick = () => saveSection({ ad_pause: {
+      enabled: $("s-ad-enabled").checked,
+      tag: $("s-ad-tag").value.trim(),
+      share_percent: parseInt($("s-ad-share").value, 10) || 10
+    } }, "Рекламная пауза сохранена").then(() => load2().catch(() => {
+    })).catch((e) => showToast(e.message, true));
     $("s-panel-save").onclick = () => {
       const newTok = $("s-panel-token").value.trim();
       saveSection({ panel: { token: newTok, events_max: parseInt($("s-panel-events").value, 10) || 500 } }, "Параметры панели сохранены").then(() => {

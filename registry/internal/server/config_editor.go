@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"sharedd/registry/internal/config"
 )
 
 // Редактирование конфигурации регистратора через панель.
@@ -22,6 +24,8 @@ import (
 // node_defaults (интервалы нод), globalping (api_base/token), panel (token, events_max),
 // rotation (лимит мастерства), healthcheck.quarantine_attempts (— число
 // GP-попыток в карантине до бана; читается на каждом отчёте, ticker'ов нет).
+// antiscan (источники/интервал/geo_url списка сканеров; сохранение сразу
+// пересобирает список — antiscan.go).
 // Применённые значения сразу обслуживаются рантаймом (GET /config для нод, pushAssignments,
 // верификация Globalping, авторизация панели), а затем персистятся обратно в TOML-файл
 // (атомарно: temp + rename, с.bak-копией). Остальные healthcheck/http/state —
@@ -121,6 +125,24 @@ type editableUsers struct {
 	DefaultMaxNodes int `json:"default_max_nodes"`
 }
 
+// editableAntiscan — [antiscan]: источники abuse-листов, интервал сборки и
+// гео-список RU. Hot-apply: цикл сборки перечитывает секцию и пересобирает
+// список сразу после сохранения.
+type editableAntiscan struct {
+	Enabled     bool     `json:"enabled"`
+	Sources     []string `json:"sources"`
+	IntervalMin int      `json:"interval_min"`
+	GeoURL      string   `json:"geo_url"`
+}
+
+// editableAdPause — [ad_pause]: рекламная пауза пула. Hot-apply: тик
+// селекции читает секцию заново (ad_pause.go).
+type editableAdPause struct {
+	Enabled      bool   `json:"enabled"`
+	Tag          string `json:"tag"`
+	SharePercent int    `json:"share_percent"`
+}
+
 // maxDefaultMaxNodes — верхняя граница [users] default_max_nodes
 // (config.Load валидирует то же значение).
 const maxDefaultMaxNodes = 1000000
@@ -140,6 +162,10 @@ type editableConfig struct {
 	Selection *editableSelection `json:"selection,omitempty"`
 	// plan-ui-batch.md §1.3: дефолтная квота нового пользователя.
 	Users *editableUsers `json:"users,omitempty"`
+	// Список сканеров для нод (antiscan.go).
+	Antiscan *editableAntiscan `json:"antiscan,omitempty"`
+	// Рекламная пауза пула (ad_pause.go).
+	AdPause *editableAdPause `json:"ad_pause,omitempty"`
 }
 
 var (
@@ -255,6 +281,28 @@ func validateEditable(in *editableConfig) error {
 				maxMastersPerDomain, sel.MastersPerDomain)
 		}
 	}
+	if a := in.Antiscan; a != nil {
+		sources := make([]string, 0, len(a.Sources))
+		for _, src := range a.Sources {
+			if src = strings.TrimSpace(src); src != "" {
+				sources = append(sources, src)
+			}
+		}
+		a.Sources = sources
+		a.GeoURL = strings.TrimSpace(a.GeoURL)
+		if a.GeoURL == "" {
+			a.GeoURL = config.DefaultAntiscanGeoURL
+		}
+		if err := config.ValidateAntiscan(a.Sources, a.IntervalMin, a.GeoURL); err != nil {
+			return err
+		}
+	}
+	if a := in.AdPause; a != nil {
+		a.Tag = strings.ToLower(strings.TrimSpace(a.Tag))
+		if err := config.ValidateAdPause(a.Enabled, a.Tag, a.SharePercent); err != nil {
+			return err
+		}
+	}
 	if u := in.Users; u != nil {
 		if u.DefaultMaxNodes < 0 || u.DefaultMaxNodes > maxDefaultMaxNodes {
 			return fmt.Errorf("users.default_max_nodes: допустимо 0..%d, получено %d",
@@ -363,6 +411,17 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		Users: &editableUsers{
 			DefaultMaxNodes: r.cfg.Users.DefaultMaxNodes,
 		},
+		AdPause: &editableAdPause{
+			Enabled:      r.cfg.AdPause.Enabled != nil && *r.cfg.AdPause.Enabled,
+			Tag:          r.cfg.AdPause.Tag,
+			SharePercent: r.cfg.AdPause.SharePercent,
+		},
+		Antiscan: &editableAntiscan{
+			Enabled:     config.ResolveAntiscanEnabled(r.cfg.Antiscan.Enabled),
+			Sources:     append([]string(nil), r.cfg.Antiscan.Sources...),
+			IntervalMin: r.cfg.Antiscan.IntervalMin,
+			GeoURL:      r.cfg.Antiscan.GeoURL,
+		},
 	}
 	static := staticConfigInfo{
 		HTTPAddr:            r.cfg.HTTP.Addr,
@@ -382,9 +441,12 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 	}
 	onboarding.InstallCommand = nodeInstallCommand(onboarding.RegistryURL, onboarding.Token)
 	r.cfgMu.RUnlock()
+	scanStatus := r.antiscanStatusSnapshot(cfg.Antiscan.Sources)
+	adStatus := r.adPauseStatusSnapshot(time.Now())
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding})
+	_ = json.NewEncoder(w).Encode(map[string]any{"config": cfg, "static": static, "node_onboarding": onboarding,
+		"antiscan_status": scanStatus, "ad_pause_status": adStatus})
 }
 
 func mapsClone(m map[string]string) map[string]string {
@@ -547,10 +609,32 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		r.cfg.Users.DefaultMaxNodes = u.DefaultMaxNodes
 		changed = append(changed, fmt.Sprintf("users(default_max_nodes=%d)", u.DefaultMaxNodes))
 	}
+	if a := in.AdPause; a != nil {
+		// Hot-apply: тик селекции читает секцию заново; доля и тег действуют
+		// со следующего решения каждой ноды (раз в master_ttl).
+		enabled := a.Enabled
+		r.cfg.AdPause.Enabled = &enabled
+		r.cfg.AdPause.Tag = a.Tag
+		r.cfg.AdPause.SharePercent = a.SharePercent
+		changed = append(changed, fmt.Sprintf("ad_pause(enabled=%t,share=%d%%)", enabled, a.SharePercent))
+	}
+	if a := in.Antiscan; a != nil {
+		// Hot-apply: antiscanLoop читает секцию на каждой сборке; kick ниже
+		// пересобирает список сразу, не дожидаясь интервала.
+		enabled := a.Enabled
+		r.cfg.Antiscan.Enabled = &enabled
+		r.cfg.Antiscan.Sources = a.Sources
+		r.cfg.Antiscan.IntervalMin = a.IntervalMin
+		r.cfg.Antiscan.GeoURL = a.GeoURL
+		changed = append(changed, fmt.Sprintf("antiscan(enabled=%t,sources=%d,interval=%dmin)", enabled, len(a.Sources), a.IntervalMin))
+	}
 	if len(changed) > 0 {
 		persistErr = r.persistConfigLocked()
 	}
 	r.cfgMu.Unlock()
+	if in.Antiscan != nil {
+		r.kickAntiscan()
+	}
 
 	if len(changed) == 0 {
 		w.Header().Set("Content-Type", "application/json")

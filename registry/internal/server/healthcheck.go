@@ -388,6 +388,8 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				}
 			}
 			r.db.RecordTraffic(time.Now(), candidate.NodeID, ingress, egress)
+			// «Цена 1000 соединений» — точка раз в минуту (conn_cost.go).
+			r.recordLoadSampleLocked(candidate.NodeID, payload.MetricsSnapshot, ingress+egress, time.Now())
 			// host-история (CPU/RAM) — гейджи, sameUsers-гейт (counter-reset)
 			// к ним не относится: пишем, если есть хотя бы одна метрика.
 			var cpu, ram *float64

@@ -71,7 +71,11 @@ migrate_registry_config() { # migrate_registry_config <registry.toml> [1=dry-run
 
     # каталог state-файла из [state] file — рядом дефолтятся control.db / master.key
     local state_file sdir
-    state_file="$(awk '
+    # Значение — basic ("…") или literal ('…') TOML-строка: панель сохраняет
+    # конфиг через go-toml, а он пишет пути одинарными кавычками. Раньше
+    # снимались только двойные — каталог получался `'/var/lib/sharedd`, и
+    # control_db/master_key_path дописывались с паразитной кавычкой.
+    state_file="$(awk -v q="'" '
         # заголовок секции нормализуем как TOML: `[ users ] # c` → `users`
         function sectname(s,   t) {
             t = s
@@ -81,8 +85,14 @@ migrate_registry_config() { # migrate_registry_config <registry.toml> [1=dry-run
         }
         /^[[:space:]]*\[/ { in_state = (sectname($0) == "state"); next }
         in_state && /^[[:space:]]*file[[:space:]]*=/ {
-            v = $0; sub(/^[[:space:]]*file[[:space:]]*=[[:space:]]*/, "", v)
-            gsub(/^"|"$/, "", v); print v; exit
+            v = $0; sub(/\r$/, "", v); sub(/^[[:space:]]*file[[:space:]]*=[[:space:]]*/, "", v)
+            c = substr(v, 1, 1)
+            if (c == "\"" || c == q) {
+                v = substr(v, 2); i = index(v, c); if (i) v = substr(v, 1, i - 1)
+            } else {
+                sub(/[[:space:]]*#.*$/, "", v); sub(/[[:space:]]+$/, "", v)
+            }
+            print v; exit
         }' "$file")"
     [ -n "$state_file" ] || state_file="$STATE_DIR/registry_state.json"
     sdir="${state_file%/*}"
@@ -93,7 +103,7 @@ migrate_registry_config() { # migrate_registry_config <registry.toml> [1=dry-run
 
     local tmp
     tmp="$(mktemp "${file}.mig.XXXXXX")"
-    awk -v cr="$crlf" -v sdir="$sdir" '
+    awk -v cr="$crlf" -v sdir="$sdir" -v q="'" '
         BEGIN {
             NSEC = 4
             sec[1] = "users"; sec[2] = "database"; sec[3] = "selection"; sec[4] = "provisioning"
@@ -142,6 +152,11 @@ migrate_registry_config() { # migrate_registry_config <registry.toml> [1=dry-run
             if (cur in kn) {
                 for (i = 1; i <= kn[cur]; i++)
                     if (body ~ "^[[:space:]]*" k[cur,i] "[[:space:]]*=") present[cur,i] = 1
+            }
+            # самоисправление прежнего бага: паразитная одинарная кавычка в начале
+            # control_db / master_key_path (из literal-строки [state] file) снимается
+            if (cur == "database" && body ~ ("^[[:space:]]*(control_db|master_key_path)[[:space:]]*=[[:space:]]*\"" q)) {
+                sub("\"" q, "\"", body); printf "%s%s\n", body, cr; next
             }
             print
         }

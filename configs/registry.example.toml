@@ -108,3 +108,25 @@ port = 443
 
 [shared_proxy.users]
 hello = "0123456789abcdef0123456789abcdef"
+
+# Список сканеров для дропа на нодах (правится и в панели: Настройки →
+# Антискан). Регистратор раз в interval_min качает sources (IPv4-адреса,
+# подсети CIDR, диапазоны a-b по строке), оставляет только российские адреса
+# (geo_url: RIPEstat или свой текстовый список CIDR) и раздаёт нодам; ноды
+# дропают их на общем порту прокси. enabled = false — ноды снимают блокировку.
+[antiscan]
+enabled = true
+sources = ["https://raw.githubusercontent.com/stamparm/ipsum/master/levels/1.txt"]
+interval_min = 30
+geo_url = "https://stat.ripe.net/data/country-resource-list/data.json?resource=RU&v4_format=prefix"
+
+# Рекламная пауза пула (правится и в панели: Настройки → Реклама).
+# share_percent времени мастерства каждой ноды она показывает рекламный тег
+# пула вместо своего. Доля одна для всех; реклама только внутри мастерства и
+# чередуется периодами длиной [rotation] master_ttl_minutes. Считается
+# только подтверждённое агентом время, переключения пишутся в журнал.
+# Поддерживают ноды mtdd с подменой тега на лету (/v1/ad-tag).
+[ad_pause]
+enabled = false
+tag = ""
+share_percent = 10

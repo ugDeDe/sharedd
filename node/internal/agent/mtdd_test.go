@@ -27,6 +27,7 @@ type mtddFixture struct {
 	calls   []string
 	nodeCfg *config.NodeConfig
 	oldAPI  bool // прежняя сборка mtdd: 400 unknown_field на поле tls_domain
+	noAdTag bool // прежняя сборка mtdd: нет маршрута /v1/ad-tag (404)
 }
 
 func newMtddFixture(t *testing.T, users string) *mtddFixture {
@@ -40,8 +41,12 @@ func newMtddFixture(t *testing.T, users string) *mtddFixture {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.calls = append(f.calls, r.Method+" "+r.URL.Path+" "+string(body))
-		old := f.oldAPI
+		old, noAdTag := f.oldAPI, f.noAdTag
 		f.mu.Unlock()
+		if noAdTag && r.URL.Path == "/v1/ad-tag" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if old && strings.Contains(string(body), "tls_domain") {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"ok":false,"error":{"type":"unknown_field","message":"tls_domain"}}`)
@@ -403,5 +408,22 @@ x = 1`, "\n")
 	// Пустой общий конфиг ничего не удаляет.
 	if _, _, ch := dropStaleAliases(cfg, nil); ch {
 		t.Fatal("empty shared users must not drop anything")
+	}
+}
+
+func TestMtddUniqueIPsPreferSeen(t *testing.T) {
+	both := parsePrometheusSamples(`mtdd_user_unique_ips_active{user="u1"} 159
+mtdd_user_unique_ips_seen{user="u1"} 1943
+mtdd_user_unique_ips_active{user="u2"} 1
+mtdd_user_unique_ips_seen{user="u2"} 5
+`)
+	snap, _ := buildMetricsSnapshot(translateMtddSamples(both), map[string]string{"u1": "x", "u2": "y"})
+	if snap[uniqueIPsMetricName] != 1948 {
+		t.Fatalf("unique IPs must come from _seen (1943+5), got %v", snap[uniqueIPsMetricName])
+	}
+	// старый mtdd без _seen — fallback на _active
+	old, _ := buildMetricsSnapshot(translateMtddSamples(parsePrometheusSamples(`mtdd_user_unique_ips_active{user="u1"} 4`+"\n")), map[string]string{"u1": "x"})
+	if old[uniqueIPsMetricName] != 4 {
+		t.Fatalf("fallback to _active expected, got %v", old[uniqueIPsMetricName])
 	}
 }

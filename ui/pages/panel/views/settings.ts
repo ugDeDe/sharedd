@@ -168,6 +168,49 @@ function renderGrid(): void {
       <div class="cfg-foot"><button class="btn primary" id="s-hc-quar-save">Сохранить карантин</button></div>
     </div>
 
+    <div class="cfg" data-settings-group="antiscan">
+      <div class="cfg-head">${icon(ICONS.ban)}<span>Антискан · сканеры из abuse-листов</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-as-enabled"><span class="box"></span> Блокировать сканеры на нодах</label>
+        <div class="field">
+          <label for="s-as-sources">Источники</label>
+          <textarea id="s-as-sources" class="mono" spellcheck="false"></textarea>
+          <span class="help">По одному URL в строке: IPv4-адреса, подсети CIDR или диапазоны a-b, по записи на строку (формат ipsum подходит).</span>
+        </div>
+        <div class="field">
+          <label for="s-as-interval">Интервал обновления, мин</label>
+          <input type="number" id="s-as-interval" min="5" max="1440">
+        </div>
+        <div class="field">
+          <label for="s-as-geo">Российские диапазоны (geo_url)</label>
+          <input type="text" id="s-as-geo" class="mono" spellcheck="false">
+          <span class="help">RIPEstat country-resource-list или свой текстовый список CIDR. Пусто — RIPEstat по умолчанию.</span>
+        </div>
+        <div class="note">Регистратор оставляет из источников только российские адреса и подсети и раздаёт список нодам; ноды дропают их на общем порту прокси. Если источник недоступен, используется его последняя удачная копия.</div>
+        <div class="as-status" id="s-as-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-as-save">Сохранить антискан</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="adpause">
+      <div class="cfg-head">${icon(ICONS.swap)}<span>Рекламная пауза пула</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-ad-enabled"><span class="box"></span> Показывать рекламу пула на нодах</label>
+        <div class="field">
+          <label for="s-ad-tag">Рекламный тег пула</label>
+          <input type="text" id="s-ad-tag" class="mono" spellcheck="false" maxlength="32" placeholder="32 hex от @MTProxybot">
+        </div>
+        <div class="field">
+          <label for="s-ad-share">Доля времени мастерства, %</label>
+          <input type="number" id="s-ad-share" min="1" max="50">
+          <span class="help">Одинаковая для всех нод. Реклама идёт только пока нода мастер и чередуется периодами длиной master_ttl: нода с недобором получает рекламный период, с перебором — нет.</span>
+        </div>
+        <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd с подменой тега на лету — клиенты не переподключаются. Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
+        <div class="as-status" id="s-ad-status"></div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-ad-save">Сохранить рекламу</button></div>
+    </div>
+
     <div class="cfg" data-settings-group="system">
       <div class="cfg-head">${icon(ICONS.sliders)}<span>Панель</span></div>
       <div class="cfg-body">
@@ -253,6 +296,17 @@ export async function load(): Promise<void> {
   ($("s-hc-quar") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
   ($("s-hc-gp-validity") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
   ($("s-gp-base") as HTMLInputElement).value = c.globalping.api_base;
+  const as = c.antiscan || {};
+  ($("s-as-enabled") as HTMLInputElement).checked = as.enabled !== false;
+  ($("s-as-sources") as HTMLTextAreaElement).value = (as.sources || []).join("\n");
+  ($("s-as-interval") as HTMLInputElement).value = as.interval_min || 30;
+  ($("s-as-geo") as HTMLInputElement).value = as.geo_url || "";
+  renderAntiscanStatus(data.antiscan_status);
+  const ad = c.ad_pause || {};
+  ($("s-ad-enabled") as HTMLInputElement).checked = !!ad.enabled;
+  ($("s-ad-tag") as HTMLInputElement).value = ad.tag || "";
+  ($("s-ad-share") as HTMLInputElement).value = ad.share_percent || 10;
+  renderAdPauseStatus(data.ad_pause_status);
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
   // Раньше это был моноширинный дамп в рамке. Те же значения читаются
@@ -275,6 +329,74 @@ export async function load(): Promise<void> {
       row("report_freshness", st.report_freshness_min + " мин") +
       row("prune_unhealthy", st.prune_unhealthy_min + " мин") +
     `</div>`;
+}
+
+/* ── антискан: состояние сборки списка ────────────────────────────── */
+
+function fmtTime(iso: string | undefined): string {
+  return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
+}
+
+/* Короткое имя источника: домен + имя файла (полный URL — в подсказке). */
+function shortSource(u: string): string {
+  try {
+    const url = new URL(u);
+    const file = url.pathname.split("/").filter(Boolean).pop() || "";
+    return file ? `${url.host} · ${file}` : url.host;
+  } catch {
+    return u;
+  }
+}
+
+function renderAntiscanStatus(st: any): void {
+  if (!st) { $("s-as-status").innerHTML = ""; return; }
+  const row = (k: string, v: unknown, bad = false) =>
+    `<div class="static-row"><span class="static-k">${esc(k)}</span>` +
+    `<span class="static-v mono${bad ? " as-bad" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
+  const rev = st.revision === "disabled" ? "выключен" : (st.revision || "ещё не собран");
+  let html =
+    `<div class="static-grid as-summary">` +
+      row("ревизия", rev) +
+      row("записей RU", st.entries) +
+      row("собран", fmtTime(st.built_at)) +
+      row("последняя попытка", fmtTime(st.last_attempt)) +
+      row("RU-диапазонов", st.geo_ranges + (st.geo_at ? " · " + fmtTime(st.geo_at) : "")) +
+      (st.geo_error ? row("geo", st.geo_error, true) : "") +
+    `</div>`;
+  const sources = st.sources || [];
+  if (sources.length) {
+    html += `<div class="as-sources">` + sources.map((s: any) => {
+      const status = s.error ? "ошибка: " + s.error : `${s.entries} записей · ${fmtTime(s.fetched_at)}`;
+      return `<div class="as-src${s.error ? " as-bad" : ""}">` +
+        `<span class="as-src-name mono" title="${esc(s.url)}">${esc(shortSource(s.url))}</span>` +
+        `<span class="as-src-stat" title="${esc(status)}">${esc(status)}</span></div>`;
+    }).join("") + `</div>`;
+  }
+  if (st.last_error) html += `<div class="as-src as-bad"><span class="as-src-stat as-wrap">${esc(st.last_error)}</span></div>`;
+  $("s-as-status").innerHTML = html;
+}
+
+/* ── рекламная пауза: фактическая доля по нодам ──────────────────── */
+
+function fmtDur(sec: number): string {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}
+
+const AD_STATE: Record<string, string> = {
+  pool: "тег пула", own: "свой тег", unsupported: "не поддерживает", failed: "ошибка", "": "нет данных",
+};
+
+function renderAdPauseStatus(list: any[]): void {
+  if (!list || list.length === 0) { $("s-ad-status").innerHTML = ""; return; }
+  $("s-ad-status").innerHTML = `<div class="as-sources">` + list.map((n: any) => {
+    const state = AD_STATE[n.state ?? ""] ?? n.state;
+    const now = n.active ? " · сейчас период рекламы" : (n.master ? " · мастер" : "");
+    const stat = `${state}${now} · реклама ${fmtDur(n.ad_sec)} из ${fmtDur(n.master_sec)} мастерства (${n.share.toFixed(1)}%)`;
+    return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}">` +
+      `<span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span>` +
+      `<span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
+  }).join("") + `</div>`;
 }
 
 /* ── DNS-push (кнопка «Перезаписать DNS сейчас») ──────────────────── */
@@ -392,6 +514,27 @@ export function init(): void {
 
   $("s-gp-save").onclick = () =>
     saveSection({ globalping: { api_base: ($("s-gp-base") as HTMLInputElement).value.trim() } }, "Globalping сохранён")
+      .catch((e) => showToast(e.message, true));
+
+  $("s-as-save").onclick = () =>
+    saveSection({ antiscan: {
+      enabled: ($("s-as-enabled") as HTMLInputElement).checked,
+      sources: ($("s-as-sources") as HTMLTextAreaElement).value.split("\n").map((s) => s.trim()).filter(Boolean),
+      interval_min: parseInt(($("s-as-interval") as HTMLInputElement).value, 10) || 30,
+      geo_url: ($("s-as-geo") as HTMLInputElement).value.trim(),
+    } }, "Антискан сохранён — список пересобирается")
+      // Пересборка идёт в фоне (скачивание источников); состояние подтянется
+      // со следующим перечитыванием настроек.
+      .then(() => setTimeout(() => load().catch(() => {}), 5000))
+      .catch((e) => showToast(e.message, true));
+
+  $("s-ad-save").onclick = () =>
+    saveSection({ ad_pause: {
+      enabled: ($("s-ad-enabled") as HTMLInputElement).checked,
+      tag: ($("s-ad-tag") as HTMLInputElement).value.trim(),
+      share_percent: parseInt(($("s-ad-share") as HTMLInputElement).value, 10) || 10,
+    } }, "Рекламная пауза сохранена")
+      .then(() => load().catch(() => {}))
       .catch((e) => showToast(e.message, true));
 
   $("s-panel-save").onclick = () => {

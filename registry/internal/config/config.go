@@ -229,6 +229,31 @@ type RegistryConfig struct {
 		VpsPollIntervalSec  int   `toml:"vps_poll_interval_sec"`
 		UserProfilesEnabled *bool `toml:"user_profiles_enabled"`
 	} `toml:"provisioning"`
+
+	// Antiscan — список сканеров, который регистратор собирает для дропа на
+	// нодах: каждые IntervalMin скачивает Sources (abuse-листы: IPv4-адреса,
+	// CIDR, диапазоны), оставляет только адреса из российских диапазонов
+	// (GeoURL — RIPEstat country-resource-list или свой текст CIDR) и раздаёт
+	// агентам через GET /antiscan. Enabled: nil = включено. Явное false —
+	// агенты снимают хук и set. Sources пусто = DefaultAntiscanSource.
+	Antiscan struct {
+		Enabled     *bool    `toml:"enabled"`
+		Sources     []string `toml:"sources"`
+		IntervalMin int      `toml:"interval_min"`
+		GeoURL      string   `toml:"geo_url"`
+	} `toml:"antiscan"`
+
+	// AdPause — рекламная пауза пула: SharePercent процентов времени
+	// мастерства каждой ноды она показывает рекламный тег пула (Tag) вместо
+	// своего. Регистратор решает раз в master_ttl внутри мастерства, по
+	// накопленному подтверждённому времени — доля одинакова для всех нод.
+	// Поддерживают ноды mtdd с подменой тега на лету (/v1/ad-tag).
+	// Enabled: nil = выключено.
+	AdPause struct {
+		Enabled      *bool  `toml:"enabled"`
+		Tag          string `toml:"tag"`
+		SharePercent int    `toml:"share_percent"`
+	} `toml:"ad_pause"`
 }
 
 type Resolved struct {
@@ -437,6 +462,12 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if cfg.SRMD.MaxNodesPerDomain < 1 || cfg.SRMD.MaxNodesPerDomain > 1000 {
 		return fmt.Errorf("srmd.max_nodes_per_domain must be 1..1000")
 	}
+	if err := ValidateAntiscan(cfg.Antiscan.Sources, cfg.Antiscan.IntervalMin, cfg.Antiscan.GeoURL); err != nil {
+		return err
+	}
+	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.SharePercent); err != nil {
+		return err
+	}
 	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase} {
 		u, err := url.ParseRequestURI(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -562,6 +593,18 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.Provisioning.VpsPollIntervalSec == 0 {
 		cfg.Provisioning.VpsPollIntervalSec = defaultVpsPollIntervalSec
 	}
+	if len(cfg.Antiscan.Sources) == 0 {
+		cfg.Antiscan.Sources = []string{DefaultAntiscanSource}
+	}
+	if cfg.Antiscan.IntervalMin == 0 {
+		cfg.Antiscan.IntervalMin = DefaultAntiscanIntervalMin
+	}
+	if cfg.Antiscan.GeoURL == "" {
+		cfg.Antiscan.GeoURL = DefaultAntiscanGeoURL
+	}
+	if cfg.AdPause.SharePercent == 0 {
+		cfg.AdPause.SharePercent = DefaultAdPauseSharePercent
+	}
 }
 
 // ── валидационные хелперы, разделяемые с сервером ────────────────
@@ -635,4 +678,64 @@ func ResolveMastersPerDomain(v int) int {
 		return MaxMastersPerDomain
 	}
 	return v
+}
+
+// [antiscan]: дефолты и границы (панель валидирует тем же ValidateAntiscan).
+const (
+	DefaultAntiscanSource      = "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/1.txt"
+	DefaultAntiscanGeoURL      = "https://stat.ripe.net/data/country-resource-list/data.json?resource=RU&v4_format=prefix"
+	DefaultAntiscanIntervalMin = 30
+	MinAntiscanIntervalMin     = 5
+	MaxAntiscanIntervalMin     = 1440
+	MaxAntiscanSources         = 20
+)
+
+// ResolveAntiscanEnabled — [antiscan] enabled: nil = включено.
+func ResolveAntiscanEnabled(p *bool) bool {
+	return p == nil || *p
+}
+
+// ValidateAntiscan — источники 1..MaxAntiscanSources абсолютных http(s) URL,
+// интервал в минутах в допустимых границах, geo_url — http(s) URL.
+func ValidateAntiscan(sources []string, intervalMin int, geoURL string) error {
+	if len(sources) == 0 || len(sources) > MaxAntiscanSources {
+		return fmt.Errorf("antiscan.sources: нужно 1..%d URL", MaxAntiscanSources)
+	}
+	for _, raw := range append(append([]string(nil), sources...), geoURL) {
+		u, err := url.ParseRequestURI(strings.TrimSpace(raw))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("antiscan: %q не абсолютный http(s) URL", raw)
+		}
+	}
+	if intervalMin < MinAntiscanIntervalMin || intervalMin > MaxAntiscanIntervalMin {
+		return fmt.Errorf("antiscan.interval_min: допустимо %d..%d", MinAntiscanIntervalMin, MaxAntiscanIntervalMin)
+	}
+	return nil
+}
+
+// [ad_pause]: доля по умолчанию и границы (панель валидирует тем же ValidateAdPause).
+const (
+	DefaultAdPauseSharePercent = 10
+	MaxAdPauseSharePercent     = 50
+)
+
+var adTagRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// ValidAdTag — рекламный тег Telegram: 32 hex, не все нули.
+func ValidAdTag(tag string) bool {
+	return adTagRe.MatchString(tag) && strings.Trim(tag, "0") != ""
+}
+
+// ValidateAdPause — доля 1..MaxAdPauseSharePercent; включённой паузе нужен тег.
+func ValidateAdPause(enabled bool, tag string, sharePercent int) error {
+	if sharePercent < 1 || sharePercent > MaxAdPauseSharePercent {
+		return fmt.Errorf("ad_pause.share_percent: допустимо 1..%d", MaxAdPauseSharePercent)
+	}
+	if tag != "" && !ValidAdTag(tag) {
+		return fmt.Errorf("ad_pause.tag: 32 hex-символа, не все нули")
+	}
+	if enabled && tag == "" {
+		return fmt.Errorf("ad_pause.tag обязателен при enabled = true")
+	}
+	return nil
 }

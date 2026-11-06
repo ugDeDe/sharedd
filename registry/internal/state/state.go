@@ -49,6 +49,10 @@ const (
 	EventSRMDDomainUnfolded = "srmd_domain_unfolded" // свёрнутый домен возвращён в ротацию мастеров
 	EventSRMDDomainTaken    = "srmd_domain_taken"    // ручной домен взят под контроль СРМД
 	EventSRMDDomainReleased = "srmd_domain_released" // домен СРМД переведён обратно в ручной режим
+
+	// Рекламная пауза пула: агент подтвердил включение/снятие тега пула.
+	EventAdPauseOn  = "ad_pause_on"
+	EventAdPauseOff = "ad_pause_off"
 )
 
 type Event struct {
@@ -423,6 +427,17 @@ type Candidate struct {
 	MasterSeconds int64     `json:"master_seconds"`
 	MasterSince   time.Time `json:"master_since,omitempty"`
 
+	// Рекламная пауза пула (server/ad_pause.go). AdActive — желаемое
+	// состояние (регистратор решает раз в master_ttl внутри мастерства),
+	// AdDecidedAt — момент решения. AdState — последнее подтверждённое
+	// агентом состояние тега (pool/own/unsupported/failed). AdSeconds/AdSince —
+	// подтверждённое агентом время с тегом пула (закрытое + открытый отрезок).
+	AdActive    bool      `json:"ad_active,omitempty"`
+	AdDecidedAt time.Time `json:"ad_decided_at,omitempty"`
+	AdState     string    `json:"ad_state,omitempty"`
+	AdSeconds   int64     `json:"ad_seconds,omitempty"`
+	AdSince     time.Time `json:"ad_since,omitempty"`
+
 	// История для детальной страницы ноды: кольцевые буферы точек,
 	// персистятся вместе с State. GPLast — деталь последнего measurement'а
 	// Globalping (результаты по площадкам).
@@ -430,6 +445,16 @@ type Candidate struct {
 	GPHist     []GPPoint     `json:"gp_hist,omitempty"`
 	ReportHist []ReportPoint `json:"report_hist,omitempty"`
 	GPLast     *GPDetail     `json:"gp_last,omitempty"`
+}
+
+// AdTimeSec — подтверждённое время с рекламным тегом пула (сек), включая
+// открытый отрезок.
+func (c *Candidate) AdTimeSec(now time.Time) int64 {
+	total := c.AdSeconds
+	if !c.AdSince.IsZero() && now.After(c.AdSince) {
+		total += int64(now.Sub(c.AdSince).Seconds())
+	}
+	return total
 }
 
 // HadMasterTime — успела ли нода поработать мастером: есть/был stint

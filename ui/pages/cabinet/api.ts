@@ -221,31 +221,11 @@ export interface NodeAvailability {
   report_hist: { at: string; metrics_ok: boolean; clients: number; writers: number }[];
 }
 export interface NodeCheck { at: string; source: string; ok: boolean; detail?: string; }
-// Серии хостинга (24 ч, по возрастанию времени). Пустые массивы = «данные
-// копятся»; cpu_percent/ram_percent внутри точки могут быть null (пропуск).
-export interface NodeHostingCpuRam { at: string; cpu_percent: number | null; ram_percent: number | null; }
-export interface NodeHostingNet { at: string; ingress_bytes: number; egress_bytes: number; }
-export interface NodeHosting {
-  cpu_percent: number | null;
-  ram_percent: number | null;
-  net_ingress_bytes_total?: number;
-  net_egress_bytes_total?: number;
-  cpu_ram_series?: NodeHostingCpuRam[];
-  net_series?: NodeHostingNet[];
-}
-export interface NodeConnections {
-  current_writers?: number; current_unique_ips?: number; current_user_connections?: number;
-  series: { at: string; clients: number; writers: number }[];
-  note?: string;
-}
-export interface NodeUserUniqueIPs { user: string; unique_ips: number; }
-// Агрегат трафика пользователя за 24ч. null, когда данных нет; имя раздела в
-// absent[] равнозначно «нет данных».
-export interface NodeUserTraffic { user: string; ingress_bytes: number; egress_bytes: number; }
-export interface NodeUsers {
-  unique_ips_by_user: NodeUserUniqueIPs[];
-  traffic_by_user: NodeUserTraffic[] | null;
-}
+// Типы нагрузки ноды — общие с публичной статистикой (ui/lib/node-load.ts).
+export type {
+  NodeConnections, NodeHosting, NodeHostingCpuRam, NodeHostingNet, NodeUserTraffic, NodeUserUniqueIPs, NodeUsers,
+} from "../../lib/node-load";
+import type { NodeConnections, NodeHosting, NodeUsers } from "../../lib/node-load";
 export interface NodeEvent { at: string; type: string; domain?: string; detail?: string; }
 export interface IPHistoryRow { ip: string; first_seen: string; last_seen: string; events: number; }
 

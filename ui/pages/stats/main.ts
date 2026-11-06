@@ -5,6 +5,10 @@
 import { $, esc, icon, ICONS } from "../../lib/dom";
 import { fmtDur, fmtAgo, fmtClock, plural } from "../../lib/format";
 import { initTheme } from "../../lib/theme";
+import {
+  connectionsCardHTML, fmtBytes, fmtPct, hostingCardHTML, installLiveCharts, userIPsBarsHTML, usersTableHTML,
+} from "../../lib/node-load";
+import type { NodeLoad } from "../../lib/node-load";
 
 function chip(flag: boolean | null | undefined, okText?: string, noText?: string): string {
   if (flag === null || flag === undefined) return `<span class="badge">—</span>`;
@@ -74,6 +78,34 @@ function checksHTML(n: any): string {
   </span>`;
 }
 
+function trafficCell(inB: number | undefined, outB: number | undefined): string {
+  const total = (inB ?? 0) + (outB ?? 0);
+  return total > 0 ? `${esc(fmtBytes(total))}` : "—";
+}
+
+/* Сводка пула: итоги по всем нодам (клиенты — сумма по нодам: клиент,
+   подключённый к двум нодам, считается дважды). */
+function summaryHTML(s: any): string {
+  const tile = (l: string, v: string, e: string, icn: string, t?: string): string =>
+    `<div class="card metric"${t ? ` title="${esc(t)}"` : ""}>
+      <div class="metric-label">${icon(icn, 13)}${esc(l)}</div>
+      <div class="metric-value" style="font-size:20px">${v}</div>
+      <div class="metric-foot">${esc(e)}</div></div>`;
+  return `<div class="metrics" style="margin-bottom:16px">
+    ${tile("Ноды", `${s.healthy}/${s.nodes}`, `в очереди мастерства · карантин ${s.quarantine}`, ICONS.health)}
+    ${tile("Мастера", String(s.masters), "держат домены сейчас", ICONS.masters)}
+    ${tile("Клиенты", fmtNum0(s.clients_sum), `соединений ${fmtNum0(s.user_connections)}`, ICONS.users,
+      "сумма уникальных IP по нодам: клиент на двух нодах считается дважды")}
+    ${tile("Трафик 24 ч", esc(fmtBytes((s.traffic_24h_in ?? 0) + (s.traffic_24h_out ?? 0))),
+      `принято ${fmtBytes(s.traffic_24h_in ?? 0)} · отдано ${fmtBytes(s.traffic_24h_out ?? 0)}`, ICONS.swap)}
+    ${tile("Нагрузка", `${esc(fmtPct(s.avg_cpu ?? null))}`, `CPU в среднем · RAM ${fmtPct(s.avg_ram ?? null)}`, ICONS.clock)}
+  </div>`;
+}
+
+function fmtNum0(n: number | null | undefined): string {
+  return n === null || n === undefined ? "—" : Math.round(n).toLocaleString("ru-RU");
+}
+
 function listRowHTML(n: any): string {
   const avail = n.availability_pct ?? 0;
   const role = n.is_master
@@ -92,6 +124,8 @@ function listRowHTML(n: any): string {
     <td data-label="Проверки">${checksHTML(n)}</td>
     <td data-label="Доступность"><div class="meter"><div class="meter-track"><span class="meter-fill ${availClass(avail)}" style="width:${avail}%"></span></div><span class="meter-value mono">${avail.toFixed(1)}%</span></div></td>
     <td class="mono num" data-label="Клиенты">${clients === null ? "—" : clients}</td>
+    <td class="mono num" data-label="CPU / RAM">${esc(fmtPct(n.cpu_percent ?? null))} / ${esc(fmtPct(n.ram_percent ?? null))}</td>
+    <td class="mono num" data-label="Трафик 24 ч" title="принято / отдано">${trafficCell(n.traffic_24h_in, n.traffic_24h_out)}</td>
     <td class="mono" data-label="Отчёт">${n.report_age_sec < 0 ? "—" : fmtDur(n.report_age_sec) + " назад"}</td>
     <td data-label="Тип">${nodeTypeBadge(n.node_type)}</td>
   </tr>`;
@@ -188,11 +222,13 @@ async function renderListView(): Promise<void> {
   </tr>`).join("");
   $("root").innerHTML = `
     <div class="banner info">${icon(ICONS.info, 16)}<span>Открытая сводка пула: <b>IP-адреса замаскированы</b>. Клик по строке — подробная страница ноды.</span></div>
+    ${d.summary ? summaryHTML(d.summary) : ""}
+    ${Array.isArray(d.conn_cost_by_type) ? costByTypeHTML(d.conn_cost_by_type) : ""}
     ${domainsCard}
     <section class="card">
       <div class="card-head"><h2>Ноды пула</h2><span class="hint">${(d.nodes || []).length} шт</span></div>
       <div class="table-wrap"><table class="table-cards">
-        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>Проверки</th><th>Доступность</th><th>Клиенты</th><th>Отчёт</th><th>Тип</th></tr></thead>
+        <thead><tr><th>Нода</th><th>IP (маска)</th><th>Роль</th><th>Проверки</th><th>Доступность</th><th>Клиенты</th><th>CPU / RAM</th><th>Трафик 24 ч</th><th>Отчёт</th><th>Тип</th></tr></thead>
         <tbody id="pub-nodes-body">${rows || `<tr><td colspan="10" class="table-empty">пул пуст</td></tr>`}</tbody>
       </table></div>
     </section>
@@ -211,53 +247,6 @@ async function renderListView(): Promise<void> {
 }
 
 /* ---------------- страница ноды (/statistics/<id>) ---------------- */
-
-interface ClientPt { at: string; v: number; }
-
-function clientsSparkInteractive(pts: ClientPt[]): string {
-  if (pts.length < 2) {
-    return `<div class="dim" style="padding:6px 0">пока мало данных</div>`;
-  }
-  const w = 600, hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
-  const step = w / (pts.length - 1);
-  const xy = pts.map((p, i) => [i * step, hgt - 5 - (p.v / max) * (hgt - 12)]);
-  const s = xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  return `<div class="sparkwrap" id="clients-sparkwrap">
-    <svg class="spark" id="clients-spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
-      <polygon points="0,${hgt} ${s} ${w},${hgt}" fill="var(--acc)" fill-opacity=".13"/>
-      <polyline points="${s}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    </svg>
-    <div class="spark-guide" id="clients-guide"></div>
-    <div class="spark-dot" id="clients-dot"></div>
-    <div class="spark-tip" id="clients-tip"></div>
-  </div>`;
-}
-
-function attachSparkHover(pts: ClientPt[]): void {
-  const wrap = $("clients-sparkwrap");
-  const svg = $("clients-spark");
-  if (!wrap || !svg || pts.length < 2 || !svg.getBoundingClientRect) return;
-  const guide = $("clients-guide"), dot = $("clients-dot"), tip = $("clients-tip");
-  const hgt = 56, max = Math.max(...pts.map((p) => p.v), 1);
-  wrap.addEventListener("mousemove", (e: MouseEvent) => {
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    let frac = (e.clientX - rect.left) / rect.width;
-    frac = Math.min(1, Math.max(0, frac));
-    const i = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
-    const xFraction = i / (pts.length - 1);
-    const xPx = xFraction * rect.width;
-    const yUnit = hgt - 5 - (pts[i].v / max) * (hgt - 12);
-    const yPx = (yUnit / hgt) * rect.height;
-    guide.style.left = xPx.toFixed(1) + "px";
-    dot.style.left = xPx.toFixed(1) + "px";
-    dot.style.top = yPx.toFixed(1) + "px";
-    tip.textContent = `${fmtClock(pts[i].at)} · ${pts[i].v} подкл.`;
-    tip.style.left = Math.min(Math.max(xPx, 62), rect.width - 62).toFixed(1) + "px";
-    wrap.classList.add("hover");
-  });
-  wrap.addEventListener("mouseleave", () => wrap.classList.remove("hover"));
-}
 
 function renderPubEvents(list: any[]): string {
   if (!list || list.length === 0) return `<li class="feed-item"><div class="feed-body dim">Событий пока нет</div></li>`;
@@ -380,7 +369,6 @@ async function renderNodeView(id: string): Promise<void> {
   const repHist = d.report_hist || [];
   const repTicks = repHist.slice(-96).map((p: any) =>
     `<div class="tick ${p.metrics_ok ? "" : "fail"}" title="${esc(fmtClock(p.at))} — metrics ${p.metrics_ok ? "ok" : "FAIL"}"></div>`).join("");
-  const clientPts: ClientPt[] = repHist.filter((p: any) => p.clients >= 0).map((p: any) => ({ at: p.at, v: p.clients }));
 
   $("root").innerHTML = `
     <div class="banner info">${icon(ICONS.info, 16)}<span><a href="/statistics">← все ноды пула</a> · IP-адрес замаскирован.</span></div>
@@ -393,6 +381,8 @@ async function renderNodeView(id: string): Promise<void> {
       ${reason}
     </div>
     <div class="metrics" style="margin-bottom:16px">${stats}</div>
+    ${loadHTML(d.load ?? null)}
+    ${connCostHTML(d.conn_cost ?? null, d.proxy_host ?? null)}
     <section class="card" style="margin-bottom:16px">
       <div class="card-head"><h2>Globalping — независимая верификация</h2></div>
       ${gpSide}${probesTbl}
@@ -406,15 +396,113 @@ async function renderNodeView(id: string): Promise<void> {
         <div class="ticks">${tcpTicks || '<span class="dim">пока нет данных</span>'}</div>
         <div class="chart-cap">Отчёты metrics <span class="hint">последние ${Math.min(repHist.length, 96)}</span></div>
         <div class="ticks">${repTicks || '<span class="dim">пока нет данных</span>'}</div>
-        <div class="chart-cap">Активные клиенты (unique IP)</div>
-        ${clientsSparkInteractive(clientPts)}
       </div>
     </section>
     <section class="card">
       <div class="card-head"><h2>События ноды</h2><span class="hint">последние 100</span></div>
       <ul class="feed" style="max-height:none">${renderPubEvents(d.events || [])}</ul>
     </section>`;
-  attachSparkHover(clientPts);
+}
+
+/* Нагрузка ноды — те же блоки, что в кабинете (ui/lib/node-load.ts). */
+function loadHTML(load: NodeLoad | null): string {
+  if (!load) return "";
+  const users = `<section class="card">
+      <div class="card-head"><h2>Пользователи пула</h2><span class="hint">уникальные IP · трафик 24 ч</span></div>
+      <div class="card-body">
+        <div class="chart-cap">Уникальные IP по пользователям <span class="hint">сейчас</span></div>
+        ${userIPsBarsHTML(load)}
+        <div class="chart-cap">Пользователи <span class="hint">IP · трафик 24 ч</span></div>
+        ${usersTableHTML(load)}
+      </div>
+    </section>`;
+  return `<div class="load-stack">${hostingCardHTML(load)}${connectionsCardHTML(load)}${users}</div>`;
+}
+
+/* ── «Цена 1000 соединений» ────────────────────────────────────────────
+   CPU и память — самого процесса прокси (не всего хоста), сеть — трафик
+   прокси. «В среднем» = средний ресурс / среднее число соединений × 1000
+   (вместе с фоном процесса); «предельная» = наклон регрессии × 1000 —
+   сколько добавляет тысяча соединений сверх фона. */
+
+type CostKey = "host_cpu_pct" | "host_ram_pct" | "cpu_cores" | "ram_mb" | "net_mbps";
+/* Сервер (%) — по данным любых агентов; процесс прокси (ядра, МБ) — только
+   у агентов с телеметрией процесса: без данных строка не показывается. */
+const COST_ROWS: { key: CostKey; label: string; unit: string; digits: number; optional?: boolean }[] = [
+  { key: "host_cpu_pct", label: "CPU сервера", unit: "%", digits: 1 },
+  { key: "host_ram_pct", label: "RAM сервера", unit: "%", digits: 1 },
+  { key: "net_mbps", label: "Сеть", unit: "Мбит/с", digits: 2 },
+  { key: "cpu_cores", label: "CPU процесса прокси", unit: "ядра", digits: 3, optional: true },
+  { key: "ram_mb", label: "Память процесса прокси", unit: "МБ", digits: 1, optional: true },
+];
+
+function costVal(v: number | null | undefined, digits: number, unit: string): string {
+  return v === null || v === undefined ? "—" : `${v.toFixed(digits)} ${unit}`;
+}
+
+function connCostHTML(c: any, host: any): string {
+  const head = `<div class="card-head"><h2>Цена 1000 соединений</h2><span class="hint">${c ? c.window_hours : 24} ч</span></div>`;
+  if (!c) {
+    return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первая точка через минуту после отчёта ноды</div></section>`;
+  }
+  const rows = COST_ROWS.filter((r) => !r.optional || (c[r.key]?.points ?? 0) > 0).map((r) => {
+    const f = c[r.key] || {};
+    const r2 = f.r2 == null ? "—" : f.r2.toFixed(2);
+    const base = f.baseline == null ? "—" : `${f.baseline.toFixed(r.digits)} ${r.unit}`;
+    return `<tr>
+      <td data-label="Ресурс">${esc(r.label)}</td>
+      <td class="num mono" data-label="В среднем">${costVal(f.avg_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Предельная">${costVal(f.marginal_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Фон">${base}</td>
+      <td class="num mono" data-label="R²">${r2}</td>
+    </tr>`;
+  }).join("");
+  const hostBits: string[] = [];
+  if (host?.cpu_count != null) hostBits.push(`${host.cpu_count} ${plural(host.cpu_count, "ядро", "ядра", "ядер")}`);
+  if (host?.ram_total_bytes != null) hostBits.push(`RAM ${fmtBytes(host.ram_total_bytes)}`);
+  if (host?.proxy_processes != null) hostBits.push(`процессов прокси ${host.proxy_processes}`);
+  return `<section class="card" style="margin-bottom:16px">${head}
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Ресурс</th><th class="num" title="средний ресурс / среднее число соединений × 1000, вместе с фоном">В среднем</th>
+        <th class="num" title="наклон регрессии × 1000: сколько добавляет тысяча соединений сверх фона">Предельная</th>
+        <th class="num" title="ресурс процесса при нуле соединений (оценка)">Фон</th><th class="num" title="насколько линейная модель объясняет данные (1 — идеально)">R²</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="card-note">По ${c.points} ${plural(c.points, "точке", "точкам", "точкам")} (точка в минуту): соединений от ${fmtNum0(c.conns_min)} до ${fmtNum0(c.conns_max)}, в среднем ${fmtNum0(c.conns_avg)}.
+      Предельная цена появляется, когда соединений было заметно разное число. Проценты — от всего сервера: сравнимы только между серверами одного размера.${hostBits.length ? " Хост: " + esc(hostBits.join(" · ")) + "." : ""}</div>
+  </section>`;
+}
+
+const TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd", unknown: "неизвестно" };
+
+function costByTypeHTML(list: any[]): string {
+  const head = `<div class="card-head"><h2>Цена 1000 соединений по типам прокси</h2><span class="hint">медиана по нодам · 24 ч</span></div>`;
+  if (!list.length) {
+    return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первые точки появятся через минуту после отчётов нод</div></section>`;
+  }
+  const cell = (s: any, digits: number, unit: string): string => {
+    const avg = costVal(s?.avg_per_1k, digits, unit);
+    const marg = s?.marginal_per_1k == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal_per_1k, digits, unit)} (${s.marginal_nodes})</div>`;
+    return `${avg}${marg}`;
+  };
+  // Колонки процесса прокси — только когда хоть один тип их прислал.
+  const proc = list.some((t) => (t.cpu_cores?.avg_nodes ?? 0) > 0 || (t.ram_mb?.avg_nodes ?? 0) > 0);
+  const rows = list.map((t) => `<tr>
+      <td data-label="Тип">${esc(TYPE_LABEL[t.node_type] || t.node_type)}</td>
+      <td class="num mono" data-label="Нод">${t.nodes}</td>
+      <td class="num mono" data-label="CPU сервера">${cell(t.host_cpu_pct, 1, "%")}</td>
+      <td class="num mono" data-label="RAM сервера">${cell(t.host_ram_pct, 1, "%")}</td>
+      <td class="num mono" data-label="Сеть">${cell(t.net_mbps, 2, "Мбит/с")}</td>
+      ${proc ? `<td class="num mono" data-label="CPU прокси">${cell(t.cpu_cores, 3, "ядра")}</td>
+      <td class="num mono" data-label="Память прокси">${cell(t.ram_mb, 1, "МБ")}</td>` : ""}
+    </tr>`).join("");
+  return `<section class="card" style="margin-bottom:16px">${head}
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU сервера</th><th class="num">RAM сервера</th><th class="num">Сеть</th>${
+        proc ? `<th class="num">CPU прокси</th><th class="num">Память прокси</th>` : ""}</tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="card-note">Проценты — от всего сервера (вместе с ОС): сравнение типов честное, когда серверы одного размера.${
+      proc ? " CPU и память прокси — самого процесса прокси, сравнимы между любыми серверами." : ""} Сеть зависит от того, что делают клиенты, а не только от прокси.</div>
+  </section>`;
 }
 
 /* ---------------- каркас ---------------- */
@@ -441,5 +529,6 @@ async function refreshCurrent(): Promise<void> {
 }
 
 initTheme();
+installLiveCharts();
 refreshCurrent();
 setInterval(refreshCurrent, 15000);

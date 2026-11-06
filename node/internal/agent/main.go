@@ -184,6 +184,7 @@ func Run() {
 
 	go syncLoop(cfg)
 	go antiscanLoop(cfg)
+	go adPauseLoop(cfg)
 	go heartbeatLoop(client, cfg, ipr)
 	metricsLoop(cfg, ipr) // блокирующий, в main goroutine
 }
@@ -319,6 +320,9 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 		}
 
 		payload := map[string]string{"node_id": nodeID}
+		if st := adPauseHeartbeatState(); st != "" {
+			payload["ad_pause_state"] = st
+		}
 		data, _ := json.Marshal(payload)
 		resp, err := registryRequest(client, cfg, http.MethodPost, "/heartbeat", bytes.NewReader(data))
 		if err != nil {
@@ -344,6 +348,8 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 			if resp.StatusCode != http.StatusOK {
 				log.Printf("heartbeat rejected (status=%d), re-registering", resp.StatusCode)
 				tryRegister(ip)
+			} else {
+				noteHeartbeatResponse(hbBody)
 			}
 		}
 		time.Sleep(intervals.Heartbeat())
@@ -471,6 +477,11 @@ const (
 	trafficUsersMetricName    = "sharedd_traffic_users_fingerprint"
 	hostCPUMetricName         = "sharedd_host_cpu_percent"
 	hostRAMMetricName         = "sharedd_host_ram_percent"
+	hostCPUCountMetricName    = "sharedd_host_cpu_count"
+	hostRAMTotalMetricName    = "sharedd_host_ram_total_bytes"
+	proxyCPUCoresMetricName   = "sharedd_proxy_cpu_cores"
+	proxyRSSMetricName        = "sharedd_proxy_rss_bytes"
+	proxyProcsMetricName      = "sharedd_proxy_processes"
 	metricsListenKey          = "metrics_listen"
 	metricsListenValue        = "127.0.0.1:9090"
 	metricsPortKey            = "metrics_port"
