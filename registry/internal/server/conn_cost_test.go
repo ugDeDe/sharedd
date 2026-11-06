@@ -56,7 +56,8 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 	r := newTestRegistry(t)
 	r.db = openHistoryDB(t.TempDir() + "/hist.db")
 	now := time.Unix(1_800_000_000, 0)
-	snap := map[string]float64{userConnsMetric: 1200, proxyCPUCoresMetric: 0.4, proxyRSSMetric: 300 << 20, hostCPUMetric: 60}
+	snap := map[string]float64{userConnsMetric: 1200, proxyCPUCoresMetric: 0.4, proxyRSSMetric: 300 << 20, hostCPUMetric: 60,
+		trafficIngressMetric: 1, trafficEgressMetric: 1}
 	r.recordLoadSampleLocked("n1", snap, 0, now)                                    // первая точка: сети нет
 	r.recordLoadSampleLocked("n1", snap, 3_000_000, now.Add(30*time.Second))        // рано
 	r.recordLoadSampleLocked("n1", snap, 4_500_000, now.Add(60*time.Second))        // 7.5 МБ за 60 с
@@ -67,6 +68,12 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 	}
 	if rows[0].NetBps != nil || rows[1].NetBps == nil || math.Abs(*rows[1].NetBps-1_000_000) > 1 {
 		t.Fatalf("net rate: first=%v second=%v (want 1 Mbit/s)", rows[0].NetBps, rows[1].NetBps)
+	}
+	// Агент без счётчиков трафика: сеть — «нет данных», не 0.
+	r.recordLoadSampleLocked("n2", map[string]float64{userConnsMetric: 900}, 0, now)
+	r.recordLoadSampleLocked("n2", map[string]float64{userConnsMetric: 900}, 0, now.Add(time.Minute))
+	if all, _ := r.db.LoadSamplesSince(now.Add(-time.Hour)); len(all) != 4 || all[3].NetBps != nil {
+		t.Fatalf("node without traffic counters must have no net rate: %+v", all[len(all)-1])
 	}
 	c := estimateConnCost(rows)
 	near(t, "ram avg", c.RAM.AvgPer1k, 250, 0.01)         // 300 МиБ на 1200 соединений

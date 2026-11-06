@@ -174,8 +174,11 @@ func (r *Registry) recordLoadSampleLocked(nodeID string, snap map[string]float64
 		s.HostRAMPct = &v
 	}
 	// Сеть — за полный интервал с прошлой точки (первая точка после старта
-	// регистратора интервала не имеет).
-	if !acc.lastAt.IsZero() {
+	// регистратора интервала не имеет). Агент без счётчиков трафика — «нет
+	// данных», а не 0 Мбит/с.
+	_, hasIn := snap[trafficIngressMetric]
+	_, hasOut := snap[trafficEgressMetric]
+	if !acc.lastAt.IsZero() && (hasIn || hasOut) {
 		if secs := now.Sub(acc.since).Seconds(); secs > 0 {
 			v := float64(acc.bytes) * 8 / secs
 			s.NetBps = &v
