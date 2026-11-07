@@ -170,6 +170,35 @@ func TestAdPauseAlternatesWithinQuota(t *testing.T) {
 	}
 }
 
+// Мастерство = одно окно (ротация по master_ttl): чередование идёт сквозь
+// мастерства — реклама, своё, реклама, своё.
+func TestAdPauseAlternatesAcrossShortMasteries(t *testing.T) {
+	r := adPauseRegistry(t, 600)
+	now := adPauseNoon()
+	r.state.Candidates["a"] = &Candidate{NodeID: "a", AdState: machineapi.AdPauseStateOwn}
+	st := r.adPauseSettings()
+	var got []bool
+	for i := 0; i < 6; i++ {
+		start := now.Add(time.Duration(i) * 30 * time.Minute)
+		c := r.state.Candidates["a"]
+		c.MasterSince = start // стала мастером на одно окно
+		adPauseConfirm(r, start)
+		r.scheduleAdPauseLocked(start, st)
+		adPauseConfirm(r, start)
+		got = append(got, c.AdActive)
+		end := start.Add(st.period)
+		c.MasterSince = time.Time{} // ротация: ушла в очередь
+		r.scheduleAdPauseLocked(end, st)
+		adPauseConfirm(r, end)
+	}
+	want := []bool{true, false, true, false, true, false}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("masteries %v, want %v", got, want)
+		}
+	}
+}
+
 // Ушла нода — её доля перераспределяется на оставшиеся.
 func TestAdPauseQuotaFollowsNodeCount(t *testing.T) {
 	r := adPauseRegistry(t, 40)

@@ -22,8 +22,10 @@ import (
 //     каждом решении, поэтому добавление и удаление ноды сразу
 //     перераспределяет доли;
 //   - реклама живёт только внутри мастерства, окнами master_ttl: решение в
-//     начале мастерства и затем раз в окно. Окна чередуются — рекламное,
-//     своё, рекламное…; первое окно мастерства может быть рекламным;
+//     начале мастерства и затем раз в окно. Окна ноды чередуются —
+//     рекламное, своё, рекламное… — сквозь все её мастерства: при ротации
+//     мастерство обычно и есть одно окно, и сброс на каждом мастерстве
+//     делал бы рекламным каждое;
 //   - окно рекламное, пока у ноды не выбрана её доля за сутки и пул не
 //     выбрал общий бюджет (с учётом уже идущих окон). Набрался бюджет —
 //     до конца суток (полночь по часам регистратора) рекламы нет;
@@ -156,15 +158,14 @@ func (r *Registry) scheduleAdPauseLocked(now time.Time, st adPauseSettings) bool
 		case !st.enabled || !adPauseCapable(c) || c.MasterSince.IsZero():
 			want, decided = false, time.Time{}
 		case decided.IsZero() || decided.Before(c.MasterSince) || now.Sub(decided) >= st.period:
-			newMastery := decided.IsZero() || decided.Before(c.MasterSince)
-			prevAd := c.AdActive && !newMastery
-			want = !prevAd &&
+			want = !c.AdLastAd &&
 				float64(adTodaySec(c, now))+half < quota &&
 				committed+half < budget
 			if want {
 				committed += st.period.Seconds() // резерв окна для следующих нод тика
 			}
 			decided = now
+			c.AdLastAd = want
 		}
 		if want != c.AdActive || !decided.Equal(c.AdDecidedAt) {
 			c.AdActive, c.AdDecidedAt = want, decided

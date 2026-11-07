@@ -434,6 +434,8 @@ type Candidate struct {
 	// подтверждённое агентом время с тегом пула (закрытое + открытый отрезок).
 	// AdDay/AdDaySec — закрытое подтверждённое время за сутки AdDay
 	// (YYYY-MM-DD, локальная зона регистратора): расход дневного бюджета.
+	// AdLastAd — последнее окно мастерства ноды было рекламным: окна
+	// чередуются через все мастерства (мастерство часто = одно окно).
 	AdActive    bool      `json:"ad_active,omitempty"`
 	AdDecidedAt time.Time `json:"ad_decided_at,omitempty"`
 	AdState     string    `json:"ad_state,omitempty"`
@@ -441,6 +443,7 @@ type Candidate struct {
 	AdSince     time.Time `json:"ad_since,omitempty"`
 	AdDay       string    `json:"ad_day,omitempty"`
 	AdDaySec    int64     `json:"ad_day_sec,omitempty"`
+	AdLastAd    bool      `json:"ad_last_ad,omitempty"`
 
 	// История для детальной страницы ноды: кольцевые буферы точек,
 	// персистятся вместе с State. GPLast — деталь последнего measurement'а
