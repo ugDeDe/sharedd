@@ -218,6 +218,30 @@ func TestAdPauseQuotaFollowsNodeCount(t *testing.T) {
 	}
 }
 
+// Удалённая нода не возвращает свои минуты в бюджет пула.
+func TestAdPauseRemovedNodeKeepsBudgetUsed(t *testing.T) {
+	r := adPauseRegistry(t, 20)
+	now := adPauseNoon()
+	for _, id := range []string{"a", "b"} {
+		r.state.Candidates[id] = &Candidate{NodeID: id, MasterSince: now, AdState: machineapi.AdPauseStateOwn}
+	}
+	got := adPauseRun(t, r, now, 2) // обе ноды по окну: бюджет 20 минут выбран
+	if countTrue(got["a"]) != 1 || countTrue(got["b"]) != 1 {
+		t.Fatalf("each node one window: %v", got)
+	}
+	gone := now.Add(30 * time.Minute)
+	r.retireAdPauseLocked(r.state.Candidates["b"], gone)
+	delete(r.state.Candidates, "b")
+	r.state.Candidates["c"] = &Candidate{NodeID: "c", MasterSince: gone, AdState: machineapi.AdPauseStateOwn}
+	got = adPauseRun(t, r, gone, 4)
+	if countTrue(got["a"])+countTrue(got["c"]) != 0 {
+		t.Fatalf("budget spent by a removed node must stay spent: %v", got)
+	}
+	if _, sum := r.adPauseStatusSnapshot(gone); sum.UsedSec < 20*60-60 {
+		t.Fatalf("summary must include the removed node: %+v", sum)
+	}
+}
+
 // Новые сутки — новый бюджет.
 func TestAdPauseBudgetResetsAtMidnight(t *testing.T) {
 	r := adPauseRegistry(t, 10)

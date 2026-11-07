@@ -111,6 +111,7 @@ func (r *Registry) terminateNodeLocked(c *Candidate, now time.Time, reason, caus
 	r.addEventLocked(Event{
 		Type: EventNodeTerminated, NodeID: c.NodeID, IP: c.IP, Detail: detail,
 	})
+	r.retireAdPauseLocked(c, time.Now())
 	delete(r.state.Candidates, c.NodeID)
 	r.releaseQuota(c.NodeID)
 	// Мульти-мастер: убираем ноду изо ВСЕХ слотов её доменов; желаемый

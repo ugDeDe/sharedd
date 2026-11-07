@@ -179,6 +179,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 				Type: EventNodeExpired, NodeID: id, IP: c.IP,
 				Detail: fmt.Sprintf("no heartbeat for %s", now.Sub(c.LastHeartbeat).Round(time.Second)),
 			})
+			r.retireAdPauseLocked(c, now)
 			delete(r.state.Candidates, id)
 			r.releaseQuota(id)
 			changed = true
@@ -227,6 +228,7 @@ func (r *Registry) sweepExpired(now time.Time) {
 					c.UnhealthyReason(r.cfg.ReportFreshnessTTL),
 					pruneBanFor(tb.Strikes), tb.Strikes),
 			})
+			r.retireAdPauseLocked(c, now)
 			delete(r.state.Candidates, id)
 			r.releaseQuota(id)
 			changed = true

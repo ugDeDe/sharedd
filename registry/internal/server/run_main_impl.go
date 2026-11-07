@@ -861,6 +861,7 @@ func (r *Registry) registerWithReverify(body registerRequest, reverify *Terminat
 				Type: EventNodeReplaced, NodeID: oldID, IP: body.IP,
 				Detail: fmt.Sprintf("same IP as new node %s — old entry removed, domains carried over", body.NodeID),
 			})
+			r.retireAdPauseLocked(r.state.Candidates[oldID], time.Now())
 			delete(r.state.Candidates, oldID)
 			r.releaseQuota(oldID)
 		}

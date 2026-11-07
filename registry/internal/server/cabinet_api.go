@@ -623,6 +623,7 @@ func (r *Registry) handleDeleteNode(w http.ResponseWriter, req *http.Request) {
 			Detail: "удалена владельцем — выведена из пула, место освобождено",
 		})
 	}
+	r.retireAdPauseLocked(r.state.Candidates[nodeID], time.Now())
 	delete(r.state.Candidates, nodeID)
 	for d, ids := range r.state.Assignments {
 		nodes, since, removed := dropNodeFromSlots(ids, r.state.AssignmentsSince[d], nodeID)

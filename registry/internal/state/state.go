@@ -578,6 +578,11 @@ type State struct {
 	// Terminated — оперативный блок-лист убитых нод (node_id → запись).
 	// Вечная история всех банов — в SQLite (bans), сюда она не нужна.
 	Terminated map[string]*TerminatedRecord `json:"terminated,omitempty"`
+
+	// AdRetiredDay/AdRetiredSec — реклама за сутки AdRetiredDay у нод, уже
+	// удалённых из пула: остаётся в расходе дневного бюджета (server/ad_pause.go).
+	AdRetiredDay string `json:"ad_retired_day,omitempty"`
+	AdRetiredSec int64  `json:"ad_retired_sec,omitempty"`
 	// SRMD — Система Распределения и Масштабирования Доменов.
 	SRMD SRMDState `json:"srmd,omitempty"`
 }

@@ -120,10 +120,35 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
+// retireAdPauseLocked — нода удаляется из пула: её реклама за сутки остаётся
+// в расходе бюджета пула. Звать перед delete(r.state.Candidates, …).
+func (r *Registry) retireAdPauseLocked(c *Candidate, now time.Time) {
+	if c == nil {
+		return
+	}
+	sec := adTodaySec(c, now)
+	if sec <= 0 {
+		return
+	}
+	if key, _ := adDay(now); r.state.AdRetiredDay != key {
+		r.state.AdRetiredDay, r.state.AdRetiredSec = key, 0
+	}
+	r.state.AdRetiredSec += sec
+}
+
+// adRetiredTodaySec — реклама удалённых за сутки нод.
+func adRetiredTodaySec(st *State, now time.Time) int64 {
+	if key, _ := adDay(now); st.AdRetiredDay == key {
+		return st.AdRetiredSec
+	}
+	return 0
+}
+
 // adPauseCommittedSec — расход бюджета пула за сутки: подтверждённое время
-// всех нод плюс остаток уже назначенных рекламных окон.
-func adPauseCommittedSec(cands map[string]*Candidate, now time.Time, period time.Duration) float64 {
-	var used float64
+// всех нод (и удалённых за сутки) плюс остаток уже назначенных окон.
+func adPauseCommittedSec(st *State, now time.Time, period time.Duration) float64 {
+	used := float64(adRetiredTodaySec(st, now))
+	cands := st.Candidates
 	for _, c := range cands {
 		used += float64(adTodaySec(c, now))
 		if c.AdActive && !c.AdDecidedAt.IsZero() {
@@ -149,7 +174,7 @@ func (r *Registry) scheduleAdPauseLocked(now time.Time, st adPauseSettings) bool
 	// Полокна допуска: подтверждение идёт heartbeat'ами, и выбранное окно
 	// засчитывается чуть короче периода.
 	half := st.period.Seconds() / 2
-	committed := adPauseCommittedSec(r.state.Candidates, now, st.period)
+	committed := adPauseCommittedSec(&r.state, now, st.period)
 
 	changed := false
 	for _, c := range r.state.Candidates {
@@ -270,7 +295,8 @@ func (r *Registry) adPauseStatusSnapshot(now time.Time) ([]adPauseNodeStatus, ad
 	}
 	quota := int64(adPauseQuota(st.daily, st.period, nodes).Seconds())
 	day, _ := adDay(now)
-	sum := adPauseSummary{Day: day, Nodes: nodes, BudgetSec: int64(st.budget().Seconds()), PeriodSec: int64(st.period.Seconds())}
+	sum := adPauseSummary{Day: day, Nodes: nodes, BudgetSec: int64(st.budget().Seconds()), PeriodSec: int64(st.period.Seconds()),
+		UsedSec: adRetiredTodaySec(&r.state, now)}
 	out := make([]adPauseNodeStatus, 0, len(r.state.Candidates))
 	for _, c := range r.state.Candidates {
 		ns := adPauseNodeStatus{
