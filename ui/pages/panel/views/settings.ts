@@ -151,6 +151,23 @@ function renderGrid(): void {
     </div>
 
     <div class="cfg" data-settings-group="globalping">
+      <div class="cfg-head">${icon(ICONS.health)}<span>MTProto-проверка</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-mt-enabled"><span class="box"></span> Проверять ноды по MTProto вместе с Globalping</label>
+        <div class="field">
+          <label for="s-mt-token">API-ключ</label>
+          <input type="password" id="s-mt-token" class="mono" spellcheck="false" autocomplete="off" placeholder="rf_…">
+        </div>
+        <div class="field">
+          <label for="s-mt-base">api_base</label>
+          <input type="text" id="s-mt-base" class="mono">
+        </div>
+        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, только если отрицательны обе проверки: Globalping провалена, но MTProto «OK» — нода считается доступной. «UNKNOWN» или сбой API — решает Globalping.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-mt-save">Сохранить MTProto-проверку</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.ban)}<span>Карантин GP</span></div>
       <div class="cfg-body">
         <div class="field">
@@ -296,6 +313,10 @@ export async function load(): Promise<void> {
   ($("s-hc-quar") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
   ($("s-hc-gp-validity") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
   ($("s-gp-base") as HTMLInputElement).value = c.globalping.api_base;
+  const mt = c.mtproto_check || {};
+  ($("s-mt-enabled") as HTMLInputElement).checked = !!mt.enabled;
+  ($("s-mt-token") as HTMLInputElement).value = mt.token || "";
+  ($("s-mt-base") as HTMLInputElement).value = mt.api_base || "";
   const as = c.antiscan || {};
   ($("s-as-enabled") as HTMLInputElement).checked = as.enabled !== false;
   ($("s-as-sources") as HTMLTextAreaElement).value = (as.sources || []).join("\n");
@@ -519,6 +540,14 @@ export function init(): void {
 
   $("s-gp-save").onclick = () =>
     saveSection({ globalping: { api_base: ($("s-gp-base") as HTMLInputElement).value.trim() } }, "Globalping сохранён")
+      .catch((e) => showToast(e.message, true));
+
+  $("s-mt-save").onclick = () =>
+    saveSection({ mtproto_check: {
+      enabled: ($("s-mt-enabled") as HTMLInputElement).checked,
+      token: ($("s-mt-token") as HTMLInputElement).value.trim(),
+      api_base: ($("s-mt-base") as HTMLInputElement).value.trim(),
+    } }, "MTProto-проверка сохранена")
       .catch((e) => showToast(e.message, true));
 
   $("s-as-save").onclick = () =>

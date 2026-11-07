@@ -41,6 +41,7 @@ const (
 	EventMetricsUp           = state.EventMetricsUp
 	EventGlobalpingBlocked   = state.EventGlobalpingBlocked
 	EventGlobalpingRecovered = state.EventGlobalpingRecovered
+	EventMTProtoRescued      = state.EventMTProtoRescued
 	EventQueueJoined         = state.EventQueueJoined
 	EventQueueLeft           = state.EventQueueLeft
 	EventMasterElected       = state.EventMasterElected

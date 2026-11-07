@@ -140,3 +140,14 @@ geo_url = "https://stat.ripe.net/data/country-resource-list/data.json?resource=R
 enabled = false
 tag = ""
 minutes_per_day = 60
+
+# MTProto-проверка нод (правится и в панели: Настройки → MTProto-проверка).
+# Идёт вместе с верификацией Globalping: внешний сервис делает настоящий
+# fake-TLS хендшейк общим секретом пула и запрос до DC из РФ (за ТСПУ) и
+# снаружи. Карантин — только когда отрицательны обе: Globalping провалена, но
+# MTProto «OK» — нода доступна. «UNKNOWN» или сбой API — решает Globalping.
+# Лимит сервиса — 30 запросов в минуту на ключ. enabled не задан = включено,
+# если задан token.
+[mtproto_check]
+token = ""
+api_base = "https://api.yazaebalsyadelatproxy.cc"

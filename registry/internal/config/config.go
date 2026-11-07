@@ -260,6 +260,18 @@ type RegistryConfig struct {
 		Tag           string `toml:"tag"`
 		MinutesPerDay int    `toml:"minutes_per_day"`
 	} `toml:"ad_pause"`
+
+	// MTProtoCheck — внешняя MTProto-проверка прокси (настоящий хендшейк и
+	// запрос до DC из РФ за ТСПУ и снаружи), идёт вместе с верификацией
+	// Globalping. Нода с проваленной Globalping-проверкой, но живая по
+	// MTProto (status OK) в карантин не идёт: карантин — только когда обе
+	// отрицательны. Неоднозначный ответ или сбой API — решает Globalping.
+	// Enabled: nil = включено, если задан Token.
+	MTProtoCheck struct {
+		Enabled *bool  `toml:"enabled"`
+		Token   string `toml:"token"`
+		APIBase string `toml:"api_base"`
+	} `toml:"mtproto_check"`
 }
 
 type Resolved struct {
@@ -477,7 +489,10 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.MinutesPerDay); err != nil {
 		return err
 	}
-	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase} {
+	if err := ValidateMTProtoCheck(MTProtoCheckEnabled(cfg), cfg.MTProtoCheck.Token); err != nil {
+		return err
+	}
+	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase, "mtproto_check.api_base": cfg.MTProtoCheck.APIBase} {
 		u, err := url.ParseRequestURI(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("%s must be an absolute http(s) URL", name)
@@ -546,6 +561,9 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	}
 	if cfg.Globalping.APIBase == "" {
 		cfg.Globalping.APIBase = "https://api.globalping.io/v1"
+	}
+	if cfg.MTProtoCheck.APIBase == "" {
+		cfg.MTProtoCheck.APIBase = DefaultMTProtoCheckAPIBase
 	}
 	if cfg.Panel.EventsMax == 0 {
 		cfg.Panel.EventsMax = 500
@@ -729,6 +747,29 @@ const (
 )
 
 var adTagRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// DefaultMTProtoCheckAPIBase — база MTProto-проверки по умолчанию.
+const DefaultMTProtoCheckAPIBase = "https://api.yazaebalsyadelatproxy.cc"
+
+// MTProtoCheckEnabled — [mtproto_check]: nil enabled = включено при токене.
+func MTProtoCheckEnabled(cfg *RegistryConfig) bool {
+	if cfg.MTProtoCheck.Enabled != nil {
+		return *cfg.MTProtoCheck.Enabled
+	}
+	return strings.TrimSpace(cfg.MTProtoCheck.Token) != ""
+}
+
+// ValidateMTProtoCheck — включённой проверке нужен токен; токен без пробелов,
+// до 200 символов.
+func ValidateMTProtoCheck(enabled bool, token string) error {
+	if len(token) > 200 || strings.ContainsAny(token, " \t\r\n\"") {
+		return fmt.Errorf("mtproto_check.token: до 200 символов, без пробелов и кавычек")
+	}
+	if enabled && token == "" {
+		return fmt.Errorf("mtproto_check.token обязателен при enabled = true")
+	}
+	return nil
+}
 
 // ValidAdTag — рекламный тег Telegram: 32 hex, не все нули.
 func ValidAdTag(tag string) bool {

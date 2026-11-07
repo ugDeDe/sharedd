@@ -29,6 +29,7 @@ const (
 	EventMetricsUp           = "metrics_up"           // защёлка метрик открылась (recover_threshold подряд хороших)
 	EventGlobalpingBlocked   = "globalping_blocked"   // независимая проверка Globalping: фейл
 	EventGlobalpingRecovered = "globalping_recovered" // проверка снова проходит
+	EventMTProtoRescued      = "mtproto_rescued"      // Globalping провалена, MTProto OK — без карантина
 	EventQueueJoined         = "queue_joined"         // вошла в очередь мастерства (fully healthy)
 	EventQueueLeft           = "queue_left"           // выпала из очереди (позиция сгорела)
 	EventMasterElected       = "master_elected"
@@ -379,10 +380,18 @@ type Candidate struct {
 	// трогает; вердикт — счётчик попыток → бан по IP или восстановление.
 	Quarantine *QuarantineState `json:"quarantine,omitempty"`
 
-	GlobalpingOK            bool      `json:"globalping_ok"`
-	GlobalpingMeasurementID string    `json:"globalping_measurement_id"`
-	GlobalpingVerifiedRatio float64   `json:"globalping_verified_ratio"`
-	LastGlobalpingAt        time.Time `json:"last_globalping_at,omitempty"` // verification receipt only, not measurement freshness
+	GlobalpingOK            bool    `json:"globalping_ok"`
+	GlobalpingMeasurementID string  `json:"globalping_measurement_id"`
+	GlobalpingVerifiedRatio float64 `json:"globalping_verified_ratio"`
+	// MTProto-проверка (server/mtproto_check.go) идёт вместе с Globalping:
+	// статус сервиса (OK/DATA_CUT/RKN_BLOCK/MT_DEAD/DOWN/UNKNOWN; "error" —
+	// сбой API), время и краткая сводка по точкам. MTProtoRescued — последняя
+	// Globalping-проверка провалена, но MTProto OK удержал ноду от карантина.
+	MTProtoStatus    string    `json:"mtproto_status,omitempty"`
+	MTProtoAt        time.Time `json:"mtproto_at,omitempty"`
+	MTProtoSummary   string    `json:"mtproto_summary,omitempty"`
+	MTProtoRescued   bool      `json:"mtproto_rescued,omitempty"`
+	LastGlobalpingAt time.Time `json:"last_globalping_at,omitempty"` // verification receipt only, not measurement freshness
 	// GlobalpingMeasurementAt comes only from a finished independent GET's
 	// createdAt. Missing legacy proof stays zero; never migrate from receipt time.
 	GlobalpingMeasurementAt time.Time `json:"globalping_measurement_at,omitempty"`

@@ -108,6 +108,15 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	verifiedKnown := false
 	verifyErr := ""
 	var measurement *globalpingMeasurement // сохраняем для детали площадок
+	// MTProto-проверка — параллельно с верификацией Globalping (mtproto_check.go).
+	var mt mtprotoOutcome
+	var mtDone chan struct{}
+	if verifyGP {
+		if job := r.mtprotoJob(candidateIP, payload.Port); job != nil {
+			mtDone = make(chan struct{})
+			go func() { defer close(mtDone); mt = job() }()
+		}
+	}
 	if verifyGP {
 		// api_base Globalping — под cfgMu (панель может менять на лету)
 		r.cfgMu.RLock()
@@ -135,11 +144,25 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			verifiedOK = verifiedRatio >= 0.5
 			log.Printf("globalping verification of %s for %s accepted: ratio=%.2f ok=%v",
 				payload.GlobalpingMeasurementID, payload.NodeID, verifiedRatio, verifiedOK)
+			if mtDone != nil {
+				<-mtDone
+				mtDone = nil
+				if !verifiedOK && mt.ok {
+					// Карантин только когда обе проверки отрицательны.
+					verifiedOK, mt.rescued = true, true
+					log.Printf("globalping failed for %s (ratio=%.2f) but MTProto check is OK — treated as ok: %s",
+						payload.NodeID, verifiedRatio, mt.summary)
+				}
+			}
 			if verifiedOK != payload.GlobalpingOK {
 				log.Printf("WARNING: node %s reported globalping_ok=%v but independent verification says %v (ratio=%.2f) — trusting verification",
 					payload.NodeID, payload.GlobalpingOK, verifiedOK, verifiedRatio)
 			}
 		}
+	}
+
+	if mtDone != nil {
+		<-mtDone // Globalping неоднозначна — MTProto только записываем
 	}
 
 	r.mu.Lock()
@@ -214,6 +237,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 		if verifiedOK {
 			candidate.GPChecksOK++
 		}
+		r.noteMTProtoLocked(candidate, mt, verifiedRatio)
 		switch {
 		case prevGP && !verifiedOK:
 			// нода заблокирована/недоступна снаружи — судим по НЕЗАВИСИМОЙ

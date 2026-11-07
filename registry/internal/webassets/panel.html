@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="964f2c6032f23a16">
+  <meta name="sharedd-build" content="6de68f6e08825590">
 </head>
 <body>
 
@@ -4092,6 +4092,11 @@
     return `<span class="checks">
     ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
     ${tag("GP", st(n.globalping_ok), gpTitle)}
+    ${n.mtproto_status ? tag(
+      "MTP",
+      n.mtproto_status === "OK" ? "ok" : n.mtproto_status === "UNKNOWN" || n.mtproto_status === "error" ? "unknown" : "bad",
+      `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}${n.mtproto_rescued ? " · удержала ноду от карантина (Globalping провалена)" : ""}`
+    ) : ""}
     ${tag("METRICS", st((_a = n.metrics_healthy) != null ? _a : n.metrics_ok), mTitle)}
   </span>`;
   }
@@ -4900,6 +4905,23 @@
     </div>
 
     <div class="cfg" data-settings-group="globalping">
+      <div class="cfg-head">${icon(ICONS.health)}<span>MTProto-проверка</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-mt-enabled"><span class="box"></span> Проверять ноды по MTProto вместе с Globalping</label>
+        <div class="field">
+          <label for="s-mt-token">API-ключ</label>
+          <input type="password" id="s-mt-token" class="mono" spellcheck="false" autocomplete="off" placeholder="rf_…">
+        </div>
+        <div class="field">
+          <label for="s-mt-base">api_base</label>
+          <input type="text" id="s-mt-base" class="mono">
+        </div>
+        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, только если отрицательны обе проверки: Globalping провалена, но MTProto «OK» — нода считается доступной. «UNKNOWN» или сбой API — решает Globalping.</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-mt-save">Сохранить MTProto-проверку</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.ban)}<span>Карантин GP</span></div>
       <div class="cfg-body">
         <div class="field">
@@ -5036,6 +5058,10 @@
     $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
     $("s-hc-gp-validity").value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
     $("s-gp-base").value = c.globalping.api_base;
+    const mt = c.mtproto_check || {};
+    $("s-mt-enabled").checked = !!mt.enabled;
+    $("s-mt-token").value = mt.token || "";
+    $("s-mt-base").value = mt.api_base || "";
     const as = c.antiscan || {};
     $("s-as-enabled").checked = as.enabled !== false;
     $("s-as-sources").value = (as.sources || []).join("\n");
@@ -5203,6 +5229,11 @@
       globalping_validity_min: Math.max(1, parseInt($("s-hc-gp-validity").value, 10) || 15)
     } }, "Карантин сохранён").catch((e) => showToast(e.message, true));
     $("s-gp-save").onclick = () => saveSection({ globalping: { api_base: $("s-gp-base").value.trim() } }, "Globalping сохранён").catch((e) => showToast(e.message, true));
+    $("s-mt-save").onclick = () => saveSection({ mtproto_check: {
+      enabled: $("s-mt-enabled").checked,
+      token: $("s-mt-token").value.trim(),
+      api_base: $("s-mt-base").value.trim()
+    } }, "MTProto-проверка сохранена").catch((e) => showToast(e.message, true));
     $("s-as-save").onclick = () => saveSection({ antiscan: {
       enabled: $("s-as-enabled").checked,
       sources: $("s-as-sources").value.split("\n").map((s) => s.trim()).filter(Boolean),

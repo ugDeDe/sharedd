@@ -86,6 +86,14 @@ type editableGlobalping struct {
 	APIBase string `json:"api_base"`
 }
 
+// editableMTProtoCheck — [mtproto_check]: MTProto-проверка вместе с
+// Globalping (mtproto_check.go). Hot-apply: читается на каждом отчёте.
+type editableMTProtoCheck struct {
+	Enabled bool   `json:"enabled"`
+	Token   string `json:"token"`
+	APIBase string `json:"api_base"`
+}
+
 type editablePanel struct {
 	Token     string `json:"token"`
 	EventsMax int    `json:"events_max"`
@@ -166,6 +174,8 @@ type editableConfig struct {
 	Antiscan *editableAntiscan `json:"antiscan,omitempty"`
 	// Рекламная пауза пула (ad_pause.go).
 	AdPause *editableAdPause `json:"ad_pause,omitempty"`
+	// MTProto-проверка прокси (mtproto_check.go).
+	MTProtoCheck *editableMTProtoCheck `json:"mtproto_check,omitempty"`
 }
 
 var (
@@ -243,6 +253,15 @@ func validateEditable(in *editableConfig) error {
 	if gp := in.Globalping; gp != nil {
 		if gp.APIBase != "" && !strings.HasPrefix(gp.APIBase, "https://") && !strings.HasPrefix(gp.APIBase, "http://") {
 			return fmt.Errorf("globalping.api_base: ожидается http(s):// URL")
+		}
+	}
+	if m := in.MTProtoCheck; m != nil {
+		m.Token = strings.TrimSpace(m.Token)
+		if err := config.ValidateMTProtoCheck(m.Enabled, m.Token); err != nil {
+			return err
+		}
+		if m.APIBase != "" && !strings.HasPrefix(m.APIBase, "https://") && !strings.HasPrefix(m.APIBase, "http://") {
+			return fmt.Errorf("mtproto_check.api_base: ожидается http(s):// URL")
 		}
 	}
 	if p := in.Panel; p != nil {
@@ -381,6 +400,11 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		},
 		Globalping: &editableGlobalping{
 			APIBase: r.cfg.Globalping.APIBase,
+		},
+		MTProtoCheck: &editableMTProtoCheck{
+			Enabled: config.MTProtoCheckEnabled(&r.cfg.RegistryConfig),
+			Token:   r.cfg.MTProtoCheck.Token,
+			APIBase: r.cfg.MTProtoCheck.APIBase,
 		},
 		Panel: &editablePanel{
 			Token:     r.cfg.Panel.Token,
@@ -561,6 +585,15 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 			r.cfg.Globalping.APIBase = strings.TrimRight(gp.APIBase, "/")
 		}
 		changed = append(changed, "globalping")
+	}
+	if m := in.MTProtoCheck; m != nil {
+		enabled := m.Enabled
+		r.cfg.MTProtoCheck.Enabled = &enabled
+		r.cfg.MTProtoCheck.Token = m.Token
+		if m.APIBase != "" {
+			r.cfg.MTProtoCheck.APIBase = strings.TrimRight(m.APIBase, "/")
+		}
+		changed = append(changed, fmt.Sprintf("mtproto_check(enabled=%t)", enabled))
 	}
 	if p := in.Panel; p != nil {
 		r.cfg.Panel.Token = p.Token

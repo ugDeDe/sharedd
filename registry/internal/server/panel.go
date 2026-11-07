@@ -147,18 +147,24 @@ type panelNode struct {
 	// MetricsHealthy — защёлка по fail/recover-порогам; именно она
 	// участвует в fully-healthy и ротации мастеров. MetricsFailStreak —
 	// текущая серия подряд плохих отчётов (для подсказок «серия 1 из 3»).
-	MetricsHealthy    bool      `json:"metrics_healthy"`
-	MetricsFailStreak int       `json:"metrics_fail_streak,omitempty"`
-	GlobalpingRatio   float64   `json:"globalping_ratio"`
-	UnhealthyReason   string    `json:"unhealthy_reason,omitempty"`
-	RegisteredAt      time.Time `json:"registered_at"`
-	HeartbeatAgeSec   int64     `json:"heartbeat_age_sec"`
-	ReportAgeSec      int64     `json:"report_age_sec"` // -1 = отчётов не было
-	ReportError       string    `json:"report_error,omitempty"`
-	HeartbeatsTotal   int       `json:"heartbeats_total"`
-	ReportsTotal      int       `json:"reports_total"`
-	ReportsOK         int       `json:"reports_ok"`
-	AvailabilityPct   float64   `json:"availability_pct"`
+	MetricsHealthy    bool    `json:"metrics_healthy"`
+	MetricsFailStreak int     `json:"metrics_fail_streak,omitempty"`
+	GlobalpingRatio   float64 `json:"globalping_ratio"`
+	// MTProto-проверка вместе с Globalping (mtproto_check.go): статус, сводка,
+	// удержала ли ноду с проваленной Globalping от карантина.
+	MTProtoStatus   string    `json:"mtproto_status,omitempty"`
+	MTProtoSummary  string    `json:"mtproto_summary,omitempty"`
+	MTProtoAgeSec   int64     `json:"mtproto_age_sec,omitempty"`
+	MTProtoRescued  bool      `json:"mtproto_rescued,omitempty"`
+	UnhealthyReason string    `json:"unhealthy_reason,omitempty"`
+	RegisteredAt    time.Time `json:"registered_at"`
+	HeartbeatAgeSec int64     `json:"heartbeat_age_sec"`
+	ReportAgeSec    int64     `json:"report_age_sec"` // -1 = отчётов не было
+	ReportError     string    `json:"report_error,omitempty"`
+	HeartbeatsTotal int       `json:"heartbeats_total"`
+	ReportsTotal    int       `json:"reports_total"`
+	ReportsOK       int       `json:"reports_ok"`
+	AvailabilityPct float64   `json:"availability_pct"`
 	// ClientsUniqueIPs — уникальные активные клиентские IP по метрикам ноды
 	// (см. uniqueIPsMetric). nil = старый агент/telemetry выключен — нет данных.
 	ClientsUniqueIPs *float64 `json:"clients_unique_ips,omitempty"`
@@ -674,6 +680,9 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		MetricsHealthy:    c.MetricsHealthy,
 		MetricsFailStreak: c.MetricsFailStreak,
 		GlobalpingRatio:   c.GlobalpingVerifiedRatio,
+		MTProtoStatus:     c.MTProtoStatus,
+		MTProtoSummary:    c.MTProtoSummary,
+		MTProtoRescued:    c.MTProtoRescued,
 		RegisteredAt:      c.RegisteredAt,
 		HeartbeatAgeSec:   int64(now.Sub(c.LastHeartbeat).Seconds()),
 		ReportAgeSec:      -1,
@@ -687,6 +696,9 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		MasterStints:      c.MasterStints,
 		MasterTimeSec:     c.MasterTimeSec(now),
 		NodeType:          c.NodeType,
+	}
+	if !c.MTProtoAt.IsZero() {
+		n.MTProtoAgeSec = int64(now.Sub(c.MTProtoAt).Seconds())
 	}
 	if c.Quarantine != nil { //
 		n.Quarantine = &panelQuarantine{
