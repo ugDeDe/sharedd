@@ -25,6 +25,22 @@ func stubMTProto(t *testing.T, r *Registry, status string, calls *atomic.Int32) 
 	}
 }
 
+// MT_DEAD — не блокировка (mtdd всегда так виден сервису): без карантина.
+func TestMTProtoMTDeadIsNotBlock(t *testing.T) {
+	mock := newGPMock(t)
+	mock.setBad(true)
+	r := newTerminateTestRegistry(t)
+	r.cfg.Globalping.APIBase = mock.URL
+	var calls atomic.Int32
+	stubMTProto(t, r, mtprotocheck.StatusMTDead, &calls)
+	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
+	makeGreen(t, r, "node-one")
+	sendReport(t, r, "node-one", true, true)
+	if c := r.state.Candidates["node-one"]; c == nil || c.Quarantine != nil {
+		t.Fatal("MT_DEAD must not count as a block")
+	}
+}
+
 // Globalping провалена, MTProto OK — без карантина, нода остаётся доступной.
 func TestMTProtoOKKeepsNodeOutOfQuarantine(t *testing.T) {
 	mock := newGPMock(t)
@@ -110,8 +126,8 @@ func TestMTProtoDisabledWithoutToken(t *testing.T) {
 
 func TestMTProtoVerdict(t *testing.T) {
 	for status, want := range map[string][2]bool{
-		"OK": {true, true}, "DATA_CUT": {false, true}, "RKN_BLOCK": {false, true},
-		"MT_DEAD": {false, true}, "DOWN": {false, true}, "UNKNOWN": {false, false}, "": {false, false},
+		"OK": {true, true}, "DATA_CUT": {true, true}, "RKN_BLOCK": {false, true},
+		"MT_DEAD": {true, true}, "DOWN": {true, true}, "UNKNOWN": {false, false}, "": {false, false},
 	} {
 		ok, conclusive := (&mtprotocheck.Result{Status: status}).Verdict()
 		if ok != want[0] || conclusive != want[1] {

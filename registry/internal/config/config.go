@@ -263,9 +263,9 @@ type RegistryConfig struct {
 
 	// MTProtoCheck — внешняя MTProto-проверка прокси (настоящий хендшейк и
 	// запрос до DC из РФ за ТСПУ и снаружи), идёт вместе с верификацией
-	// Globalping. Нода с проваленной Globalping-проверкой, но живая по
-	// MTProto (status OK) в карантин не идёт: карантин — только когда обе
-	// отрицательны. Неоднозначный ответ или сбой API — решает Globalping.
+	// Globalping. Нода с проваленной Globalping-проверкой в карантин идёт,
+	// только если MTProto-проверка тоже говорит RKN_BLOCK; прочие статусы
+	// сервиса — не блокировка. UNKNOWN или сбой API — решает Globalping.
 	// Enabled: nil = включено, если задан Token.
 	MTProtoCheck struct {
 		Enabled *bool  `toml:"enabled"`

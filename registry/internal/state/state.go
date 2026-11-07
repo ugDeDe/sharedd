@@ -29,7 +29,7 @@ const (
 	EventMetricsUp           = "metrics_up"           // защёлка метрик открылась (recover_threshold подряд хороших)
 	EventGlobalpingBlocked   = "globalping_blocked"   // независимая проверка Globalping: фейл
 	EventGlobalpingRecovered = "globalping_recovered" // проверка снова проходит
-	EventMTProtoRescued      = "mtproto_rescued"      // Globalping провалена, MTProto OK — без карантина
+	EventMTProtoRescued      = "mtproto_rescued"      // Globalping провалена, MTProto не RKN_BLOCK — без карантина
 	EventQueueJoined         = "queue_joined"         // вошла в очередь мастерства (fully healthy)
 	EventQueueLeft           = "queue_left"           // выпала из очереди (позиция сгорела)
 	EventMasterElected       = "master_elected"
@@ -386,7 +386,7 @@ type Candidate struct {
 	// MTProto-проверка (server/mtproto_check.go) идёт вместе с Globalping:
 	// статус сервиса (OK/DATA_CUT/RKN_BLOCK/MT_DEAD/DOWN/UNKNOWN; "error" —
 	// сбой API), время и краткая сводка по точкам. MTProtoRescued — последняя
-	// Globalping-проверка провалена, но MTProto OK удержал ноду от карантина.
+	// Globalping-проверка провалена, но MTProto (не RKN_BLOCK) удержал ноду от карантина.
 	MTProtoStatus    string    `json:"mtproto_status,omitempty"`
 	MTProtoAt        time.Time `json:"mtproto_at,omitempty"`
 	MTProtoSummary   string    `json:"mtproto_summary,omitempty"`

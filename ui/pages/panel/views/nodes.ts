@@ -41,7 +41,7 @@ function checksHTML(n: any): string {
   return `<span class="checks">
     ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
     ${tag("GP", st(n.globalping_ok), gpTitle)}
-    ${n.mtproto_status ? tag("MTP", n.mtproto_status === "OK" ? "ok" : n.mtproto_status === "UNKNOWN" || n.mtproto_status === "error" ? "unknown" : "bad",
+    ${n.mtproto_status ? tag("MTP", n.mtproto_status === "RKN_BLOCK" ? "bad" : n.mtproto_status === "UNKNOWN" || n.mtproto_status === "error" ? "unknown" : "ok",
       `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}${n.mtproto_rescued ? " · удержала ноду от карантина (Globalping провалена)" : ""}`) : ""}
     ${tag("METRICS", st(n.metrics_healthy ?? n.metrics_ok), mTitle)}
   </span>`;

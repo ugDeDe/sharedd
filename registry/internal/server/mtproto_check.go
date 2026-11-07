@@ -3,10 +3,10 @@ package server
 // MTProto-проверка прокси ([mtproto_check], internal/mtprotocheck): внешний
 // сервис делает настоящий fake-TLS хендшейк общим секретом пула и запрос до
 // DC из РФ (за ТСПУ) и снаружи. Идёт параллельно с верификацией Globalping
-// в handleHealthReport и смягчает её: Globalping провалена, но MTProto OK —
-// нода считается доступной (без карантина и без ухода из очереди).
-// Карантин — только когда обе отрицательны. Неоднозначный ответ (UNKNOWN)
-// или сбой API — решает одна Globalping, как раньше.
+// в handleHealthReport и смягчает её: Globalping провалена, но MTProto не
+// RKN_BLOCK — нода считается доступной (без карантина и без ухода из
+// очереди). Карантин — только когда Globalping провалена И MTProto RKN_BLOCK.
+// Неоднозначный ответ (UNKNOWN) или сбой API — решает одна Globalping.
 
 import (
 	"context"
@@ -26,11 +26,11 @@ const mtprotoCheckTimeoutSec = 15
 
 type mtprotoOutcome struct {
 	ran        bool
-	ok         bool // status OK
+	ok         bool // не RKN_BLOCK (mtprotocheck.Result.Verdict)
 	conclusive bool
 	status     string // статус сервиса или "error"
 	summary    string
-	rescued    bool // Globalping провалена, MTProto OK
+	rescued    bool // Globalping провалена, MTProto не RKN_BLOCK
 }
 
 // mtprotoLinkSecret — секрет ссылки пула: ee + секрет первого общего

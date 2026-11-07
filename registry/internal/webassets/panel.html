@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="6de68f6e08825590">
+  <meta name="sharedd-build" content="16051eb53db819e1">
 </head>
 <body>
 
@@ -4094,7 +4094,7 @@
     ${tag("GP", st(n.globalping_ok), gpTitle)}
     ${n.mtproto_status ? tag(
       "MTP",
-      n.mtproto_status === "OK" ? "ok" : n.mtproto_status === "UNKNOWN" || n.mtproto_status === "error" ? "unknown" : "bad",
+      n.mtproto_status === "RKN_BLOCK" ? "bad" : n.mtproto_status === "UNKNOWN" || n.mtproto_status === "error" ? "unknown" : "ok",
       `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}${n.mtproto_rescued ? " · удержала ноду от карантина (Globalping провалена)" : ""}`
     ) : ""}
     ${tag("METRICS", st((_a = n.metrics_healthy) != null ? _a : n.metrics_ok), mTitle)}
@@ -4916,7 +4916,7 @@
           <label for="s-mt-base">api_base</label>
           <input type="text" id="s-mt-base" class="mono">
         </div>
-        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, только если отрицательны обе проверки: Globalping провалена, но MTProto «OK» — нода считается доступной. «UNKNOWN» или сбой API — решает Globalping.</div>
+        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, только если Globalping провалена и MTProto-проверка говорит RKN_BLOCK (из РФ не проходит хендшейк или TCP). Остальные статусы — не блокировка (MT_DEAD mtdd получает всегда: сервис просит DC вне 1–5). «UNKNOWN» или сбой API — решает Globalping.</div>
       </div>
       <div class="cfg-foot"><button class="btn primary" id="s-mt-save">Сохранить MTProto-проверку</button></div>
     </div>

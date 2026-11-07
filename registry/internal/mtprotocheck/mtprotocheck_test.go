@@ -29,8 +29,8 @@ func TestCheckSendsKeyAndParses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, conclusive := res.Verdict(); ok || !conclusive || res.Status != StatusDataCut {
-		t.Fatalf("DATA_CUT is a conclusive negative: %+v", res)
+	if ok, conclusive := res.Verdict(); !ok || !conclusive || res.Status != StatusDataCut {
+		t.Fatalf("only RKN_BLOCK is negative: %+v", res)
 	}
 	if s := res.Summary(); !strings.Contains(s, "RU tcp+ hs+ data-") || !strings.Contains(s, "NL tcp+ hs+ data+") {
 		t.Fatalf("summary: %s", s)
