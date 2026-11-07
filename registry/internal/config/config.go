@@ -247,7 +247,8 @@ type RegistryConfig struct {
 	// пул рекламный тег пула (Tag) стоит вместо своего. Бюджет делится
 	// поровну между нодами, умеющими подмену тега, окнами длиной master_ttl
 	// внутри мастерства (рекламное окно, своё, рекламное…). Поддерживают ноды
-	// mtdd с подменой тега на лету (/v1/ad-tag). Enabled: nil = выключено.
+	// mtdd (/v1/ad-tag) и MTProxyL (метка общих пользователей через
+	// `mtproxyl secret adtag`). Enabled: nil = выключено.
 	AdPause struct {
 		Enabled       *bool  `toml:"enabled"`
 		Tag           string `toml:"tag"`
