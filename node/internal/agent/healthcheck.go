@@ -29,7 +29,57 @@ type TelemtConfig struct {
 		Port          int    `toml:"port"`
 		MetricsPort   int    `toml:"metrics_port"`
 		MetricsListen string `toml:"metrics_listen"`
+		// API — Control API telemt ([server.api]): по умолчанию включён,
+		// слушает 0.0.0.0:9091, белый список 127.0.0.0/8.
+		API struct {
+			Enabled    *bool  `toml:"enabled"`
+			Listen     string `toml:"listen"`
+			AuthHeader string `toml:"auth_header"`
+		} `toml:"api"`
 	} `toml:"server"`
+}
+
+// telemtAutoAPIAddr — адрес Control API из конфига telemt для снимка RTT по
+// DC, когда [telemt] api_addr не задан. "" — API выключен или требует
+// auth_header (агент его не знает).
+func telemtAutoAPIAddr(t *TelemtConfig) string {
+	if t == nil || (t.Server.API.Enabled != nil && !*t.Server.API.Enabled) || strings.TrimSpace(t.Server.API.AuthHeader) != "" {
+		return ""
+	}
+	listen := strings.TrimSpace(t.Server.API.Listen)
+	if listen == "" {
+		listen = "0.0.0.0:9091"
+	}
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil || port == "" {
+		return ""
+	}
+	switch host {
+	case "", "0.0.0.0", "::":
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+// mtddDCStats — снимок RTT по DC из метрик mtdd (mtdd_me_ping_rtt_us{dc="N"},
+// только основные DC N>0) в формате Control API telemt. nil — серий нет.
+func mtddDCStats(samples []promSample, now time.Time) *DCStats {
+	stats := &DCStats{MiddleProxyEnabled: true, GeneratedAtEpochSecs: now.Unix()}
+	for _, s := range samples {
+		if s.name != "mtdd_me_ping_rtt_us" {
+			continue
+		}
+		dc, err := strconv.Atoi(promLabel(s.labels, "dc"))
+		if err != nil || dc <= 0 {
+			continue
+		}
+		stats.DCs = append(stats.DCs, DCStat{DC: dc, RTTMs: s.value / 1000})
+	}
+	if len(stats.DCs) == 0 {
+		return nil
+	}
+	sort.Slice(stats.DCs, func(i, j int) bool { return stats.DCs[i].DC < stats.DCs[j].DC })
+	return stats
 }
 
 func loadTelemtConfig(path string) (*TelemtConfig, error) {
@@ -328,6 +378,12 @@ const snapshotMaxUserSeries = 64
 // кавычки и backslash-escape: запятая внутри значения — не разделитель.
 // Пусто — label'а нет или он не распознан.
 func promUserLabel(labels string) string {
+	return promLabel(labels, "user")
+}
+
+// promLabel — значение label'а key из строки labels prom-серии (тот же
+// разбор, что у promUserLabel). Пусто — label'а нет.
+func promLabel(labels, key string) string {
 	var parts []string
 	start := 0
 	inQuote := false
@@ -349,7 +405,7 @@ func promUserLabel(labels string) string {
 	parts = append(parts, labels[start:])
 	for _, part := range parts {
 		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "user" {
+		if len(kv) != 2 || strings.TrimSpace(kv[0]) != key {
 			continue
 		}
 		return strings.Trim(strings.TrimSpace(kv[1]), `"`)
@@ -769,6 +825,8 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 		_ = resp.Body.Close()
 		samples := parsePrometheusSamples(string(body))
 		if isMtddConfigPath(cfg.Telemt.ConfigPath) {
+			// RTT по DC — для критерия «RTT до DC2» на регистраторе.
+			report.DCStats = mtddDCStats(samples, time.Now())
 			samples = translateMtddSamples(samples)
 		}
 		// Клиенты считаются только по общему секрету — в агрегат
@@ -841,6 +899,14 @@ func RunMetricsCheck(cfg *config.NodeConfig, nodeID, ip string) HealthReport {
 			report.Error = "dc2: " + verdict.Reason
 		}
 	} else {
+		// Снимок RTT по DC без смены вердикта: Control API telemt из его
+		// конфига (по умолчанию включён на 127.0.0.1:9091). Не ответил —
+		// снимка нет, регистратор RTT не оценивает.
+		if report.DCStats == nil && !isMtddConfigPath(cfg.Telemt.ConfigPath) {
+			if addr := telemtAutoAPIAddr(telemtCfg); addr != "" {
+				_, report.DCStats = fetchDCStats(addr, client, time.Now())
+			}
+		}
 		// Режим совместимости: прежний критерий, прежние ошибки /metrics.
 		if metricsErr != "" {
 			report.Error = metricsErr

@@ -15,9 +15,10 @@ import (
 
 // Терминальные классы и история (см. terminate.go, db.go).
 const (
-	defaultTerminateDeadMinutes = 10 // dead-класс: TCP+metrics молчат дольше — нода завершается
-	defaultQuarantineAttempts   = 3  // неудачных верифицированных GP-проверок в карантине → бан по IP
-	defaultEventsRetentionDays  = 30 // ротация журнала событий в БД (баны НЕ ротируются никогда)
+	defaultTerminateDeadMinutes = 10   // dead-класс: TCP+metrics молчат дольше — нода завершается
+	defaultDC2RTTMaxMs          = 3000 // RTT ME до DC2 выше — отчёт плохой (нода вне очереди)
+	defaultQuarantineAttempts   = 3    // неудачных верифицированных GP-проверок в карантине → бан по IP
+	defaultEventsRetentionDays  = 30   // ротация журнала событий в БД (баны НЕ ротируются никогда)
 )
 
 // defaultDBFileFor — файл истории по умолчанию: sibling state-файла.
@@ -93,6 +94,11 @@ type RegistryConfig struct {
 		// что ноду туда посадила) переводят ноду в бан по IP (MsgIPBan).
 		// 0/отсутствует = дефолт 3.
 		QuarantineAttempts int `toml:"quarantine_attempts"`
+		// DC2RTTMaxMs — RTT ME до DC2 (снимок dc_stats отчёта ноды) выше
+		// этого — отчёт плохой, как упавшие метрики: после fail_threshold
+		// подряд нода вне очереди. nil = дефолт 3000, явный 0 = выкл.
+		// Ноды без снимка RTT не оцениваются.
+		DC2RTTMaxMs *int `toml:"dc2_rtt_max_ms"`
 	} `toml:"healthcheck"`
 
 	// Database — вечная история в SQLite (events + терминальные
@@ -268,6 +274,7 @@ type Resolved struct {
 	PanelEnabled          bool
 	// Терминальные классы и история.
 	TerminateDeadTTL   time.Duration // 0 = dead-класс выключен
+	DC2RTTMaxMs        int           // 0 = критерий RTT до DC2 выключен
 	QuarantineAttempts int           // ≥1
 	EventsRetention    time.Duration
 	DBEnabled          bool
@@ -319,6 +326,7 @@ func Load() (*Resolved, error) {
 		PanelEnabled:          cfg.Panel.Enabled == nil || *cfg.Panel.Enabled,
 		TerminateDeadTTL:      time.Duration(resolveIntDefault(cfg.Healthcheck.TerminateDeadMin, defaultTerminateDeadMinutes)) * time.Minute,
 		QuarantineAttempts:    max(1, cfg.Healthcheck.QuarantineAttempts), // дефолт 3 проставлен в applyRegistryDefaults
+		DC2RTTMaxMs:           resolveIntDefault(cfg.Healthcheck.DC2RTTMaxMs, defaultDC2RTTMaxMs),
 		EventsRetention:       time.Duration(cfg.Database.EventsRetentionDays) * 24 * time.Hour,
 		DBEnabled:             cfg.Database.Enabled == nil || *cfg.Database.Enabled,
 		ConfigPath:            path,
@@ -414,6 +422,7 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	for name, value := range map[string]*int{
 		"healthcheck.prune_unhealthy_min": cfg.Healthcheck.PruneUnhealthyMin,
 		"healthcheck.terminate_dead_min":  cfg.Healthcheck.TerminateDeadMin,
+		"healthcheck.dc2_rtt_max_ms":      cfg.Healthcheck.DC2RTTMaxMs,
 	} {
 		if value != nil && (*value < 0 || *value > 525600) {
 			return fmt.Errorf("%s must be 0..525600", name)

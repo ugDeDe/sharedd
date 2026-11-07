@@ -152,6 +152,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	acceptReport(candidate, payload)
 	r.cfgMu.RLock()
 	quarantineAttempts := r.cfg.QuarantineAttempts
+	dc2RTTMaxMs := r.cfg.DC2RTTMaxMs
 	failThr := clampThreshold(r.cfg.Healthcheck.FailThreshold)
 	recThr := clampThreshold(r.cfg.Healthcheck.RecoverThreshold)
 	expectedPort := r.cfg.SharedProxy.Port
@@ -182,6 +183,14 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	metricsOK := payload.MetricsOK
 	if payload.DC2Reason != "" {
 		metricsOK = payload.DC2OK
+	}
+	// Онлайн и RTT до DC2: нода, не сообщающая онлайн или с медленным DC2,
+	// получает плохой отчёт — и после fail_threshold подряд уходит из очереди.
+	gateReason := ""
+	if metricsOK {
+		if gateReason = metricsGateReason(&payload, dc2RTTMaxMs); gateReason != "" {
+			metricsOK = false
+		}
 	}
 	reportOK := metricsOK && (!verifyGP || !verifiedKnown || verifiedOK)
 	if reportOK {
@@ -350,6 +359,8 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			detail := fmt.Sprintf("%d consecutive failed metrics reports", candidate.MetricsFailStreak)
 			if payload.Error != "" {
 				detail += "; last: " + payload.Error
+			} else if gateReason != "" {
+				detail += "; last: " + gateReason
 			}
 			r.addEventLocked(Event{Type: EventMetricsDown, NodeID: candidate.NodeID, IP: candidate.IP, Detail: detail})
 			log.Printf("candidate %s metrics unhealthy: %s", candidate.NodeID, detail)
@@ -416,6 +427,9 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	}
 	candidate.LastReportAt = time.Now()
 	candidate.ReportError = payload.Error
+	if gateReason != "" && candidate.ReportError == "" {
+		candidate.ReportError = gateReason
+	}
 	if payload.DCStats != nil {
 		if r.dcStats == nil {
 			r.dcStats = make(map[string]machineapi.DCStats)
@@ -503,4 +517,24 @@ func acceptReport(c *Candidate, payload HealthReportPayload) {
 	if payload.GlobalpingMeasurementID != "" {
 		c.UsedMeasurementIDs = state.PushRing(c.UsedMeasurementIDs, payload.GlobalpingMeasurementID, usedMeasurementIDsCap)
 	}
+}
+
+// metricsGateReason — условия здоровья поверх вердикта агента: нода сообщает
+// онлайн (uniqueIPsMetric в снимке метрик) и RTT ME до DC2 из снимка
+// dc_stats не выше rttMaxMs (0 — не проверять). "" — условия выполнены.
+// Нет снимка метрик или dc_stats — по нему не судим (вердикт агента решает).
+func metricsGateReason(p *machineapi.HealthReportPayload, rttMaxMs int) string {
+	if p.MetricsSnapshot != nil {
+		if _, ok := p.MetricsSnapshot[uniqueIPsMetric]; !ok {
+			return "no online: " + uniqueIPsMetric + " missing in node metrics"
+		}
+	}
+	if rttMaxMs > 0 && p.DCStats != nil {
+		for _, dc := range p.DCStats.DCs {
+			if dc.DC == 2 && dc.RTTMs > float64(rttMaxMs) {
+				return fmt.Sprintf("DC2 RTT %.0f ms > %d ms", dc.RTTMs, rttMaxMs)
+			}
+		}
+	}
+	return ""
 }
