@@ -66,6 +66,19 @@ async function pubApi(path: string): Promise<any> {
 /* Три проверки одной группой вместо трёх колонок: подпись плюс
    подчёркивание цветом состояния. Значения не теряются — процент и
    защёлка metrics уезжают в подсказку. */
+/* MTProto-проверка: блокировка — только RKN_BLOCK (прочие статусы сервиса
+   не значат, что нода закрыта из РФ). */
+function mtpState(status: string): string {
+  if (status === "RKN_BLOCK") return "bad";
+  if (status === "UNKNOWN" || status === "error") return "unknown";
+  return "ok";
+}
+
+function mtpTitle(n: any): string {
+  return `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}` +
+    (n.mtproto_rescued ? " · Globalping провалена, MTProto не видит блокировки — без карантина" : "");
+}
+
 function checksHTML(n: any): string {
   const st = (flag: boolean | null | undefined) =>
     flag === null || flag === undefined ? "unknown" : flag ? "ok" : "bad";
@@ -74,6 +87,7 @@ function checksHTML(n: any): string {
   return `<span class="checks">
     ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
     ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
+    ${n.mtproto_status ? tag("MTP", mtpState(n.mtproto_status), mtpTitle(n)) : ""}
     ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
   </span>`;
 }
@@ -289,6 +303,9 @@ async function renderNodeView(id: string): Promise<void> {
   const chips = [
     chip(n.healthy, "TCP ok", "TCP fail"),
     chip(n.globalping_ok, "GP ok", "GP fail"),
+    n.mtproto_status
+      ? `<span title="${esc(mtpTitle(n))}">${chip(mtpState(n.mtproto_status) !== "bad", "MTP " + n.mtproto_status, "MTP " + n.mtproto_status)}</span>`
+      : "",
     mChip,
     roleChip,
     nodeTypeBadge(n.node_type),

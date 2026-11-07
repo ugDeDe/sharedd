@@ -1975,7 +1975,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     margin-bottom: 16px;
   }
 </style>
-  <meta name="sharedd-build" content="966adf814e8b91f7">
+  <meta name="sharedd-build" content="fb7850ed5a4df6ae">
 </head>
 <body>
 
@@ -2508,12 +2508,21 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     }
     return resp.json();
   }
+  function mtpState(status) {
+    if (status === "RKN_BLOCK") return "bad";
+    if (status === "UNKNOWN" || status === "error") return "unknown";
+    return "ok";
+  }
+  function mtpTitle(n) {
+    return `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}` + (n.mtproto_rescued ? " · Globalping провалена, MTProto не видит блокировки — без карантина" : "");
+  }
   function checksHTML(n) {
     const st = (flag) => flag === null || flag === void 0 ? "unknown" : flag ? "ok" : "bad";
     const tag = (label, state, title) => `<span class="check-tag ${state}" title="${esc(title)}">${label}</span>`;
     return `<span class="checks">
     ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
     ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
+    ${n.mtproto_status ? tag("MTP", mtpState(n.mtproto_status), mtpTitle(n)) : ""}
     ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
   </span>`;
   }
@@ -2706,6 +2715,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     const chips = [
       chip(n.healthy, "TCP ok", "TCP fail"),
       chip(n.globalping_ok, "GP ok", "GP fail"),
+      n.mtproto_status ? `<span title="${esc(mtpTitle(n))}">${chip(mtpState(n.mtproto_status) !== "bad", "MTP " + n.mtproto_status, "MTP " + n.mtproto_status)}</span>` : "",
       mChip,
       roleChip,
       nodeTypeBadge(n.node_type)

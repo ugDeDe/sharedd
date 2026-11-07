@@ -69,34 +69,38 @@ func sanitizePublicDetail(s string) string {
 
 // publicNode — явный белый список полей карточки ноды для публичной выдачи.
 type publicNode struct {
-	NodeID            string    `json:"node_id"`
-	DisplayName       string    `json:"display_name,omitempty"`
-	OwnerUsername     string    `json:"owner_username,omitempty"`
-	OwnerNodeNumber   int64     `json:"owner_node_number,omitempty"`
-	IPMasked          string    `json:"ip"` // уже замаскирован — имя поля едино с приватным API
-	Port              int       `json:"port"`
-	IsMaster          bool      `json:"is_master"`
-	MasterDomains     []string  `json:"master_domains,omitempty"`
-	QueuePosition     int       `json:"queue_position"`
-	Healthy           bool      `json:"healthy"` // tcp-защёлка
-	GlobalpingOK      bool      `json:"globalping_ok"`
-	MetricsHealthy    bool      `json:"metrics_healthy"` // metrics-защёлка (не сырой последний отчёт)
-	MetricsFailStreak int       `json:"metrics_fail_streak,omitempty"`
-	GlobalpingRatio   float64   `json:"globalping_ratio"`
-	UnhealthyReason   string    `json:"unhealthy_reason,omitempty"` // санитизировано
-	RegisteredAt      time.Time `json:"registered_at"`
-	HeartbeatAgeSec   int64     `json:"heartbeat_age_sec"`
-	ReportAgeSec      int64     `json:"report_age_sec"` // -1 = отчётов не было
-	HeartbeatsTotal   int       `json:"heartbeats_total"`
-	ReportsTotal      int       `json:"reports_total"`
-	ReportsOK         int       `json:"reports_ok"`
-	AvailabilityPct   float64   `json:"availability_pct"`
-	ClientsUniqueIPs  *float64  `json:"clients_unique_ips,omitempty"`
-	GPChecksTotal     int       `json:"gp_checks_total"`
-	GPVerifiedPct     float64   `json:"gp_verified_pct"`
-	MasterStints      int       `json:"master_stints"`
-	MasterTimeSec     int64     `json:"master_time_sec"`
-	NodeType          string    `json:"node_type,omitempty"`
+	NodeID            string   `json:"node_id"`
+	DisplayName       string   `json:"display_name,omitempty"`
+	OwnerUsername     string   `json:"owner_username,omitempty"`
+	OwnerNodeNumber   int64    `json:"owner_node_number,omitempty"`
+	IPMasked          string   `json:"ip"` // уже замаскирован — имя поля едино с приватным API
+	Port              int      `json:"port"`
+	IsMaster          bool     `json:"is_master"`
+	MasterDomains     []string `json:"master_domains,omitempty"`
+	QueuePosition     int      `json:"queue_position"`
+	Healthy           bool     `json:"healthy"` // tcp-защёлка
+	GlobalpingOK      bool     `json:"globalping_ok"`
+	MetricsHealthy    bool     `json:"metrics_healthy"` // metrics-защёлка (не сырой последний отчёт)
+	MetricsFailStreak int      `json:"metrics_fail_streak,omitempty"`
+	GlobalpingRatio   float64  `json:"globalping_ratio"`
+	// MTProto-проверка вместе с Globalping (mtproto_check.go).
+	MTProtoStatus    string    `json:"mtproto_status,omitempty"`
+	MTProtoSummary   string    `json:"mtproto_summary,omitempty"`
+	MTProtoRescued   bool      `json:"mtproto_rescued,omitempty"`
+	UnhealthyReason  string    `json:"unhealthy_reason,omitempty"` // санитизировано
+	RegisteredAt     time.Time `json:"registered_at"`
+	HeartbeatAgeSec  int64     `json:"heartbeat_age_sec"`
+	ReportAgeSec     int64     `json:"report_age_sec"` // -1 = отчётов не было
+	HeartbeatsTotal  int       `json:"heartbeats_total"`
+	ReportsTotal     int       `json:"reports_total"`
+	ReportsOK        int       `json:"reports_ok"`
+	AvailabilityPct  float64   `json:"availability_pct"`
+	ClientsUniqueIPs *float64  `json:"clients_unique_ips,omitempty"`
+	GPChecksTotal    int       `json:"gp_checks_total"`
+	GPVerifiedPct    float64   `json:"gp_verified_pct"`
+	MasterStints     int       `json:"master_stints"`
+	MasterTimeSec    int64     `json:"master_time_sec"`
+	NodeType         string    `json:"node_type,omitempty"`
 	// MasterTTLRemainingSec — см. publicNodeListItem.
 	MasterTTLRemainingSec *int64 `json:"master_ttl_remaining_sec,omitempty"`
 }
@@ -287,6 +291,9 @@ func (r *Registry) buildPublicNodeLocked(c *Candidate, queuePos int, domains []s
 		MetricsHealthy:    c.MetricsHealthy,
 		MetricsFailStreak: c.MetricsFailStreak,
 		GlobalpingRatio:   c.GlobalpingVerifiedRatio,
+		MTProtoStatus:     c.MTProtoStatus,
+		MTProtoSummary:    c.MTProtoSummary,
+		MTProtoRescued:    c.MTProtoRescued,
 		RegisteredAt:      c.RegisteredAt,
 		HeartbeatAgeSec:   int64(now.Sub(c.LastHeartbeat).Seconds()),
 		ReportAgeSec:      -1,
@@ -467,6 +474,9 @@ type publicNodeListItem struct {
 	QueuePosition         int      `json:"queue_position"`
 	Healthy               bool     `json:"healthy"`
 	GlobalpingOK          bool     `json:"globalping_ok"`
+	MTProtoStatus         string   `json:"mtproto_status,omitempty"`
+	MTProtoSummary        string   `json:"mtproto_summary,omitempty"`
+	MTProtoRescued        bool     `json:"mtproto_rescued,omitempty"`
 	MetricsHealthy        bool     `json:"metrics_healthy"`
 	AvailabilityPct       float64  `json:"availability_pct"`
 	ClientsUniqueIPs      *float64 `json:"clients_unique_ips,omitempty"`
@@ -624,6 +634,9 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 			QueuePosition:   r.queuePositionLocked(c),
 			Healthy:         c.Healthy,
 			GlobalpingOK:    c.GlobalpingOK,
+			MTProtoStatus:   c.MTProtoStatus,
+			MTProtoSummary:  c.MTProtoSummary,
+			MTProtoRescued:  c.MTProtoRescued,
 			MetricsHealthy:  c.MetricsHealthy,
 			AvailabilityPct: c.AvailabilityPct(),
 			ReportAgeSec:    -1,
