@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,8 +25,10 @@ import (
 //
 // Отказ источника не обнуляет список: используется последний удачный ответ
 // этого источника. Без гео-набора список не публикуется вовсе (нефильтрованный
-// abuse-лист нодам не уходит). После рестарта регистратора до первой сборки
-// ревизии нет — агенты держат последний применённый set.
+// abuse-лист нодам не уходит). Последний собранный список и гео-набор RU
+// лежат на диске рядом со state-файлом (antiscan.list, antiscan_geo.list) и
+// поднимаются при старте: рестарт регистратора при недоступном RIPEstat не
+// оставляет новые ноды без списка.
 
 const (
 	antiscanFetchTimeout = 60 * time.Second
@@ -93,7 +97,68 @@ func antiscanHTTPGet(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
+// antiscanCachePaths — кэш на диске рядом со state-файлом: собранный список
+// и гео-набор RU. "" — state-файла нет (тесты литералом).
+func (r *Registry) antiscanCachePaths() (list, geo string) {
+	r.cfgMu.RLock()
+	stateFile := r.cfg.State.File
+	r.cfgMu.RUnlock()
+	if stateFile == "" {
+		return "", ""
+	}
+	dir := filepath.Dir(stateFile)
+	return filepath.Join(dir, "antiscan.list"), filepath.Join(dir, "antiscan_geo.list")
+}
+
+// writeFileAtomic — запись через временный файл и rename.
+func writeFileAtomic(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// loadAntiscanCache — поднять с диска последний список (с его ревизией) и
+// гео-набор (с URL и временем). Ошибки — только в лог: дальше обычная сборка.
+func (r *Registry) loadAntiscanCache() {
+	listPath, geoPath := r.antiscanCachePaths()
+	if listPath == "" {
+		return
+	}
+	r.scan.mu.Lock()
+	defer r.scan.mu.Unlock()
+	if data, err := os.ReadFile(geoPath); err == nil {
+		header, body, _ := strings.Cut(string(data), "\n")
+		var url, at string
+		if _, err := fmt.Sscanf(header, "# geo %s %s", &url, &at); err == nil {
+			geoAt, _ := time.Parse(time.RFC3339, at)
+			if geo := antiscan.ParseList([]byte(body)); len(geo.CIDRs()) > 0 {
+				r.scan.geo, r.scan.geoURL, r.scan.geoAt = geo, url, geoAt
+				log.Printf("antiscan: geo set loaded from %s (%s, %s)", geoPath, url, at)
+			}
+		}
+	}
+	if r.scan.revision != "" {
+		return
+	}
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		return
+	}
+	header, body, _ := strings.Cut(string(data), "\n")
+	var rev, at string
+	if _, err := fmt.Sscanf(header, "# revision %s %s", &rev, &at); err != nil || rev == "" {
+		return
+	}
+	entries := strings.Count(body, "\n")
+	builtAt, _ := time.Parse(time.RFC3339, at)
+	r.scan.revision, r.scan.body, r.scan.entries, r.scan.builtAt = rev, []byte(body), entries, builtAt
+	log.Printf("antiscan: last list loaded from %s — %d entries, revision %s", listPath, entries, rev)
+}
+
 func (r *Registry) antiscanLoop(ctx context.Context) {
+	r.loadAntiscanCache()
 	for {
 		r.refreshAntiscan(ctx, time.Now())
 		r.cfgMu.RLock()
@@ -185,6 +250,12 @@ func (r *Registry) refreshAntiscan(ctx context.Context, now time.Time) {
 			}
 		} else {
 			r.scan.geo, r.scan.geoURL, r.scan.geoAt, r.scan.geoErr = geo, geoURL, now, ""
+			if _, geoPath := r.antiscanCachePaths(); geoPath != "" {
+				data := fmt.Sprintf("# geo %s %s\n%s\n", geoURL, now.UTC().Format(time.RFC3339), strings.Join(geo.CIDRs(), "\n"))
+				if err := writeFileAtomic(geoPath, []byte(data)); err != nil {
+					log.Printf("antiscan: save geo set %s: %v", geoPath, err)
+				}
+			}
 		}
 	}
 	if r.scan.sources == nil {
@@ -241,6 +312,12 @@ func (r *Registry) refreshAntiscan(ctx context.Context, now time.Time) {
 	}
 	r.scan.revision, r.scan.body, r.scan.entries, r.scan.builtAt = rev, []byte(body.String()), len(entries), now
 	log.Printf("antiscan: list rebuilt — %d RU entries, revision %s", len(entries), rev)
+	if listPath, _ := r.antiscanCachePaths(); listPath != "" {
+		data := fmt.Sprintf("# revision %s %s\n%s", rev, now.UTC().Format(time.RFC3339), body.String())
+		if err := writeFileAtomic(listPath, []byte(data)); err != nil {
+			log.Printf("antiscan: save list %s: %v", listPath, err)
+		}
+	}
 }
 
 // antiscanRevision — для /config: "" — списка нет (агент держит последний),

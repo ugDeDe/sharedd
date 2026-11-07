@@ -143,3 +143,31 @@ func TestAntiscanPanelEditHotApplies(t *testing.T) {
 		}
 	}
 }
+
+// Рестарт регистратора при недоступном гео-источнике: последний список и
+// гео-набор поднимаются с диска, ноды сразу получают список.
+func TestAntiscanSurvivesRestartWithoutGeo(t *testing.T) {
+	r, _ := antiscanFixture(t)
+	now := time.Unix(1_800_000_000, 0)
+	r.refreshAntiscan(context.Background(), now)
+	want := antiscanGet(t, r).Body.String()
+	rev := r.antiscanRevision()
+	if want == "" || rev == "" {
+		t.Fatal("first build must publish a list")
+	}
+
+	r2, responses := antiscanFixture(t)
+	r2.cfg.State.File = r.cfg.State.File // тот же каталог состояния
+	responses[testScanGeo] = nil         // RIPEstat лежит
+	r2.loadAntiscanCache()
+	if r2.antiscanRevision() != rev || antiscanGet(t, r2).Body.String() != want {
+		t.Fatalf("restart must serve the last list: rev %q body %q", r2.antiscanRevision(), antiscanGet(t, r2).Body.String())
+	}
+	// Источник изменился, гео недоступно — список пересобирается по
+	// сохранённому гео-набору.
+	responses[testScanSrcB] = []byte("5.0.3.3\n")
+	r2.refreshAntiscan(context.Background(), now.Add(time.Hour))
+	if got := antiscanGet(t, r2).Body.String(); got != "5.0.1.1\n5.0.3.3\n95.0.0.0/24\n" {
+		t.Fatalf("rebuild with the cached geo set: %q", got)
+	}
+}
