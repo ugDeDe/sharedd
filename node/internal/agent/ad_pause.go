@@ -4,11 +4,14 @@ package agent
 // держать сейчас (тег пула или свой), агент применяет и подтверждает
 // фактическое состояние в следующем heartbeat. Решает только регистратор.
 //
-// Поддерживается mtdd с подменой тега на лету (POST/DELETE /v1/ad-tag): тег
-// меняется без перезапуска и без переподключения клиентов, а «свой» тег —
-// это ad_tag из /etc/mtdd/config.json, к которому возвращает DELETE (подмена
-// не пишется в файл, после рестарта mtdd снова свой тег). Прочие ноды и
-// mtdd без маршрута подтверждают "unsupported" и в расписание не попадают.
+// Поддерживаются:
+//   - mtdd с подменой тега на лету (POST/DELETE /v1/ad-tag): тег меняется без
+//     перезапуска и без переподключения клиентов, а «свой» тег — это ad_tag
+//     из /etc/mtdd/config.json, к которому возвращает DELETE (подмена не
+//     пишется в файл, после рестарта mtdd снова свой тег);
+//   - MTProxyL: персональная метка только общих пользователей пула
+//     (ad_pause_mtproxyl.go), горячая перезагрузка без перезапуска.
+// Прочие ноды подтверждают "unsupported" и в расписание не попадают.
 
 import (
 	"encoding/json"
@@ -46,8 +49,11 @@ var adPause = struct {
 	supported bool
 	// state — подтверждаемое регистратору фактическое состояние тега.
 	state string
-	// attempted/failed/at — последняя попытка применить указание.
+	// attempted/failed/at — последняя попытка применить указание;
+	// users — общие пользователи на момент попытки (MTProxyL ставит метку
+	// каждому, новый пользователь посреди окна требует повтора).
 	attempted adPauseDirective
+	users     string
 	failed    bool
 	at        time.Time
 	desired   chan adPauseDirective
@@ -92,10 +98,11 @@ func adPauseLoop(cfg *config.NodeConfig) {
 // adPauseStep — одно указание регистратора: применить при необходимости и
 // запомнить фактическое состояние для следующего heartbeat.
 func adPauseStep(cfg *config.NodeConfig, d adPauseDirective, now time.Time) {
+	users := strings.Join(adPauseSharedUsers(), ",")
 	adPause.mu.Lock()
-	state, attempted, failed, at := adPause.state, adPause.attempted, adPause.failed, adPause.at
+	state, attempted, failed, at, prevUsers := adPause.state, adPause.attempted, adPause.failed, adPause.at, adPause.users
 	adPause.mu.Unlock()
-	if !adPauseNeedsApply(d, state, attempted, failed, at, now) {
+	if !adPauseNeedsApply(d, state, attempted, failed, at, now) && (users == prevUsers || state != adPausePool) {
 		return
 	}
 	next := applyAdPause(cfg, d)
@@ -106,7 +113,7 @@ func adPauseStep(cfg *config.NodeConfig, d adPauseDirective, now time.Time) {
 		next = adPausePool
 	}
 	adPause.mu.Lock()
-	adPause.state, adPause.attempted, adPause.failed, adPause.at = next, d, !ok, now
+	adPause.state, adPause.attempted, adPause.failed, adPause.at, adPause.users = next, d, !ok, now, users
 	adPause.mu.Unlock()
 	if next != state {
 		log.Printf("ad pause: active=%t → %s", d.Active, next)
@@ -131,9 +138,19 @@ func adPauseNeedsApply(d adPauseDirective, state string, attempted adPauseDirect
 }
 
 var applyAdPause = func(cfg *config.NodeConfig, d adPauseDirective) string {
-	if cfg == nil || !isMtddConfigPath(cfg.Telemt.ConfigPath) {
+	switch {
+	case cfg == nil:
+		return adPauseUnsupported
+	case isMtddConfigPath(cfg.Telemt.ConfigPath):
+		return applyAdPauseMtdd(cfg, d)
+	case adPauseOnMtproxyl():
+		return applyAdPauseMtproxyl(cfg, d)
+	default:
 		return adPauseUnsupported
 	}
+}
+
+func applyAdPauseMtdd(cfg *config.NodeConfig, d adPauseDirective) string {
 	mc, err := loadMtddConfig(cfg.Telemt.ConfigPath)
 	if err != nil {
 		log.Printf("ad pause: %v", err)

@@ -243,16 +243,16 @@ type RegistryConfig struct {
 		GeoURL      string   `toml:"geo_url"`
 	} `toml:"antiscan"`
 
-	// AdPause — рекламная пауза пула: SharePercent процентов времени
-	// мастерства каждой ноды она показывает рекламный тег пула (Tag) вместо
-	// своего. Регистратор решает раз в master_ttl внутри мастерства, по
-	// накопленному подтверждённому времени — доля одинакова для всех нод.
-	// Поддерживают ноды mtdd с подменой тега на лету (/v1/ad-tag).
-	// Enabled: nil = выключено.
+	// AdPause — рекламная пауза пула: MinutesPerDay минут в сутки на весь
+	// пул рекламный тег пула (Tag) стоит вместо своего. Бюджет делится
+	// поровну между нодами, умеющими подмену тега, окнами длиной master_ttl
+	// внутри мастерства (рекламное окно, своё, рекламное…). Поддерживают ноды
+	// mtdd (/v1/ad-tag) и MTProxyL (метка общих пользователей через
+	// `mtproxyl secret adtag`). Enabled: nil = выключено.
 	AdPause struct {
-		Enabled      *bool  `toml:"enabled"`
-		Tag          string `toml:"tag"`
-		SharePercent int    `toml:"share_percent"`
+		Enabled       *bool  `toml:"enabled"`
+		Tag           string `toml:"tag"`
+		MinutesPerDay int    `toml:"minutes_per_day"`
 	} `toml:"ad_pause"`
 }
 
@@ -465,7 +465,7 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if err := ValidateAntiscan(cfg.Antiscan.Sources, cfg.Antiscan.IntervalMin, cfg.Antiscan.GeoURL); err != nil {
 		return err
 	}
-	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.SharePercent); err != nil {
+	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.MinutesPerDay); err != nil {
 		return err
 	}
 	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase} {
@@ -602,8 +602,8 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.Antiscan.GeoURL == "" {
 		cfg.Antiscan.GeoURL = DefaultAntiscanGeoURL
 	}
-	if cfg.AdPause.SharePercent == 0 {
-		cfg.AdPause.SharePercent = DefaultAdPauseSharePercent
+	if cfg.AdPause.MinutesPerDay == 0 {
+		cfg.AdPause.MinutesPerDay = DefaultAdPauseMinutesPerDay
 	}
 }
 
@@ -713,10 +713,10 @@ func ValidateAntiscan(sources []string, intervalMin int, geoURL string) error {
 	return nil
 }
 
-// [ad_pause]: доля по умолчанию и границы (панель валидирует тем же ValidateAdPause).
+// [ad_pause]: бюджет по умолчанию и границы (панель валидирует тем же ValidateAdPause).
 const (
-	DefaultAdPauseSharePercent = 10
-	MaxAdPauseSharePercent     = 50
+	DefaultAdPauseMinutesPerDay = 60
+	MaxAdPauseMinutesPerDay     = 1440
 )
 
 var adTagRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
@@ -726,10 +726,11 @@ func ValidAdTag(tag string) bool {
 	return adTagRe.MatchString(tag) && strings.Trim(tag, "0") != ""
 }
 
-// ValidateAdPause — доля 1..MaxAdPauseSharePercent; включённой паузе нужен тег.
-func ValidateAdPause(enabled bool, tag string, sharePercent int) error {
-	if sharePercent < 1 || sharePercent > MaxAdPauseSharePercent {
-		return fmt.Errorf("ad_pause.share_percent: допустимо 1..%d", MaxAdPauseSharePercent)
+// ValidateAdPause — минут в сутки 1..MaxAdPauseMinutesPerDay; включённой
+// паузе нужен тег.
+func ValidateAdPause(enabled bool, tag string, minutesPerDay int) error {
+	if minutesPerDay < 1 || minutesPerDay > MaxAdPauseMinutesPerDay {
+		return fmt.Errorf("ad_pause.minutes_per_day: допустимо 1..%d", MaxAdPauseMinutesPerDay)
 	}
 	if tag != "" && !ValidAdTag(tag) {
 		return fmt.Errorf("ad_pause.tag: 32 hex-символа, не все нули")

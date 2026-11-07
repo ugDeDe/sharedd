@@ -37,6 +37,9 @@ func TestApplyAdPauseOnMtdd(t *testing.T) {
 func TestApplyAdPauseNonMtddUnsupported(t *testing.T) {
 	f := newMtddFixture(t, `{"users":[]}`)
 	f.nodeCfg.Telemt.ConfigPath = "/etc/telemt/telemt.toml"
+	oldOn := adPauseOnMtproxyl
+	t.Cleanup(func() { adPauseOnMtproxyl = oldOn })
+	adPauseOnMtproxyl = func() bool { return false }
 	if got := applyAdPause(f.nodeCfg, adPauseDirective{Active: true, Tag: testPoolAdTag}); got != adPauseUnsupported {
 		t.Fatalf("telemt node: %s", got)
 	}

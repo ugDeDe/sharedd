@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="c2148b4d1d682fd4">
+  <meta name="sharedd-build" content="0c0002c706a9d4aa">
 </head>
 <body>
 
@@ -4950,11 +4950,11 @@
           <input type="text" id="s-ad-tag" class="mono" spellcheck="false" maxlength="32" placeholder="32 hex от @MTProxybot">
         </div>
         <div class="field">
-          <label for="s-ad-share">Доля времени мастерства, %</label>
-          <input type="number" id="s-ad-share" min="1" max="50">
-          <span class="help">Одинаковая для всех нод. Реклама идёт только пока нода мастер и чередуется периодами длиной master_ttl: нода с недобором получает рекламный период, с перебором — нет.</span>
+          <label for="s-ad-minutes">Минут рекламы в сутки на весь пул</label>
+          <input type="number" id="s-ad-minutes" min="1" max="1440">
+          <span class="help">Делится поровну между нодами, умеющими подмену тега, с округлением вверх до целых окон master_ttl (не меньше одного окна на ноду). Реклама идёт только пока нода мастер, окна чередуются: рекламное, своё, рекламное… Когда пул выбрал бюджет, до полуночи (по часам регистратора) рекламы нет. Ноды добавились или ушли — доли пересчитываются.</span>
         </div>
-        <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd с подменой тега на лету — клиенты не переподключаются. Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
+        <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd (тег меняется сразу у всех клиентов) и MTProxyL ≥ 1.4.9 с ME (тег пула ставится только общим пользователям пула, клиенты получают его при переподключении). Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
         <div class="as-status" id="s-ad-status"></div>
       </div>
       <div class="cfg-foot"><button class="btn primary" id="s-ad-save">Сохранить рекламу</button></div>
@@ -5045,8 +5045,8 @@
     const ad = c.ad_pause || {};
     $("s-ad-enabled").checked = !!ad.enabled;
     $("s-ad-tag").value = ad.tag || "";
-    $("s-ad-share").value = ad.share_percent || 10;
-    renderAdPauseStatus(data.ad_pause_status);
+    $("s-ad-minutes").value = ad.minutes_per_day || 60;
+    renderAdPauseStatus(data.ad_pause_status, data.ad_pause_summary);
     $("s-panel-token").value = c.panel.token;
     $("s-panel-events").value = c.panel.events_max;
     const row = (k, v, mono = true) => `<div class="static-row"><span class="static-k">${k}</span><span class="static-v${mono ? " mono" : ""}" title="${esc(v)}">${esc(v)}</span></div>`;
@@ -5093,16 +5093,18 @@
     failed: "ошибка",
     "": "нет данных"
   };
-  function renderAdPauseStatus(list) {
+  function renderAdPauseStatus(list, sum) {
     if (!list || list.length === 0) {
       $("s-ad-status").innerHTML = "";
       return;
     }
-    $("s-ad-status").innerHTML = `<div class="as-sources">` + list.map((n) => {
+    const head = sum ? `<div class="as-src"><span class="as-src-name">Сегодня (${esc(sum.day)})</span><span class="as-src-stat">пул ${fmtDur2(sum.used_sec)} из ${fmtDur2(sum.budget_sec)} · нод с рекламой: ${sum.nodes} · окно ${fmtDur2(sum.period_sec)}</span></div>` : "";
+    $("s-ad-status").innerHTML = `<div class="as-sources">` + head + list.map((n) => {
       var _a, _b;
       const state3 = (_b = AD_STATE[(_a = n.state) != null ? _a : ""]) != null ? _b : n.state;
-      const now = n.active ? " · сейчас период рекламы" : n.master ? " · мастер" : "";
-      const stat = `${state3}${now} · реклама ${fmtDur2(n.ad_sec)} из ${fmtDur2(n.master_sec)} мастерства (${n.share.toFixed(1)}%)`;
+      const now = n.active ? " · сейчас окно рекламы" : n.master ? " · мастер" : "";
+      const quota = n.quota_sec ? ` из ${fmtDur2(n.quota_sec)}` : "";
+      const stat = `${state3}${now} · сегодня ${fmtDur2(n.today_sec)}${quota} · всего ${fmtDur2(n.ad_sec)}`;
       return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}"><span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span><span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
     }).join("") + `</div>`;
   }
@@ -5211,7 +5213,7 @@
     $("s-ad-save").onclick = () => saveSection({ ad_pause: {
       enabled: $("s-ad-enabled").checked,
       tag: $("s-ad-tag").value.trim(),
-      share_percent: parseInt($("s-ad-share").value, 10) || 10
+      minutes_per_day: parseInt($("s-ad-minutes").value, 10) || 60
     } }, "Рекламная пауза сохранена").then(() => load2().catch(() => {
     })).catch((e) => showToast(e.message, true));
     $("s-panel-save").onclick = () => {

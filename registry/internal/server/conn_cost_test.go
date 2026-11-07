@@ -24,7 +24,7 @@ func TestFitCostRecoversMarginalAndBaseline(t *testing.T) {
 		xs, ys = append(xs, x), append(ys, 0.05+0.0002*x+noise)
 	}
 	f := fitCost(xs, ys)
-	near(t, "marginal", f.MarginalPer1k, 0.2, 0.01)
+	near(t, "marginal", f.Marginal, 0.2, 0.01)
 	near(t, "baseline", f.Baseline, 0.05, 0.01)
 	if f.R2 == nil || *f.R2 < 0.98 {
 		t.Fatalf("r2 %v", f.R2)
@@ -33,7 +33,7 @@ func TestFitCostRecoversMarginalAndBaseline(t *testing.T) {
 	for i := range xs {
 		sx, sy = sx+xs[i], sy+ys[i]
 	}
-	near(t, "avg", f.AvgPer1k, sy/sx*1000, 1e-9)
+	near(t, "avg", f.Avg, sy/sx*1000, 1e-9)
 }
 
 func TestFitCostRefusesNoise(t *testing.T) {
@@ -41,13 +41,13 @@ func TestFitCostRefusesNoise(t *testing.T) {
 	for i := 0; i < 100; i++ { // соединений почти не меняется — наклон не определён
 		xs, ys = append(xs, 1000+float64(i%3)), append(ys, 0.3+0.01*math.Sin(float64(i)))
 	}
-	if f := fitCost(xs, ys); f.MarginalPer1k != nil || f.AvgPer1k == nil {
+	if f := fitCost(xs, ys); f.Marginal != nil || f.Avg == nil {
 		t.Fatalf("flat conns: marginal must be absent, avg present: %+v", f)
 	}
-	if f := fitCost(xs[:10], ys[:10]); f.MarginalPer1k != nil {
+	if f := fitCost(xs[:10], ys[:10]); f.Marginal != nil {
 		t.Fatal("too few points for a slope")
 	}
-	if f := fitCost([]float64{5, 6}, []float64{0.1, 0.1}); f.AvgPer1k != nil {
+	if f := fitCost([]float64{5, 6}, []float64{0.1, 0.1}); f.Avg != nil {
 		t.Fatal("average over a handful of connections is background noise")
 	}
 }
@@ -76,8 +76,11 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 		t.Fatalf("node without traffic counters must have no net rate: %+v", all[len(all)-1])
 	}
 	c := estimateConnCost(rows)
-	near(t, "ram avg", c.RAM.AvgPer1k, 250, 0.01)         // 300 МиБ на 1200 соединений
-	near(t, "host cpu avg", c.HostCPU.AvgPer1k, 50, 0.01) // 60% сервера на 1200 соединений
+	near(t, "ram avg", c.RAM.Avg, 250, 0.01)         // 300 МиБ на 1200 соединений
+	near(t, "host cpu avg", c.HostCPU.Avg, 50, 0.01) // 60% сервера на 1200 соединений
+	if c.HostCPUPerNet.Avg != nil {                  // 1 Мбит/с — ниже порога, оценка была бы шумом
+		t.Fatalf("per-100-Mbit/s average below the traffic floor: %v", *c.HostCPUPerNet.Avg)
+	}
 	if c.HostRAM.Points != 0 {
 		t.Fatal("no host RAM metric — no host RAM points")
 	}
@@ -86,7 +89,7 @@ func TestRecordLoadSampleOncePerMinuteWithNetRate(t *testing.T) {
 func TestCostByTypeMedians(t *testing.T) {
 	f := func(cpu float64) *connCost {
 		v := cpu
-		return &connCost{CPU: costFit{AvgPer1k: &v}}
+		return &connCost{CPU: costFit{Avg: &v}}
 	}
 	costs := map[string]*connCost{"a": f(0.1), "b": f(0.3), "c": f(0.2), "d": f(0.9), "gone": f(5)}
 	types := map[string]string{"a": "mtdd", "b": "mtdd", "c": "mtdd", "d": "", "x": "mtdd"}
@@ -97,7 +100,7 @@ func TestCostByTypeMedians(t *testing.T) {
 	if out[0].Nodes != 3 || out[0].CPU.AvgNodes != 3 {
 		t.Fatalf("mtdd counts: %+v", out[0])
 	}
-	near(t, "mtdd median", out[0].CPU.AvgPer1k, 0.2, 1e-9)
+	near(t, "mtdd median", out[0].CPU.Avg, 0.2, 1e-9)
 }
 
 func TestLoadSamplesRoundTrip(t *testing.T) {
@@ -112,5 +115,20 @@ func TestLoadSamplesRoundTrip(t *testing.T) {
 	rows, err := d.LoadSamplesSince(now.Add(-time.Minute))
 	if err != nil || len(rows) != 1 || rows[0].CPUCores == nil || *rows[0].CPUCores != 0.5 || rows[0].RSSBytes != nil {
 		t.Fatalf("round trip: %+v %v", rows, err)
+	}
+}
+
+// CPU на 100 Мбит/с: CPU = 2% + 4% × (Мбит/с / 100).
+func TestFitPerNet(t *testing.T) {
+	var xs, ys []float64
+	for i := 0; i < 60; i++ {
+		mbps := 20 + float64(i)*5 // 20..315 Мбит/с
+		xs, ys = append(xs, mbps), append(ys, 2+0.04*mbps)
+	}
+	f := fitPerNet(xs, ys)
+	near(t, "marginal per 100 Mbit/s", f.Marginal, 4, 1e-6)
+	near(t, "baseline", f.Baseline, 2, 1e-6)
+	if g := fitPerNet([]float64{1, 2}, []float64{1, 1}); g.Avg != nil {
+		t.Fatal("near-zero traffic must not yield a per-100-Mbit/s average")
 	}
 }

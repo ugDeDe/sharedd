@@ -1975,7 +1975,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     margin-bottom: 16px;
   }
 </style>
-  <meta name="sharedd-build" content="6356772fbce3871c">
+  <meta name="sharedd-build" content="966adf814e8b91f7">
 </head>
 <body>
 
@@ -2852,6 +2852,10 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     { key: "cpu_cores", label: "CPU процесса прокси", unit: "ядра", digits: 3, optional: true },
     { key: "ram_mb", label: "Память процесса прокси", unit: "МБ", digits: 1, optional: true }
   ];
+  var NET_COST_ROWS = [
+    { key: "host_cpu_pct_per_100mbps", label: "CPU сервера", unit: "%", digits: 2 },
+    { key: "cpu_cores_per_100mbps", label: "CPU процесса прокси", unit: "ядра", digits: 4, optional: true }
+  ];
   function costVal(v, digits, unit) {
     return v === null || v === void 0 ? "—" : `${v.toFixed(digits)} ${unit}`;
   }
@@ -2860,7 +2864,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     if (!c) {
       return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первая точка через минуту после отчёта ноды</div></section>`;
     }
-    const rows = COST_ROWS.filter((r) => {
+    const costRows = (defs) => defs.filter((r) => {
       var _a, _b;
       return !r.optional || ((_b = (_a = c[r.key]) == null ? void 0 : _a.points) != null ? _b : 0) > 0;
     }).map((r) => {
@@ -2869,12 +2873,14 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       const base = f.baseline == null ? "—" : `${f.baseline.toFixed(r.digits)} ${r.unit}`;
       return `<tr>
       <td data-label="Ресурс">${esc(r.label)}</td>
-      <td class="num mono" data-label="В среднем">${costVal(f.avg_per_1k, r.digits, r.unit)}</td>
-      <td class="num mono" data-label="Предельная">${costVal(f.marginal_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="В среднем">${costVal(f.avg, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Предельная">${costVal(f.marginal, r.digits, r.unit)}</td>
       <td class="num mono" data-label="Фон">${base}</td>
       <td class="num mono" data-label="R²">${r2}</td>
     </tr>`;
     }).join("");
+    const rows = costRows(COST_ROWS);
+    const netRows = costRows(NET_COST_ROWS);
     const hostBits = [];
     if ((host == null ? void 0 : host.cpu_count) != null) hostBits.push(`${host.cpu_count} ${plural(host.cpu_count, "ядро", "ядра", "ядер")}`);
     if ((host == null ? void 0 : host.ram_total_bytes) != null) hostBits.push(`RAM ${fmtBytes(host.ram_total_bytes)}`);
@@ -2885,6 +2891,10 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
         <th class="num" title="наклон регрессии × 1000: сколько добавляет тысяча соединений сверх фона">Предельная</th>
         <th class="num" title="ресурс процесса при нуле соединений (оценка)">Фон</th><th class="num" title="насколько линейная модель объясняет данные (1 — идеально)">R²</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
+    <div class="chart-cap" style="margin:14px var(--pad) 7px">CPU на 100 Мбит/с трафика <span class="hint">цена байта, без влияния того, сколько качают клиенты</span></div>
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Ресурс</th><th class="num">В среднем</th><th class="num">Предельная</th><th class="num">Фон</th><th class="num">R²</th></tr></thead>
+      <tbody>${netRows || `<tr><td colspan="5" class="table-empty">нет данных — нода не присылает счётчики трафика</td></tr>`}</tbody></table></div>
     <div class="card-note">По ${c.points} ${plural(c.points, "точке", "точкам", "точкам")} (точка в минуту): соединений от ${fmtNum0(c.conns_min)} до ${fmtNum0(c.conns_max)}, в среднем ${fmtNum0(c.conns_avg)}.
       Предельная цена появляется, когда соединений было заметно разное число. Проценты — от всего сервера: сравнимы только между серверами одного размера.${hostBits.length ? " Хост: " + esc(hostBits.join(" · ")) + "." : ""}</div>
   </section>`;
@@ -2896,8 +2906,8 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первые точки появятся через минуту после отчётов нод</div></section>`;
     }
     const cell = (s, digits, unit) => {
-      const avg = costVal(s == null ? void 0 : s.avg_per_1k, digits, unit);
-      const marg = (s == null ? void 0 : s.marginal_per_1k) == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal_per_1k, digits, unit)} (${s.marginal_nodes})</div>`;
+      const avg = costVal(s == null ? void 0 : s.avg, digits, unit);
+      const marg = (s == null ? void 0 : s.marginal) == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal, digits, unit)} (${s.marginal_nodes})</div>`;
       return `${avg}${marg}`;
     };
     const proc = list.some((t) => {
@@ -2910,12 +2920,13 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       <td class="num mono" data-label="CPU сервера">${cell(t.host_cpu_pct, 1, "%")}</td>
       <td class="num mono" data-label="RAM сервера">${cell(t.host_ram_pct, 1, "%")}</td>
       <td class="num mono" data-label="Сеть">${cell(t.net_mbps, 2, "Мбит/с")}</td>
+      <td class="num mono" data-label="CPU на 100 Мбит/с">${cell(t.host_cpu_pct_per_100mbps, 2, "%")}</td>
       ${proc ? `<td class="num mono" data-label="CPU прокси">${cell(t.cpu_cores, 3, "ядра")}</td>
       <td class="num mono" data-label="Память прокси">${cell(t.ram_mb, 1, "МБ")}</td>` : ""}
     </tr>`).join("");
     return `<section class="card" style="margin-bottom:16px">${head}
     <div class="table-wrap"><table class="table-cards">
-      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU сервера</th><th class="num">RAM сервера</th><th class="num">Сеть</th>${proc ? `<th class="num">CPU прокси</th><th class="num">Память прокси</th>` : ""}</tr></thead>
+      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU сервера</th><th class="num">RAM сервера</th><th class="num">Сеть</th><th class="num" title="CPU сервера на 100 Мбит/с трафика прокси">CPU на 100 Мбит/с</th>${proc ? `<th class="num">CPU прокси</th><th class="num">Память прокси</th>` : ""}</tr></thead>
       <tbody>${rows}</tbody></table></div>
     <div class="card-note">Проценты — от всего сервера (вместе с ОС): сравнение типов честное, когда серверы одного размера.${proc ? " CPU и память прокси — самого процесса прокси, сравнимы между любыми серверами." : ""} Сеть зависит от того, что делают клиенты, а не только от прокси.</div>
   </section>`;

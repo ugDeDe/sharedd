@@ -425,7 +425,8 @@ function loadHTML(load: NodeLoad | null): string {
    (вместе с фоном процесса); «предельная» = наклон регрессии × 1000 —
    сколько добавляет тысяча соединений сверх фона. */
 
-type CostKey = "host_cpu_pct" | "host_ram_pct" | "cpu_cores" | "ram_mb" | "net_mbps";
+type CostKey = "host_cpu_pct" | "host_ram_pct" | "cpu_cores" | "ram_mb" | "net_mbps"
+  | "host_cpu_pct_per_100mbps" | "cpu_cores_per_100mbps";
 /* Сервер (%) — по данным любых агентов; процесс прокси (ядра, МБ) — только
    у агентов с телеметрией процесса: без данных строка не показывается. */
 const COST_ROWS: { key: CostKey; label: string; unit: string; digits: number; optional?: boolean }[] = [
@@ -434,6 +435,13 @@ const COST_ROWS: { key: CostKey; label: string; unit: string; digits: number; op
   { key: "net_mbps", label: "Сеть", unit: "Мбит/с", digits: 2 },
   { key: "cpu_cores", label: "CPU процесса прокси", unit: "ядра", digits: 3, optional: true },
   { key: "ram_mb", label: "Память процесса прокси", unit: "МБ", digits: 1, optional: true },
+];
+
+/* CPU на 100 Мбит/с трафика: убирает разницу в том, сколько качают
+   клиенты, — остаётся цена байта (в основном шифрование). */
+const NET_COST_ROWS: typeof COST_ROWS = [
+  { key: "host_cpu_pct_per_100mbps", label: "CPU сервера", unit: "%", digits: 2 },
+  { key: "cpu_cores_per_100mbps", label: "CPU процесса прокси", unit: "ядра", digits: 4, optional: true },
 ];
 
 function costVal(v: number | null | undefined, digits: number, unit: string): string {
@@ -445,18 +453,20 @@ function connCostHTML(c: any, host: any): string {
   if (!c) {
     return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первая точка через минуту после отчёта ноды</div></section>`;
   }
-  const rows = COST_ROWS.filter((r) => !r.optional || (c[r.key]?.points ?? 0) > 0).map((r) => {
+  const costRows = (defs: typeof COST_ROWS): string => defs.filter((r) => !r.optional || (c[r.key]?.points ?? 0) > 0).map((r) => {
     const f = c[r.key] || {};
     const r2 = f.r2 == null ? "—" : f.r2.toFixed(2);
     const base = f.baseline == null ? "—" : `${f.baseline.toFixed(r.digits)} ${r.unit}`;
     return `<tr>
       <td data-label="Ресурс">${esc(r.label)}</td>
-      <td class="num mono" data-label="В среднем">${costVal(f.avg_per_1k, r.digits, r.unit)}</td>
-      <td class="num mono" data-label="Предельная">${costVal(f.marginal_per_1k, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="В среднем">${costVal(f.avg, r.digits, r.unit)}</td>
+      <td class="num mono" data-label="Предельная">${costVal(f.marginal, r.digits, r.unit)}</td>
       <td class="num mono" data-label="Фон">${base}</td>
       <td class="num mono" data-label="R²">${r2}</td>
     </tr>`;
   }).join("");
+  const rows = costRows(COST_ROWS);
+  const netRows = costRows(NET_COST_ROWS);
   const hostBits: string[] = [];
   if (host?.cpu_count != null) hostBits.push(`${host.cpu_count} ${plural(host.cpu_count, "ядро", "ядра", "ядер")}`);
   if (host?.ram_total_bytes != null) hostBits.push(`RAM ${fmtBytes(host.ram_total_bytes)}`);
@@ -467,6 +477,10 @@ function connCostHTML(c: any, host: any): string {
         <th class="num" title="наклон регрессии × 1000: сколько добавляет тысяча соединений сверх фона">Предельная</th>
         <th class="num" title="ресурс процесса при нуле соединений (оценка)">Фон</th><th class="num" title="насколько линейная модель объясняет данные (1 — идеально)">R²</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
+    <div class="chart-cap" style="margin:14px var(--pad) 7px">CPU на 100 Мбит/с трафика <span class="hint">цена байта, без влияния того, сколько качают клиенты</span></div>
+    <div class="table-wrap"><table class="table-cards">
+      <thead><tr><th>Ресурс</th><th class="num">В среднем</th><th class="num">Предельная</th><th class="num">Фон</th><th class="num">R²</th></tr></thead>
+      <tbody>${netRows || `<tr><td colspan="5" class="table-empty">нет данных — нода не присылает счётчики трафика</td></tr>`}</tbody></table></div>
     <div class="card-note">По ${c.points} ${plural(c.points, "точке", "точкам", "точкам")} (точка в минуту): соединений от ${fmtNum0(c.conns_min)} до ${fmtNum0(c.conns_max)}, в среднем ${fmtNum0(c.conns_avg)}.
       Предельная цена появляется, когда соединений было заметно разное число. Проценты — от всего сервера: сравнимы только между серверами одного размера.${hostBits.length ? " Хост: " + esc(hostBits.join(" · ")) + "." : ""}</div>
   </section>`;
@@ -480,8 +494,8 @@ function costByTypeHTML(list: any[]): string {
     return `<section class="card" style="margin-bottom:16px">${head}<div class="table-empty">данные копятся — первые точки появятся через минуту после отчётов нод</div></section>`;
   }
   const cell = (s: any, digits: number, unit: string): string => {
-    const avg = costVal(s?.avg_per_1k, digits, unit);
-    const marg = s?.marginal_per_1k == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal_per_1k, digits, unit)} (${s.marginal_nodes})</div>`;
+    const avg = costVal(s?.avg, digits, unit);
+    const marg = s?.marginal == null ? "" : `<div class="dim" style="font-size:11px">предельная ${costVal(s.marginal, digits, unit)} (${s.marginal_nodes})</div>`;
     return `${avg}${marg}`;
   };
   // Колонки процесса прокси — только когда хоть один тип их прислал.
@@ -492,12 +506,13 @@ function costByTypeHTML(list: any[]): string {
       <td class="num mono" data-label="CPU сервера">${cell(t.host_cpu_pct, 1, "%")}</td>
       <td class="num mono" data-label="RAM сервера">${cell(t.host_ram_pct, 1, "%")}</td>
       <td class="num mono" data-label="Сеть">${cell(t.net_mbps, 2, "Мбит/с")}</td>
+      <td class="num mono" data-label="CPU на 100 Мбит/с">${cell(t.host_cpu_pct_per_100mbps, 2, "%")}</td>
       ${proc ? `<td class="num mono" data-label="CPU прокси">${cell(t.cpu_cores, 3, "ядра")}</td>
       <td class="num mono" data-label="Память прокси">${cell(t.ram_mb, 1, "МБ")}</td>` : ""}
     </tr>`).join("");
   return `<section class="card" style="margin-bottom:16px">${head}
     <div class="table-wrap"><table class="table-cards">
-      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU сервера</th><th class="num">RAM сервера</th><th class="num">Сеть</th>${
+      <thead><tr><th>Тип</th><th class="num">Нод</th><th class="num">CPU сервера</th><th class="num">RAM сервера</th><th class="num">Сеть</th><th class="num" title="CPU сервера на 100 Мбит/с трафика прокси">CPU на 100 Мбит/с</th>${
         proc ? `<th class="num">CPU прокси</th><th class="num">Память прокси</th>` : ""}</tr></thead>
       <tbody>${rows}</tbody></table></div>
     <div class="card-note">Проценты — от всего сервера (вместе с ОС): сравнение типов честное, когда серверы одного размера.${
