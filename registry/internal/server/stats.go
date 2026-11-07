@@ -87,6 +87,7 @@ type publicNode struct {
 	MTProtoStatus    string    `json:"mtproto_status,omitempty"`
 	MTProtoSummary   string    `json:"mtproto_summary,omitempty"`
 	MTProtoRescued   bool      `json:"mtproto_rescued,omitempty"`
+	MTProtoVerdict   string    `json:"mtproto_verdict,omitempty"`
 	UnhealthyReason  string    `json:"unhealthy_reason,omitempty"` // санитизировано
 	RegisteredAt     time.Time `json:"registered_at"`
 	HeartbeatAgeSec  int64     `json:"heartbeat_age_sec"`
@@ -294,6 +295,7 @@ func (r *Registry) buildPublicNodeLocked(c *Candidate, queuePos int, domains []s
 		MTProtoStatus:     c.MTProtoStatus,
 		MTProtoSummary:    c.MTProtoSummary,
 		MTProtoRescued:    c.MTProtoRescued,
+		MTProtoVerdict:    c.MTProtoVerdict,
 		RegisteredAt:      c.RegisteredAt,
 		HeartbeatAgeSec:   int64(now.Sub(c.LastHeartbeat).Seconds()),
 		ReportAgeSec:      -1,
@@ -477,6 +479,7 @@ type publicNodeListItem struct {
 	MTProtoStatus         string   `json:"mtproto_status,omitempty"`
 	MTProtoSummary        string   `json:"mtproto_summary,omitempty"`
 	MTProtoRescued        bool     `json:"mtproto_rescued,omitempty"`
+	MTProtoVerdict        string   `json:"mtproto_verdict,omitempty"`
 	MetricsHealthy        bool     `json:"metrics_healthy"`
 	AvailabilityPct       float64  `json:"availability_pct"`
 	ClientsUniqueIPs      *float64 `json:"clients_unique_ips,omitempty"`
@@ -637,6 +640,7 @@ func (r *Registry) handleStatsList(w http.ResponseWriter, req *http.Request) {
 			MTProtoStatus:   c.MTProtoStatus,
 			MTProtoSummary:  c.MTProtoSummary,
 			MTProtoRescued:  c.MTProtoRescued,
+			MTProtoVerdict:  c.MTProtoVerdict,
 			MetricsHealthy:  c.MetricsHealthy,
 			AvailabilityPct: c.AvailabilityPct(),
 			ReportAgeSec:    -1,

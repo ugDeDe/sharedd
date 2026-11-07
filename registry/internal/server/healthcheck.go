@@ -150,7 +150,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 				if !verifiedOK && mt.ok {
 					// Карантин только когда обе проверки отрицательны.
 					verifiedOK, mt.rescued = true, true
-					log.Printf("globalping failed for %s (ratio=%.2f) but MTProto check is not RKN_BLOCK — treated as ok: %s",
+					log.Printf("globalping failed for %s (ratio=%.2f) but MTProto check reached it over TCP from RU — treated as ok: %s",
 						payload.NodeID, verifiedRatio, mt.summary)
 				}
 			}

@@ -156,6 +156,7 @@ type panelNode struct {
 	MTProtoSummary  string    `json:"mtproto_summary,omitempty"`
 	MTProtoAgeSec   int64     `json:"mtproto_age_sec,omitempty"`
 	MTProtoRescued  bool      `json:"mtproto_rescued,omitempty"`
+	MTProtoVerdict  string    `json:"mtproto_verdict,omitempty"`
 	UnhealthyReason string    `json:"unhealthy_reason,omitempty"`
 	RegisteredAt    time.Time `json:"registered_at"`
 	HeartbeatAgeSec int64     `json:"heartbeat_age_sec"`
@@ -683,6 +684,7 @@ func (r *Registry) buildPanelNodeLocked(c *Candidate, queuePos int, masterDomain
 		MTProtoStatus:     c.MTProtoStatus,
 		MTProtoSummary:    c.MTProtoSummary,
 		MTProtoRescued:    c.MTProtoRescued,
+		MTProtoVerdict:    c.MTProtoVerdict,
 		RegisteredAt:      c.RegisteredAt,
 		HeartbeatAgeSec:   int64(now.Sub(c.LastHeartbeat).Seconds()),
 		ReportAgeSec:      -1,

@@ -30,7 +30,7 @@ func TestCheckSendsKeyAndParses(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok, conclusive := res.Verdict(); !ok || !conclusive || res.Status != StatusDataCut {
-		t.Fatalf("only RKN_BLOCK is negative: %+v", res)
+		t.Fatalf("RU TCP open — not a block: %+v", res)
 	}
 	if s := res.Summary(); !strings.Contains(s, "RU tcp+ hs+ data-") || !strings.Contains(s, "NL tcp+ hs+ data+") {
 		t.Fatalf("summary: %s", s)

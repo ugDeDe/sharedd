@@ -49,22 +49,16 @@ type Result struct {
 	Remote     *Point `json:"remote"`
 }
 
-// Verdict — однозначен ли результат и не заблокирован ли прокси.
-// Отрицательный только RKN_BLOCK (из РФ не проходит хендшейк/TCP, снаружи
-// живой). Прочие статусы сервиса — не блокировка: MT_DEAD, в частности,
-// mtdd получает всегда (сервис просит DC вне 1..5, mtdd такие закрывает,
-// telemt уводит на DC по умолчанию). UNKNOWN и пустой статус — неоднозначно.
+// Verdict — однозначен ли результат и доступен ли прокси из РФ. Решает
+// только TCP с российской точки (local.tcp): false — недоступен, true —
+// доступен; статус сервиса не учитывается (MT_DEAD, например, mtdd получает
+// всегда: сервис просит DC вне 1..5, а RKN_BLOCK не ставится, когда TCP не
+// открылся и снаружи). Нет точки или поля tcp — неоднозначно.
 func (r *Result) Verdict() (ok, conclusive bool) {
-	if r == nil {
+	if r == nil || r.Local == nil || r.Local.TCP == nil {
 		return false, false
 	}
-	switch r.Status {
-	case StatusRKNBlock:
-		return false, true
-	case StatusOK, StatusDataCut, StatusMTDead, StatusDown:
-		return true, true
-	}
-	return false, false
+	return *r.Local.TCP, true
 }
 
 // Client — ключ, база и HTTP-клиент.

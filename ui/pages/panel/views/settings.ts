@@ -162,7 +162,7 @@ function renderGrid(): void {
           <label for="s-mt-base">api_base</label>
           <input type="text" id="s-mt-base" class="mono">
         </div>
-        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, только если Globalping провалена и MTProto-проверка говорит RKN_BLOCK (из РФ не проходит хендшейк или TCP). Остальные статусы — не блокировка (MT_DEAD mtdd получает всегда: сервис просит DC вне 1–5). «UNKNOWN» или сбой API — решает Globalping.</div>
+        <div class="note">Регистратор делает настоящий MTProto-хендшейк общим секретом пула из РФ (за ТСПУ) и снаружи. Нода в карантин идёт, если Globalping провалена и с российской точки сервиса не открылось TCP-соединение. Статус сервиса (OK, MT_DEAD, RKN_BLOCK…) не учитывается. Нет результата из РФ или сбой API — решает Globalping.</div>
       </div>
       <div class="cfg-foot"><button class="btn primary" id="s-mt-save">Сохранить MTProto-проверку</button></div>
     </div>

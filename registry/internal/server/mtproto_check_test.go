@@ -8,8 +8,19 @@ import (
 	"sharedd/registry/internal/mtprotocheck"
 )
 
-// stubMTProto — подменённый сервис проверки с фиксированным статусом.
-func stubMTProto(t *testing.T, r *Registry, status string, calls *atomic.Int32) {
+// mtResult — ответ сервиса: статус и TCP с точки РФ (nil — точки нет).
+func mtResult(status string, ruTCP *bool) *mtprotocheck.Result {
+	res := &mtprotocheck.Result{Status: status}
+	if ruTCP != nil {
+		res.Local = &mtprotocheck.Point{TCP: ruTCP}
+	}
+	return res
+}
+
+func boolp(v bool) *bool { return &v }
+
+// stubMTProto — подменённый сервис проверки с фиксированным ответом.
+func stubMTProto(t *testing.T, r *Registry, res *mtprotocheck.Result, calls *atomic.Int32) {
 	t.Helper()
 	r.cfg.MTProtoCheck.Token = "rf_test"
 	r.cfg.SharedProxy.TLSDomain = "front.example.com"
@@ -21,23 +32,23 @@ func stubMTProto(t *testing.T, r *Registry, status string, calls *atomic.Int32) 
 		if token != "rf_test" || port != 443 || secret != "ee00112233445566778899aabbccddeeff"+"66726f6e742e6578616d706c652e636f6d" {
 			t.Errorf("unexpected check request: token=%q ip=%s port=%d secret=%s", token, ip, port, secret)
 		}
-		return &mtprotocheck.Result{Status: status}, nil
+		return res, nil
 	}
 }
 
-// MT_DEAD — не блокировка (mtdd всегда так виден сервису): без карантина.
-func TestMTProtoMTDeadIsNotBlock(t *testing.T) {
+// MT_DEAD при открытом из РФ TCP (так сервис видит mtdd) — без карантина.
+func TestMTProtoMTDeadWithRUTCPIsNotBlock(t *testing.T) {
 	mock := newGPMock(t)
 	mock.setBad(true)
 	r := newTerminateTestRegistry(t)
 	r.cfg.Globalping.APIBase = mock.URL
 	var calls atomic.Int32
-	stubMTProto(t, r, mtprotocheck.StatusMTDead, &calls)
+	stubMTProto(t, r, mtResult(mtprotocheck.StatusMTDead, boolp(true)), &calls)
 	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
 	makeGreen(t, r, "node-one")
 	sendReport(t, r, "node-one", true, true)
 	if c := r.state.Candidates["node-one"]; c == nil || c.Quarantine != nil {
-		t.Fatal("MT_DEAD must not count as a block")
+		t.Fatal("MT_DEAD with RU TCP must not count as a block")
 	}
 }
 
@@ -48,7 +59,7 @@ func TestMTProtoOKKeepsNodeOutOfQuarantine(t *testing.T) {
 	r := newTerminateTestRegistry(t)
 	r.cfg.Globalping.APIBase = mock.URL
 	var calls atomic.Int32
-	stubMTProto(t, r, mtprotocheck.StatusOK, &calls)
+	stubMTProto(t, r, mtResult(mtprotocheck.StatusOK, boolp(true)), &calls)
 	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
 	makeGreen(t, r, "node-one")
 	sendReport(t, r, "node-one", true, true)
@@ -56,7 +67,7 @@ func TestMTProtoOKKeepsNodeOutOfQuarantine(t *testing.T) {
 	if c == nil || c.Quarantine != nil || !c.GlobalpingOK {
 		t.Fatalf("MTProto OK must keep the node out of quarantine: %+v", c)
 	}
-	if calls.Load() != 1 || c.MTProtoStatus != mtprotocheck.StatusOK || !c.MTProtoRescued {
+	if calls.Load() != 1 || c.MTProtoStatus != mtprotocheck.StatusOK || !c.MTProtoRescued || c.MTProtoVerdict != "ok" {
 		t.Fatalf("MTProto result must be recorded: calls=%d status=%q rescued=%v", calls.Load(), c.MTProtoStatus, c.MTProtoRescued)
 	}
 	rescued := 0
@@ -76,36 +87,39 @@ func TestMTProtoOKKeepsNodeOutOfQuarantine(t *testing.T) {
 	}
 }
 
-// Обе отрицательны — карантин, как раньше.
-func TestBothNegativeEnterQuarantine(t *testing.T) {
-	mock := newGPMock(t)
-	mock.setBad(true)
-	r := newTerminateTestRegistry(t)
-	r.cfg.Globalping.APIBase = mock.URL
-	var calls atomic.Int32
-	stubMTProto(t, r, mtprotocheck.StatusRKNBlock, &calls)
-	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
-	makeGreen(t, r, "node-one")
-	sendReport(t, r, "node-one", true, true)
-	c := r.state.Candidates["node-one"]
-	if c == nil || c.Quarantine == nil || c.MTProtoStatus != mtprotocheck.StatusRKNBlock || c.MTProtoRescued {
-		t.Fatalf("both negative must quarantine: %+v", c)
+// Globalping провалена и из РФ TCP не открылся — карантин, какой бы статус
+// ни поставил сервис (MT_DEAD при отказе TCP и из РФ, и снаружи).
+func TestRUTCPFailEntersQuarantine(t *testing.T) {
+	for _, status := range []string{mtprotocheck.StatusRKNBlock, mtprotocheck.StatusMTDead} {
+		mock := newGPMock(t)
+		mock.setBad(true)
+		r := newTerminateTestRegistry(t)
+		r.cfg.Globalping.APIBase = mock.URL
+		var calls atomic.Int32
+		stubMTProto(t, r, mtResult(status, boolp(false)), &calls)
+		r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
+		makeGreen(t, r, "node-one")
+		sendReport(t, r, "node-one", true, true)
+		c := r.state.Candidates["node-one"]
+		if c == nil || c.Quarantine == nil || c.MTProtoStatus != status || c.MTProtoRescued || c.MTProtoVerdict != "blocked" {
+			t.Fatalf("%s with RU tcp- must quarantine: %+v", status, c)
+		}
 	}
 }
 
-// Неоднозначный ответ MTProto — решает Globalping.
+// Нет результата точки РФ — решает Globalping.
 func TestMTProtoUnknownLeavesGlobalpingVerdict(t *testing.T) {
 	mock := newGPMock(t)
 	mock.setBad(true)
 	r := newTerminateTestRegistry(t)
 	r.cfg.Globalping.APIBase = mock.URL
 	var calls atomic.Int32
-	stubMTProto(t, r, mtprotocheck.StatusUnknown, &calls)
+	stubMTProto(t, r, mtResult(mtprotocheck.StatusOK, nil), &calls)
 	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
 	makeGreen(t, r, "node-one")
 	sendReport(t, r, "node-one", true, true)
 	if c := r.state.Candidates["node-one"]; c == nil || c.Quarantine == nil {
-		t.Fatal("UNKNOWN must not rescue the node")
+		t.Fatal("no RU result must not rescue the node")
 	}
 }
 
@@ -115,7 +129,7 @@ func TestMTProtoDisabledWithoutToken(t *testing.T) {
 	r := newTerminateTestRegistry(t)
 	r.cfg.Globalping.APIBase = mock.URL
 	var calls atomic.Int32
-	stubMTProto(t, r, mtprotocheck.StatusOK, &calls)
+	stubMTProto(t, r, mtResult(mtprotocheck.StatusOK, boolp(true)), &calls)
 	r.cfg.MTProtoCheck.Token = ""
 	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
 	sendReport(t, r, "node-one", true, true)
@@ -125,13 +139,20 @@ func TestMTProtoDisabledWithoutToken(t *testing.T) {
 }
 
 func TestMTProtoVerdict(t *testing.T) {
-	for status, want := range map[string][2]bool{
-		"OK": {true, true}, "DATA_CUT": {true, true}, "RKN_BLOCK": {false, true},
-		"MT_DEAD": {true, true}, "DOWN": {true, true}, "UNKNOWN": {false, false}, "": {false, false},
+	for _, tc := range []struct {
+		res            *mtprotocheck.Result
+		ok, conclusive bool
+	}{
+		{mtResult("OK", boolp(true)), true, true},
+		{mtResult("MT_DEAD", boolp(true)), true, true},
+		{mtResult("MT_DEAD", boolp(false)), false, true},
+		{mtResult("RKN_BLOCK", boolp(false)), false, true},
+		{mtResult("UNKNOWN", nil), false, false},
+		{nil, false, false},
 	} {
-		ok, conclusive := (&mtprotocheck.Result{Status: status}).Verdict()
-		if ok != want[0] || conclusive != want[1] {
-			t.Fatalf("%q: ok=%v conclusive=%v", status, ok, conclusive)
+		ok, conclusive := tc.res.Verdict()
+		if ok != tc.ok || conclusive != tc.conclusive {
+			t.Fatalf("%+v: ok=%v conclusive=%v", tc.res, ok, conclusive)
 		}
 	}
 }

@@ -387,10 +387,13 @@ type Candidate struct {
 	// статус сервиса (OK/DATA_CUT/RKN_BLOCK/MT_DEAD/DOWN/UNKNOWN; "error" —
 	// сбой API), время и краткая сводка по точкам. MTProtoRescued — последняя
 	// Globalping-проверка провалена, но MTProto (не RKN_BLOCK) удержал ноду от карантина.
-	MTProtoStatus    string    `json:"mtproto_status,omitempty"`
-	MTProtoAt        time.Time `json:"mtproto_at,omitempty"`
-	MTProtoSummary   string    `json:"mtproto_summary,omitempty"`
-	MTProtoRescued   bool      `json:"mtproto_rescued,omitempty"`
+	MTProtoStatus  string    `json:"mtproto_status,omitempty"`
+	MTProtoAt      time.Time `json:"mtproto_at,omitempty"`
+	MTProtoSummary string    `json:"mtproto_summary,omitempty"`
+	MTProtoRescued bool      `json:"mtproto_rescued,omitempty"`
+	// MTProtoVerdict — "ok" (из РФ TCP открылся), "blocked" (не открылся),
+	// "" — неоднозначно (нет точки РФ, сбой API).
+	MTProtoVerdict   string    `json:"mtproto_verdict,omitempty"`
 	LastGlobalpingAt time.Time `json:"last_globalping_at,omitempty"` // verification receipt only, not measurement freshness
 	// GlobalpingMeasurementAt comes only from a finished independent GET's
 	// createdAt. Missing legacy proof stays zero; never migrate from receipt time.
