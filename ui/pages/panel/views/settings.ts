@@ -201,9 +201,9 @@ function renderGrid(): void {
           <input type="text" id="s-ad-tag" class="mono" spellcheck="false" maxlength="32" placeholder="32 hex от @MTProxybot">
         </div>
         <div class="field">
-          <label for="s-ad-share">Доля времени мастерства, %</label>
-          <input type="number" id="s-ad-share" min="1" max="50">
-          <span class="help">Одинаковая для всех нод. Реклама идёт только пока нода мастер и чередуется периодами длиной master_ttl: нода с недобором получает рекламный период, с перебором — нет.</span>
+          <label for="s-ad-minutes">Минут рекламы в сутки на весь пул</label>
+          <input type="number" id="s-ad-minutes" min="1" max="1440">
+          <span class="help">Делится поровну между нодами, умеющими подмену тега, с округлением вверх до целых окон master_ttl (не меньше одного окна на ноду). Реклама идёт только пока нода мастер, окна чередуются: рекламное, своё, рекламное… Когда пул выбрал бюджет, до полуночи (по часам регистратора) рекламы нет. Ноды добавились или ушли — доли пересчитываются.</span>
         </div>
         <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd с подменой тега на лету — клиенты не переподключаются. Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
         <div class="as-status" id="s-ad-status"></div>
@@ -305,8 +305,8 @@ export async function load(): Promise<void> {
   const ad = c.ad_pause || {};
   ($("s-ad-enabled") as HTMLInputElement).checked = !!ad.enabled;
   ($("s-ad-tag") as HTMLInputElement).value = ad.tag || "";
-  ($("s-ad-share") as HTMLInputElement).value = ad.share_percent || 10;
-  renderAdPauseStatus(data.ad_pause_status);
+  ($("s-ad-minutes") as HTMLInputElement).value = ad.minutes_per_day || 60;
+  renderAdPauseStatus(data.ad_pause_status, data.ad_pause_summary);
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
   // Раньше это был моноширинный дамп в рамке. Те же значения читаются
@@ -387,12 +387,17 @@ const AD_STATE: Record<string, string> = {
   pool: "тег пула", own: "свой тег", unsupported: "не поддерживает", failed: "ошибка", "": "нет данных",
 };
 
-function renderAdPauseStatus(list: any[]): void {
+function renderAdPauseStatus(list: any[], sum: any): void {
   if (!list || list.length === 0) { $("s-ad-status").innerHTML = ""; return; }
-  $("s-ad-status").innerHTML = `<div class="as-sources">` + list.map((n: any) => {
+  const head = sum
+    ? `<div class="as-src"><span class="as-src-name">Сегодня (${esc(sum.day)})</span>` +
+      `<span class="as-src-stat">пул ${fmtDur(sum.used_sec)} из ${fmtDur(sum.budget_sec)} · нод с рекламой: ${sum.nodes} · окно ${fmtDur(sum.period_sec)}</span></div>`
+    : "";
+  $("s-ad-status").innerHTML = `<div class="as-sources">` + head + list.map((n: any) => {
     const state = AD_STATE[n.state ?? ""] ?? n.state;
-    const now = n.active ? " · сейчас период рекламы" : (n.master ? " · мастер" : "");
-    const stat = `${state}${now} · реклама ${fmtDur(n.ad_sec)} из ${fmtDur(n.master_sec)} мастерства (${n.share.toFixed(1)}%)`;
+    const now = n.active ? " · сейчас окно рекламы" : (n.master ? " · мастер" : "");
+    const quota = n.quota_sec ? ` из ${fmtDur(n.quota_sec)}` : "";
+    const stat = `${state}${now} · сегодня ${fmtDur(n.today_sec)}${quota} · всего ${fmtDur(n.ad_sec)}`;
     return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}">` +
       `<span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span>` +
       `<span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
@@ -532,7 +537,7 @@ export function init(): void {
     saveSection({ ad_pause: {
       enabled: ($("s-ad-enabled") as HTMLInputElement).checked,
       tag: ($("s-ad-tag") as HTMLInputElement).value.trim(),
-      share_percent: parseInt(($("s-ad-share") as HTMLInputElement).value, 10) || 10,
+      minutes_per_day: parseInt(($("s-ad-minutes") as HTMLInputElement).value, 10) || 60,
     } }, "Рекламная пауза сохранена")
       .then(() => load().catch(() => {}))
       .catch((e) => showToast(e.message, true));

@@ -432,11 +432,15 @@ type Candidate struct {
 	// AdDecidedAt — момент решения. AdState — последнее подтверждённое
 	// агентом состояние тега (pool/own/unsupported/failed). AdSeconds/AdSince —
 	// подтверждённое агентом время с тегом пула (закрытое + открытый отрезок).
+	// AdDay/AdDaySec — закрытое подтверждённое время за сутки AdDay
+	// (YYYY-MM-DD, локальная зона регистратора): расход дневного бюджета.
 	AdActive    bool      `json:"ad_active,omitempty"`
 	AdDecidedAt time.Time `json:"ad_decided_at,omitempty"`
 	AdState     string    `json:"ad_state,omitempty"`
 	AdSeconds   int64     `json:"ad_seconds,omitempty"`
 	AdSince     time.Time `json:"ad_since,omitempty"`
+	AdDay       string    `json:"ad_day,omitempty"`
+	AdDaySec    int64     `json:"ad_day_sec,omitempty"`
 
 	// История для детальной страницы ноды: кольцевые буферы точек,
 	// персистятся вместе с State. GPLast — деталь последнего measurement'а

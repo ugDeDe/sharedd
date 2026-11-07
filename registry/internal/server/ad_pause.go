@@ -12,41 +12,37 @@ import (
 	"sharedd/registry/internal/state"
 )
 
-// Рекламная пауза пула: share_percent процентов времени мастерства каждой
-// ноды она показывает рекламный тег пула вместо своего.
+// Рекламная пауза пула: [ad_pause] minutes_per_day минут в сутки на весь
+// пул ноды показывают рекламный тег пула вместо своего.
 //
-// Честность:
-//   - доля одна для всех нод и задаётся только в конфиге регистратора;
-//   - реклама живёт только внутри мастерства (когда нода получает новых
-//     клиентов) и чередуется: решение принимается в начале мастерства и
-//     затем раз в master_ttl, по накопленному времени — нода с недобором
-//     получает рекламный период, с перебором — нет (adPauseDecide);
+// Расписание:
+//   - бюджет суток делится поровну между нодами, умеющими подмену тега
+//     (adPauseCapable), и округляется вверх до целых окон длиной master_ttl —
+//     меньше одного окна нода не получает (adPauseQuota). Ноды считаются на
+//     каждом решении, поэтому добавление и удаление ноды сразу
+//     перераспределяет доли;
+//   - реклама живёт только внутри мастерства, окнами master_ttl: решение в
+//     начале мастерства и затем раз в окно. Окна чередуются — рекламное,
+//     своё, рекламное…; первое окно мастерства может быть рекламным;
+//   - окно рекламное, пока у ноды не выбрана её доля за сутки и пул не
+//     выбрал общий бюджет (с учётом уже идущих окон). Набрался бюджет —
+//     до конца суток (полночь по часам регистратора) рекламы нет;
 //   - считается только время, ПОДТВЕРЖДЁННОЕ агентом (ad_pause_state=pool в
-//     heartbeat), и всё такое время, включая хвост после конца периода;
-//     сбой постановки тега пула ноде долг не создаёт — она просто получит
-//     период позже, когда тег встанет;
+//     heartbeat); сбой постановки тега долг не создаёт;
 //   - каждое включение и выключение тега пула пишется в журнал событий.
 //
 // Поддерживают ноды mtdd с подменой тега на лету (POST/DELETE /v1/ad-tag):
 // клиенты не переподключаются. Ноды без поддержки подтверждают
-// "unsupported" и в расписание не попадают.
+// "unsupported" и в расписание и делёж бюджета не попадают.
 
-// adPauseDefaultPeriod — длина рекламного периода при выключенном master_ttl.
+// adPauseDefaultPeriod — длина рекламного окна при выключенном master_ttl.
 const adPauseDefaultPeriod = 10 * time.Minute
-
-// adPauseDecide — делать ли следующий период длины period рекламным: да,
-// если так доля adSec/masterSec после периода окажется ближе к share, чем
-// без него (A + L/2 < s·(M + L)). Самокорректируется по фактическому времени.
-func adPauseDecide(adSec, masterSec int64, period time.Duration, share float64) bool {
-	l := period.Seconds()
-	return float64(adSec)+l/2 < share*(float64(masterSec)+l)
-}
 
 type adPauseSettings struct {
 	enabled bool
 	tag     string
-	share   float64
-	period  time.Duration
+	daily   time.Duration // бюджет пула на сутки
+	period  time.Duration // окно = master_ttl
 }
 
 func (r *Registry) adPauseSettings() adPauseSettings {
@@ -59,22 +55,113 @@ func (r *Registry) adPauseSettings() adPauseSettings {
 	return adPauseSettings{
 		enabled: r.cfg.AdPause.Enabled != nil && *r.cfg.AdPause.Enabled && r.cfg.AdPause.Tag != "",
 		tag:     strings.ToLower(r.cfg.AdPause.Tag),
-		share:   float64(r.cfg.AdPause.SharePercent) / 100,
+		daily:   time.Duration(r.cfg.AdPause.MinutesPerDay) * time.Minute,
 		period:  period,
 	}
+}
+
+// budget — бюджет суток, не меньше одного окна.
+func (st adPauseSettings) budget() time.Duration {
+	return max(st.daily, st.period)
+}
+
+// adPauseCapable — агент подтвердил, что умеет подмену тега (pool/own/failed).
+// Ноды без данных (старый агент) и "unsupported" бюджет не делят.
+func adPauseCapable(c *Candidate) bool {
+	switch c.AdState {
+	case machineapi.AdPauseStatePool, machineapi.AdPauseStateOwn, machineapi.AdPauseStateFailed:
+		return true
+	}
+	return false
+}
+
+// adPauseQuota — доля ноды за сутки: бюджет поровну на nodes нод, вверх до
+// целых окон, минимум одно окно.
+func adPauseQuota(daily, period time.Duration, nodes int) time.Duration {
+	if nodes < 1 || period <= 0 {
+		return 0
+	}
+	per := daily / time.Duration(nodes)
+	windows := max((per+period-1)/period, 1)
+	return windows * period
+}
+
+// adDay — текущие сутки регистратора (зона now): ключ и полночь.
+func adDay(now time.Time) (string, time.Time) {
+	y, m, d := now.Date()
+	start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	return start.Format("2006-01-02"), start
+}
+
+// adTodaySec — подтверждённая реклама ноды за текущие сутки: закрытые
+// отрезки плюс часть открытого после полуночи.
+func adTodaySec(c *Candidate, now time.Time) int64 {
+	key, start := adDay(now)
+	var total int64
+	if c.AdDay == key {
+		total = c.AdDaySec
+	}
+	if !c.AdSince.IsZero() {
+		if from := maxTime(c.AdSince, start); now.After(from) {
+			total += int64(now.Sub(from).Seconds())
+		}
+	}
+	return total
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// adPauseCommittedSec — расход бюджета пула за сутки: подтверждённое время
+// всех нод плюс остаток уже назначенных рекламных окон.
+func adPauseCommittedSec(cands map[string]*Candidate, now time.Time, period time.Duration) float64 {
+	var used float64
+	for _, c := range cands {
+		used += float64(adTodaySec(c, now))
+		if c.AdActive && !c.AdDecidedAt.IsZero() {
+			if rest := period - now.Sub(c.AdDecidedAt); rest > 0 {
+				used += rest.Seconds()
+			}
+		}
+	}
+	return used
 }
 
 // scheduleAdPauseLocked — решения по всем кандидатам (тик селекции, под r.mu).
 // Возвращает, менялось ли желаемое состояние.
 func (r *Registry) scheduleAdPauseLocked(now time.Time, st adPauseSettings) bool {
+	nodes := 0
+	for _, c := range r.state.Candidates {
+		if adPauseCapable(c) {
+			nodes++
+		}
+	}
+	quota := adPauseQuota(st.daily, st.period, nodes).Seconds()
+	budget := st.budget().Seconds()
+	// Полокна допуска: подтверждение идёт heartbeat'ами, и выбранное окно
+	// засчитывается чуть короче периода.
+	half := st.period.Seconds() / 2
+	committed := adPauseCommittedSec(r.state.Candidates, now, st.period)
+
 	changed := false
 	for _, c := range r.state.Candidates {
 		want, decided := c.AdActive, c.AdDecidedAt
 		switch {
-		case !st.enabled || c.AdState == machineapi.AdPauseStateUnsupported || c.MasterSince.IsZero():
+		case !st.enabled || !adPauseCapable(c) || c.MasterSince.IsZero():
 			want, decided = false, time.Time{}
 		case decided.IsZero() || decided.Before(c.MasterSince) || now.Sub(decided) >= st.period:
-			want = adPauseDecide(c.AdTimeSec(now), c.MasterTimeSec(now), st.period, st.share)
+			newMastery := decided.IsZero() || decided.Before(c.MasterSince)
+			prevAd := c.AdActive && !newMastery
+			want = !prevAd &&
+				float64(adTodaySec(c, now))+half < quota &&
+				committed+half < budget
+			if want {
+				committed += st.period.Seconds() // резерв окна для следующих нод тика
+			}
 			decided = now
 		}
 		if want != c.AdActive || !decided.Equal(c.AdDecidedAt) {
@@ -109,17 +196,24 @@ func (r *Registry) noteAdPauseStateLocked(c *Candidate, reported string, now tim
 		c.AdSince = now
 		r.addEventLocked(Event{
 			Type: state.EventAdPauseOn, NodeID: c.NodeID, IP: c.IP,
-			Detail: fmt.Sprintf("рекламный тег пула включён (за всё время: реклама %s из %s мастерства)",
-				fmtDurSec(c.AdTimeSec(now)), fmtDurSec(c.MasterTimeSec(now))),
+			Detail: fmt.Sprintf("рекламный тег пула включён (за сутки у ноды: %s)",
+				fmtDurSec(adTodaySec(c, now))),
 		})
 	case reported != machineapi.AdPauseStatePool && !c.AdSince.IsZero():
 		span := int64(now.Sub(c.AdSince).Seconds())
 		c.AdSeconds += span
+		key, start := adDay(now)
+		if c.AdDay != key {
+			c.AdDay, c.AdDaySec = key, 0
+		}
+		if from := maxTime(c.AdSince, start); now.After(from) {
+			c.AdDaySec += int64(now.Sub(from).Seconds())
+		}
 		c.AdSince = time.Time{}
 		r.addEventLocked(Event{
 			Type: state.EventAdPauseOff, NodeID: c.NodeID, IP: c.IP,
-			Detail: fmt.Sprintf("рекламный тег пула снят через %s (%s); всего реклама %s из %s мастерства",
-				fmtDurSec(span), reported, fmtDurSec(c.AdSeconds), fmtDurSec(c.MasterTimeSec(now))),
+			Detail: fmt.Sprintf("рекламный тег пула снят через %s (%s); за сутки у ноды %s",
+				fmtDurSec(span), reported, fmtDurSec(c.AdDaySec)),
 		})
 	}
 	if prev != reported {
@@ -141,32 +235,51 @@ func writeHeartbeatOK(w http.ResponseWriter, directive *machineapi.AdPauseDirect
 }
 
 type adPauseNodeStatus struct {
-	NodeID    string  `json:"node_id"`
-	IP        string  `json:"ip"`
-	NodeType  string  `json:"node_type,omitempty"`
-	State     string  `json:"state"`  // подтверждённое агентом (pool/own/unsupported/failed/"")
-	Active    bool    `json:"active"` // желаемое сейчас
-	Master    bool    `json:"master"`
-	MasterSec int64   `json:"master_sec"`
-	AdSec     int64   `json:"ad_sec"`
-	Share     float64 `json:"share"` // фактическая доля рекламы во времени мастерства, %
+	NodeID   string `json:"node_id"`
+	IP       string `json:"ip"`
+	NodeType string `json:"node_type,omitempty"`
+	State    string `json:"state"`  // подтверждённое агентом (pool/own/unsupported/failed/"")
+	Active   bool   `json:"active"` // желаемое сейчас
+	Master   bool   `json:"master"`
+	TodaySec int64  `json:"today_sec"` // подтверждённая реклама за сутки
+	QuotaSec int64  `json:"quota_sec"` // доля ноды за сутки (0 — не участвует)
+	AdSec    int64  `json:"ad_sec"`    // за всё время
 }
 
-// adPauseStatusSnapshot — сводка по нодам для панели, по node_id.
-func (r *Registry) adPauseStatusSnapshot(now time.Time) []adPauseNodeStatus {
+type adPauseSummary struct {
+	Day       string `json:"day"`
+	Nodes     int    `json:"nodes"`      // делят бюджет
+	BudgetSec int64  `json:"budget_sec"` // бюджет суток (не меньше окна)
+	UsedSec   int64  `json:"used_sec"`   // подтверждено за сутки
+	PeriodSec int64  `json:"period_sec"` // окно = master_ttl
+}
+
+// adPauseStatusSnapshot — сводка по нодам (по node_id) и по пулу для панели.
+func (r *Registry) adPauseStatusSnapshot(now time.Time) ([]adPauseNodeStatus, adPauseSummary) {
+	st := r.adPauseSettings()
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	nodes := 0
+	for _, c := range r.state.Candidates {
+		if adPauseCapable(c) {
+			nodes++
+		}
+	}
+	quota := int64(adPauseQuota(st.daily, st.period, nodes).Seconds())
+	day, _ := adDay(now)
+	sum := adPauseSummary{Day: day, Nodes: nodes, BudgetSec: int64(st.budget().Seconds()), PeriodSec: int64(st.period.Seconds())}
 	out := make([]adPauseNodeStatus, 0, len(r.state.Candidates))
 	for _, c := range r.state.Candidates {
-		st := adPauseNodeStatus{
+		ns := adPauseNodeStatus{
 			NodeID: c.NodeID, IP: c.IP, NodeType: c.NodeType, State: c.AdState, Active: c.AdActive,
-			Master: !c.MasterSince.IsZero(), MasterSec: c.MasterTimeSec(now), AdSec: c.AdTimeSec(now),
+			Master: !c.MasterSince.IsZero(), TodaySec: adTodaySec(c, now), AdSec: c.AdTimeSec(now),
 		}
-		if st.MasterSec > 0 {
-			st.Share = float64(st.AdSec) * 100 / float64(st.MasterSec)
+		if adPauseCapable(c) {
+			ns.QuotaSec = quota
 		}
-		out = append(out, st)
+		sum.UsedSec += ns.TodaySec
+		out = append(out, ns)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].NodeID < out[j].NodeID })
-	return out
+	return out, sum
 }
