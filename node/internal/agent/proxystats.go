@@ -86,29 +86,30 @@ func pidsHoldingSockets(inodes map[string]bool) []int {
 	return pids
 }
 
-// procCPUTicks — utime+stime процесса (все потоки) в тиках.
-func procCPUTicks(pid int) (float64, bool) {
+// procCPUTicks — utime+stime процесса (все потоки) в тиках и starttime
+// (по нему видно, что PID переиспользован другим процессом).
+func procCPUTicks(pid int) (ticks float64, start string, ok bool) {
 	b, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "stat"))
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
 	s := string(b)
 	// comm в скобках может содержать пробелы — поля считаем после ")".
 	i := strings.LastIndexByte(s, ')')
 	if i < 0 {
-		return 0, false
+		return 0, "", false
 	}
 	fields := strings.Fields(s[i+1:])
-	// после ")": state=0, ..., utime=11, stime=12
-	if len(fields) < 13 {
-		return 0, false
+	// после ")": state=0, ..., utime=11, stime=12, starttime=19
+	if len(fields) < 20 {
+		return 0, "", false
 	}
 	u, err1 := strconv.ParseFloat(fields[11], 64)
 	st, err2 := strconv.ParseFloat(fields[12], 64)
 	if err1 != nil || err2 != nil {
-		return 0, false
+		return 0, "", false
 	}
-	return u + st, true
+	return u + st, fields[19], true
 }
 
 // procRSSBytes — VmRSS процесса.
@@ -135,7 +136,41 @@ type proxySample struct {
 var (
 	proxySampleMu sync.Mutex
 	proxyPrev     proxySample
+	proxyPIDs     proxyPIDCache
 )
+
+// proxyRescanEvery — как часто искать процессы прокси заново, даже если
+// найденные живы (воркеры mtproxy могут смениться). Поиск дорог: ядро
+// форматирует весь /proc/net/tcp (тысячи соединений), плюс обход fd всех
+// процессов; прежде он шёл на каждом отчёте метрик (раз в 5 с).
+const proxyRescanEvery = 5 * time.Minute
+
+// proxyPIDCache — найденные процессы прокси: PID и starttime каждого.
+type proxyPIDCache struct {
+	port   int
+	pids   []int
+	starts map[int]string
+	at     time.Time
+}
+
+// cachedProxyPIDs — процессы из кэша, если он для этого порта, свежий и
+// непустой (живость и переиспользование PID проверяет вызывающий по
+// starttime).
+func cachedProxyPIDs(port int, now time.Time) ([]int, map[int]string) {
+	proxySampleMu.Lock()
+	defer proxySampleMu.Unlock()
+	c := proxyPIDs
+	if c.port != port || len(c.pids) == 0 || now.Sub(c.at) >= proxyRescanEvery || now.Before(c.at) {
+		return nil, nil
+	}
+	return c.pids, c.starts
+}
+
+func storeProxyPIDs(c proxyPIDCache) {
+	proxySampleMu.Lock()
+	proxyPIDs = c
+	proxySampleMu.Unlock()
+}
 
 // proxyResources — CPU прокси в ядрах (дельта тиков к прошлому вызову),
 // RSS и число процессов. Первый вызов и смена набора процессов CPU не дают.
@@ -143,23 +178,48 @@ func proxyResources(port int, now time.Time) (cores, rss float64, procs int, cpu
 	if port <= 0 {
 		return 0, 0, 0, false
 	}
-	pids := pidsHoldingSockets(listenSocketInodes(port))
-	if len(pids) == 0 {
-		return 0, 0, 0, false
-	}
 	var ticks float64
-	keys := make([]string, 0, len(pids))
-	for _, pid := range pids {
-		t, ok := procCPUTicks(pid)
-		if !ok {
+	var keys []string
+	// Сначала кэш: те же процессы с тем же starttime — без повторного поиска.
+	// Исчез или переиспользован хоть один — ищем заново сразу же.
+	for attempt := 0; attempt < 2; attempt++ {
+		pids, starts := cachedProxyPIDs(port, now)
+		fresh := pids == nil
+		if fresh {
+			pids = pidsHoldingSockets(listenSocketInodes(port))
+			starts = make(map[int]string, len(pids))
+		}
+		if len(pids) == 0 {
+			storeProxyPIDs(proxyPIDCache{})
+			return 0, 0, 0, false
+		}
+		ticks, rss, procs = 0, 0, 0
+		keys = make([]string, 0, len(pids))
+		stale := false
+		for _, pid := range pids {
+			t, start, ok := procCPUTicks(pid)
+			if !ok || (!fresh && starts[pid] != start) {
+				stale = true
+				continue
+			}
+			if fresh {
+				starts[pid] = start
+			}
+			ticks += t
+			if r, ok := procRSSBytes(pid); ok {
+				rss += r
+			}
+			keys = append(keys, strconv.Itoa(pid))
+			procs++
+		}
+		if stale && !fresh {
+			storeProxyPIDs(proxyPIDCache{}) // процесс сменился: искать заново
 			continue
 		}
-		ticks += t
-		if r, ok := procRSSBytes(pid); ok {
-			rss += r
+		if fresh {
+			storeProxyPIDs(proxyPIDCache{port: port, pids: pids, starts: starts, at: now})
 		}
-		keys = append(keys, strconv.Itoa(pid))
-		procs++
+		break
 	}
 	if procs == 0 {
 		return 0, 0, 0, false

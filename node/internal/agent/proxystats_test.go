@@ -60,8 +60,9 @@ func appendInt(b []byte, n int) []byte {
 
 func TestProxyResourcesSumsSocketHolders(t *testing.T) {
 	old := procRoot
-	t.Cleanup(func() { procRoot = old; proxyPrev = proxySample{} })
+	t.Cleanup(func() { procRoot = old; proxyPrev = proxySample{}; proxyPIDs = proxyPIDCache{} })
 	proxyPrev = proxySample{}
+	proxyPIDs = proxyPIDCache{}
 	now := time.Unix(1_800_000_000, 0)
 
 	procRoot = fakeProc(t, map[int]int{10: 1000, 11: 500, 20: 7})
@@ -82,5 +83,44 @@ func TestProxyResourcesSumsSocketHolders(t *testing.T) {
 	}
 	if _, _, procs, _ := proxyResources(8443, now); procs != 0 {
 		t.Fatal("no listener on the port means no proxy processes")
+	}
+}
+
+// Найденные процессы прокси кэшируются: /proc/net/tcp и fd не перечитываются,
+// пока процессы те же; исчез или переиспользован PID — поиск заново.
+func TestProxyResourcesCachesDiscovery(t *testing.T) {
+	old := procRoot
+	t.Cleanup(func() { procRoot = old; proxyPrev = proxySample{}; proxyPIDs = proxyPIDCache{} })
+	proxyPrev, proxyPIDs = proxySample{}, proxyPIDCache{}
+	now := time.Unix(1_800_000_000, 0)
+	procRoot = fakeProc(t, map[int]int{10: 1000, 11: 500, 20: 7})
+	if _, _, procs, _ := proxyResources(443, now); procs != 2 {
+		t.Fatalf("first: procs=%d", procs)
+	}
+	// Без /proc/net/tcp кэш всё равно находит те же процессы.
+	if err := os.Remove(filepath.Join(procRoot, "net/tcp")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, procs, cpuOK := proxyResources(443, now.Add(5*time.Second)); procs != 2 || !cpuOK {
+		t.Fatalf("cached: procs=%d cpuOK=%v", procs, cpuOK)
+	}
+	// PID 11 переиспользован (другой starttime) — поиск заново: сокет :443
+	// теперь не найти (net/tcp удалён), процессов нет.
+	stat := filepath.Join(procRoot, "11", "stat")
+	if err := os.WriteFile(stat, []byte("11 (other) S 1 1 1 0 -1 0 0 0 0 0 5 0 0 0 20 0 8 0 999 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, procs, _ := proxyResources(443, now.Add(10*time.Second)); procs != 0 {
+		t.Fatalf("reused PID must force a rescan: procs=%d", procs)
+	}
+	// Через proxyRescanEvery поиск повторяется и при живых процессах.
+	procRoot = fakeProc(t, map[int]int{10: 1000, 11: 500, 20: 7})
+	proxyResources(443, now.Add(20*time.Second))
+	if c := proxyPIDs; len(c.pids) != 2 || !c.at.Equal(now.Add(20*time.Second)) {
+		t.Fatalf("rescan must refresh the cache: %+v", c)
+	}
+	proxyResources(443, now.Add(20*time.Second+proxyRescanEvery))
+	if c := proxyPIDs; !c.at.Equal(now.Add(20*time.Second + proxyRescanEvery)) {
+		t.Fatalf("stale cache must be rescanned: %+v", c)
 	}
 }
