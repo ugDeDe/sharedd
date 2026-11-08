@@ -37,6 +37,9 @@ func newTestRegistry(t *testing.T) *Registry {
 	cfg.Panel.EventsMax = 500
 	cfg.QuarantineAttempts = 3 // как ставит applyRegistryDefaults в проде
 	cfg.SharedProxy.TLSDomain = "front.example.com"
+	// Внешний check-host в тестах не зовём: подтверждение бана выключено.
+	sshOff := false
+	cfg.SSHCheck.Enabled = &sshOff
 	r := &Registry{
 		cfg: cfg,
 		state: State{

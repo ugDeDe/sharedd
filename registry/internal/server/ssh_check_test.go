@@ -150,3 +150,59 @@ func TestSSHCheckPanelEditor(t *testing.T) {
 		}
 	}
 }
+
+// banConfirmRegistry — карантин на одну попытку, check-host подменён.
+func banConfirmRegistry(t *testing.T, res map[string]checkhost.TCPResult) *Registry {
+	t.Helper()
+	mock := newGPMock(t)
+	mock.setBad(true)
+	r := newTerminateTestRegistry(t)
+	r.cfg.Globalping.APIBase = mock.URL
+	r.cfg.QuarantineAttempts = 1
+	on := true
+	r.cfg.SSHCheck.Enabled = &on
+	r.cfg.SSHCheck.IntervalSec, r.cfg.SSHCheck.Port, r.cfg.SSHCheck.FailStreak = 20, 22, 3
+	r.cfg.SSHCheck.ForeignNodes, r.cfg.SSHCheck.RUOKPercent = 1, 50
+	f := &fakeCheckHost{nodes: []checkhost.Node{{Name: "ru1", Country: "ru"}, {Name: "de1", Country: "de"}}, res: res}
+	old, oldFirst := newSSHCheckAPI, sshCheckFirstPollVar
+	t.Cleanup(func() { newSSHCheckAPI, sshCheckFirstPollVar = old, oldFirst })
+	newSSHCheckAPI = func(string) sshCheckAPI { return f }
+	sshCheckFirstPollVar = time.Millisecond
+	r.register(registerRequest{NodeID: "node-one", IP: "1.1.1.1"})
+	return r
+}
+
+// check-host подтвердил (из РФ закрыт, снаружи открыт) — бан.
+func TestBanNeedsCheckHostConfirmation(t *testing.T) {
+	r := banConfirmRegistry(t, map[string]checkhost.TCPResult{"ru1": chRes(false, "Connection timed out"), "de1": chRes(true, "")})
+	sendReport(t, r, "node-one", true, true)
+	if r.state.Candidates["node-one"] != nil || r.state.Terminated["node-one"] == nil {
+		t.Fatal("confirmed block must ban")
+	}
+}
+
+// Из РФ открыт — бана нет, нода остаётся в карантине.
+func TestBanNotConfirmedWhenOpenFromRU(t *testing.T) {
+	r := banConfirmRegistry(t, map[string]checkhost.TCPResult{"ru1": chRes(true, ""), "de1": chRes(true, "")})
+	sendReport(t, r, "node-one", true, true)
+	c := r.state.Candidates["node-one"]
+	if c == nil || r.state.Terminated["node-one"] != nil || c.Quarantine == nil {
+		t.Fatalf("unconfirmed block must keep the node in quarantine without a ban: %+v", c)
+	}
+	found := false
+	for _, ev := range r.state.Events {
+		found = found || ev.Type == EventBanUnconfirmed
+	}
+	if !found {
+		t.Fatal("ban_unconfirmed must be journaled")
+	}
+}
+
+// Закрыт и снаружи (или check-host молчит) — тоже без бана.
+func TestBanNotConfirmedWhenClosedEverywhere(t *testing.T) {
+	r := banConfirmRegistry(t, map[string]checkhost.TCPResult{"ru1": chRes(false, "Connection timed out"), "de1": chRes(false, "Connection timed out")})
+	sendReport(t, r, "node-one", true, true)
+	if r.state.Candidates["node-one"] == nil || r.state.Terminated["node-one"] != nil {
+		t.Fatal("closed everywhere is not a confirmed block")
+	}
+}

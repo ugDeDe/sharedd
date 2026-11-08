@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="cf35560f08faf294">
+  <meta name="sharedd-build" content="bca790fc21e6937c">
 </head>
 <body>
 
@@ -4936,7 +4936,7 @@
         <div class="field"><label for="s-ssh-foreign">Зарубежных узлов в проверке</label><input type="number" id="s-ssh-foreign" min="1" max="10"></div>
         <div class="field"><label for="s-ssh-ruok">Порог «открыт из РФ», % российских узлов</label><input type="number" id="s-ssh-ruok" min="1" max="100"></div>
         <div class="field"><label for="s-ssh-base">api_base</label><input type="text" id="s-ssh-base" class="mono"></div>
-        <div class="note">Каждый мастер (и нода, уже выведенная этой проверкой) проверяется TCP на порт со всех российских узлов check-host.net и с нескольких зарубежных. Из РФ закрыт, снаружи открыт — плохая проверка; нужное число подряд — нода вне очереди, пока из РФ порт снова не откроется. Закрыт и снаружи — не в счёт (это решают другие проверки).</div>
+        <div class="note">Каждый мастер (и нода, уже выведенная этой проверкой) проверяется TCP на порт со всех российских узлов check-host.net и с нескольких зарубежных. Из РФ закрыт, снаружи открыт — плохая проверка; нужное число подряд — нода вне очереди, пока из РФ порт снова не откроется. Закрыт и снаружи — не в счёт (это решают другие проверки). При включённой проверке бан по IP требует её подтверждения: когда карантин исчерпан, check-host должен показать «из РФ закрыт, снаружи открыт», иначе бана нет. На вход в карантин не влияет.</div>
       </div>
       <div class="cfg-foot"><button class="btn primary" id="s-ssh-save">Сохранить проверку порта</button></div>
     </div>

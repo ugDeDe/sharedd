@@ -32,6 +32,7 @@ const (
 	EventMTProtoRescued      = "mtproto_rescued"      // Globalping провалена, MTProto не RKN_BLOCK — без карантина
 	EventSSHBlocked          = "ssh_blocked"          // check-host: порт закрыт из РФ fail_streak раз подряд, снаружи открыт — вне очереди
 	EventSSHRecovered        = "ssh_recovered"        // check-host: из РФ порт снова открыт
+	EventBanUnconfirmed      = "ban_unconfirmed"      // карантин исчерпан, check-host не подтвердил блокировку — без бана
 	EventQueueJoined         = "queue_joined"         // вошла в очередь мастерства (fully healthy)
 	EventQueueLeft           = "queue_left"           // выпала из очереди (позиция сгорела)
 	EventMasterElected       = "master_elected"

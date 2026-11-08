@@ -240,15 +240,24 @@ func sshCheckEvaluate(res map[string]checkhost.TCPResult, ru, abroad []string, r
 }
 
 func (r *Registry) sshCheckNode(ctx context.Context, st sshCheckSettings, t sshCheckTarget) {
+	o, ok := r.sshCheckRun(ctx, st, t.ip)
+	if !ok {
+		return
+	}
+	r.applySSHCheck(t, o, st.failStreak, time.Now())
+}
+
+// sshCheckRun — одна проверка ip; ok=false — проверку не удалось запустить.
+func (r *Registry) sshCheckRun(ctx context.Context, st sshCheckSettings, ip string) (sshCheckOutcome, bool) {
 	api := newSSHCheckAPI(st.base)
 	ru, abroad := r.sshCheckPickNodes(ctx, api, st.foreignNodes)
 	if len(ru) == 0 || len(abroad) == 0 {
-		return
+		return sshCheckOutcome{}, false
 	}
-	id, err := api.StartTCP(ctx, t.ip, st.port, append(append([]string(nil), ru...), abroad...))
+	id, err := api.StartTCP(ctx, ip, st.port, append(append([]string(nil), ru...), abroad...))
 	if err != nil {
-		log.Printf("ssh check of %s (%s): %v", t.nodeID, t.ip, err)
-		return
+		log.Printf("ssh check of %s: %v", ip, err)
+		return sshCheckOutcome{}, false
 	}
 	var res map[string]checkhost.TCPResult
 	deadline := time.Now().Add(sshCheckPollWithin)
@@ -256,7 +265,7 @@ func (r *Registry) sshCheckNode(ctx context.Context, st sshCheckSettings, t sshC
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return sshCheckOutcome{}, false
 		case <-time.After(wait):
 		}
 		wait = sshCheckPollEvery
@@ -278,7 +287,54 @@ func (r *Registry) sshCheckNode(ctx context.Context, st sshCheckSettings, t sshC
 			break
 		}
 	}
-	r.applySSHCheck(t, sshCheckEvaluate(res, ru, abroad, st.ruOKPercent), st.failStreak, time.Now())
+	return sshCheckEvaluate(res, ru, abroad, st.ruOKPercent), true
+}
+
+// sshBanConfirm — подтверждение бана по IP ([ssh_check] включена): из РФ
+// порт закрыт, снаружи открыт. Запускается вместе с верификацией Globalping;
+// на карантин не влияет — только на бан.
+type sshBanConfirm struct {
+	required bool // [ssh_check] включена: бан только с подтверждением
+	done     chan struct{}
+	out      sshCheckOutcome
+	ran      bool
+}
+
+func (r *Registry) startSSHBanConfirm(ip string) *sshBanConfirm {
+	st := r.sshCheckSettings()
+	c := &sshBanConfirm{required: st.enabled}
+	if !st.enabled || ip == "" {
+		return c
+	}
+	c.done = make(chan struct{})
+	go func() {
+		defer close(c.done)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*sshCheckPollWithin)
+		defer cancel()
+		c.out, c.ran = r.sshCheckRun(ctx, st, ip)
+		if c.ran {
+			log.Printf("ssh ban-confirm check of %s: %s", ip, c.out.summary)
+		}
+	}()
+	return c
+}
+
+func (c *sshBanConfirm) wait() {
+	if c != nil && c.done != nil {
+		<-c.done
+	}
+}
+
+// allowsBan — можно ли банить: проверка выключена или подтвердила блокировку.
+func (c *sshBanConfirm) allowsBan() bool {
+	return c == nil || !c.required || (c.ran && c.out.bad)
+}
+
+func (c *sshBanConfirm) summary() string {
+	if c == nil || !c.ran {
+		return "check-host не ответил"
+	}
+	return c.out.summary
 }
 
 // applySSHCheck — серия и вывод/возврат ноды. Нода сменилась (IP,
@@ -321,4 +377,16 @@ func (r *Registry) applySSHCheck(t sshCheckTarget, o sshCheckOutcome, failStreak
 	if changed {
 		r.persistStateLocked()
 	}
+}
+
+// noteBanUnconfirmedLocked — карантин исчерпан, но check-host не подтвердил
+// блокировку (из РФ открыт, закрыт и снаружи или не ответил): бана нет, нода
+// остаётся в карантине, следующая проваленная проверка снова спросит check-host.
+func (r *Registry) noteBanUnconfirmedLocked(c *Candidate, confirm *sshBanConfirm) {
+	r.addEventLocked(Event{
+		Type: EventBanUnconfirmed, NodeID: c.NodeID, IP: c.IP,
+		Detail: "карантин исчерпан, но check-host не подтвердил блокировку (" + confirm.summary() + ") — без бана",
+	})
+	log.Printf("candidate %s: quarantine exhausted but check-host did not confirm the block (%s) — no ban", c.NodeID, confirm.summary())
+	r.persistStateLocked()
 }

@@ -108,6 +108,12 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	verifiedKnown := false
 	verifyErr := ""
 	var measurement *globalpingMeasurement // сохраняем для детали площадок
+	// Подтверждение бана через check-host (ssh_check.go): параллельно с
+	// верификацией; на карантин не влияет.
+	var sshConfirm *sshBanConfirm
+	if verifyGP {
+		sshConfirm = r.startSSHBanConfirm(candidateIP)
+	}
 	// MTProto-проверка — параллельно с верификацией Globalping (mtproto_check.go).
 	var mt mtprotoOutcome
 	var mtDone chan struct{}
@@ -164,6 +170,7 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 	if mtDone != nil {
 		<-mtDone // Globalping неоднозначна — MTProto только записываем
 	}
+	sshConfirm.wait()
 
 	r.mu.Lock()
 	candidate, ok = r.state.Candidates[payload.NodeID]
@@ -319,12 +326,17 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			candidate.Quarantine.Attempts++
 			candidate.Quarantine.LastRatio = verifiedRatio
 			candidate.Quarantine.LastMeasurementID = payload.GlobalpingMeasurementID
-			if candidate.Quarantine.Attempts >= quarantineAttempts {
+			if candidate.Quarantine.Attempts >= quarantineAttempts && !sshConfirm.allowsBan() {
+				r.noteBanUnconfirmedLocked(candidate, sshConfirm)
+			} else if candidate.Quarantine.Attempts >= quarantineAttempts {
 				attempts := candidate.Quarantine.Attempts
 				reverifyFail := candidate.Quarantine.Reverify
 				cause := "карантин исчерпан"
 				if reverifyFail {
 					cause = "re-verify после gp-бана провален"
+				}
+				if sshConfirm != nil && sshConfirm.required {
+					cause += "; check-host: " + sshConfirm.summary()
 				}
 				r.terminateNodeLocked(candidate, time.Now(), BanReasonIPBan, cause) // удаляет кандидата + persist
 				if reverifyFail {
@@ -351,8 +363,14 @@ func (r *Registry) handleHealthReport(w http.ResponseWriter, req *http.Request) 
 			})
 			log.Printf("candidate %s entered gp quarantine (verified fail; tcp_ok=%t metrics_ok=%t) — attempt 1/%d",
 				candidate.NodeID, candidate.Healthy, candidate.MetricsHealthy, quarantineAttempts)
-			if quarantineAttempts == 1 {
-				r.terminateNodeLocked(candidate, time.Now(), BanReasonIPBan, "карантин исчерпан на первой подтвержденной проверке")
+			if quarantineAttempts == 1 && !sshConfirm.allowsBan() {
+				r.noteBanUnconfirmedLocked(candidate, sshConfirm)
+			} else if quarantineAttempts == 1 {
+				cause := "карантин исчерпан на первой подтвержденной проверке"
+				if sshConfirm != nil && sshConfirm.required {
+					cause += "; check-host: " + sshConfirm.summary()
+				}
+				r.terminateNodeLocked(candidate, time.Now(), BanReasonIPBan, cause)
 				r.mu.Unlock()
 				w.WriteHeader(http.StatusOK)
 				return

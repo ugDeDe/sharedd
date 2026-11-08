@@ -44,6 +44,7 @@ const (
 	EventMTProtoRescued      = state.EventMTProtoRescued
 	EventSSHBlocked          = state.EventSSHBlocked
 	EventSSHRecovered        = state.EventSSHRecovered
+	EventBanUnconfirmed      = state.EventBanUnconfirmed
 	EventQueueJoined         = state.EventQueueJoined
 	EventQueueLeft           = state.EventQueueLeft
 	EventMasterElected       = state.EventMasterElected
