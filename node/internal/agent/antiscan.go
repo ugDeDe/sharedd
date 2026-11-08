@@ -181,7 +181,10 @@ func loadAntiscanSet(ctx context.Context, entries []string) error {
 }
 
 // hookAntiscan — цепочка дропает источники из set, INPUT-хук стоит только на
-// общем порту. Правило legacy-set'а и сам legacy-set снимаются.
+// общем порту и только на SYN: без SYN соединение не откроется, а поиск по
+// hash:net на каждом пакете уже открытых соединений — заметная доля CPU
+// (десятки тысяч пакетов в секунду). Прежний хук без --syn снимается тем же
+// removeAntiscanHooks. Правило legacy-set'а и сам legacy-set снимаются.
 func hookAntiscan(ctx context.Context, port int) error {
 	// Существующая цепочка — норма, ошибка создания игнорируется.
 	_, _ = antiscanRun(ctx, nil, "iptables", "-N", antiscanChain)
@@ -195,7 +198,7 @@ func hookAntiscan(ctx context.Context, port int) error {
 		log.Printf("antiscan: legacy %s set (unfiltered ipsum) removed", antiscanLegacySet)
 	}
 	removeAntiscanHooks(ctx)
-	return runAntiscan(ctx, nil, "iptables", "-I", "INPUT", "1", "-p", "tcp", "--dport", fmt.Sprint(port), "-j", antiscanChain)
+	return runAntiscan(ctx, nil, "iptables", "-I", "INPUT", "1", "-p", "tcp", "--dport", fmt.Sprint(port), "--syn", "-j", antiscanChain)
 }
 
 func saveAntiscanState(rev string, entries []string) error {

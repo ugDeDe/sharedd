@@ -80,7 +80,7 @@ func TestApplyAntiscanLoadsRegistryListAsHashNet(t *testing.T) {
 	for _, want := range []string{
 		"ipset create sharedd_scanners_net hash:net family inet",
 		"ipset swap sharedd_scan_tmp sharedd_scanners_net",
-		"iptables -I INPUT 1 -p tcp --dport 8443 -j ANTISCAN_MTPROTO",
+		"iptables -I INPUT 1 -p tcp --dport 8443 --syn -j ANTISCAN_MTPROTO",
 		"iptables -D ANTISCAN_MTPROTO -m set --match-set sharedd_scanners src -j DROP",
 	} {
 		if !strings.Contains(joined, want) {
