@@ -162,3 +162,58 @@ func TestRegister401ClearsStaleSecret(t *testing.T) {
 		t.Fatalf("fresh secret not stored, got %q", nodeSecret)
 	}
 }
+
+// 403 node_id_mismatch: секрет от другой ноды (node_id сменился при
+// переустановке) — сбрасывается, перевыпуск идёт с общим токеном.
+func TestRegisterNodeIDMismatchClearsForeignSecret(t *testing.T) {
+	isolateSecret(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"node_id_mismatch","message":"bearer node secret belongs to another node"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"node_secret":"own-secret"}`))
+	}))
+	defer srv.Close()
+
+	nodeID = "n-secret-3"
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
+	cfg.Registry.Token = "tok"
+	nodeSecret = "foreign-secret"
+	if err := os.WriteFile(nodeSecretFile, []byte("foreign-secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := register(srv.Client(), cfg, "203.0.113.9"); ok {
+		t.Fatal("403 register must not report success")
+	}
+	if nodeSecret != "" {
+		t.Fatalf("foreign secret must be cleared, got %q", nodeSecret)
+	}
+	if _, err := os.Stat(nodeSecretFile); !os.IsNotExist(err) {
+		t.Fatalf("foreign secret file must be removed, err=%v", err)
+	}
+	if ok, _ := register(srv.Client(), cfg, "203.0.113.9"); !ok || nodeSecret != "own-secret" {
+		t.Fatalf("re-register must issue an own secret: ok=%v secret=%q", ok, nodeSecret)
+	}
+}
+
+// Прочие 403 (терминальный kill и т.п.) секрет не трогают.
+func TestRegisterOther403KeepsSecret(t *testing.T) {
+	isolateSecret(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"pending_secret"}`))
+	}))
+	defer srv.Close()
+	nodeID = "n-secret-4"
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
+	cfg.Registry.Token = "tok"
+	nodeSecret = "my-secret"
+	register(srv.Client(), cfg, "203.0.113.9")
+	if nodeSecret != "my-secret" {
+		t.Fatal("only node_id_mismatch may clear the secret")
+	}
+}

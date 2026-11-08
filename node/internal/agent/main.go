@@ -83,6 +83,14 @@ func clearNodeSecret() {
 	}
 }
 
+// isNodeIDMismatch — тело 403 регистратора с кодом node_id_mismatch.
+func isNodeIDMismatch(body []byte) bool {
+	var e struct {
+		Error string `json:"error"`
+	}
+	return json.Unmarshal(body, &e) == nil && e.Error == "node_id_mismatch"
+}
+
 // gpKick — толчок ВНЕОЧЕРЕДНОЙ globalping-проверки: обычная успешная
 // регистрация (200) будит globalpingLoop; recovery из GP не будит его обратно.
 // Обычная регистрация не дожидается таймера
@@ -221,6 +229,14 @@ func registerWithReason(client *http.Client, cfg *config.NodeConfig, ip string, 
 	// Исключение: bootstrap/GP recovery сохраняют те же credentials на retry.
 	if resp.StatusCode == http.StatusUnauthorized && !fromGP && !bootstrap && currentNodeSecret() != "" {
 		log.Printf("registry rejected the stored node secret — clearing it for re-issue")
+		clearNodeSecret()
+	}
+	// 403 node_id_mismatch — секрет принадлежит другой ноде (node_id сменился
+	// при переустановке, а node_secret остался): для этого node_id он
+	// бесполезен при любом режиме, иначе агент застревает навсегда.
+	// Забываем его — следующая попытка пойдёт с общим токеном или authkey.
+	if resp.StatusCode == http.StatusForbidden && currentNodeSecret() != "" && isNodeIDMismatch(body) {
+		log.Printf("registry says the stored node secret belongs to another node — clearing it for re-issue")
 		clearNodeSecret()
 	}
 	// Health refusals arm nonblocking recovery; credentials and IP survive.
