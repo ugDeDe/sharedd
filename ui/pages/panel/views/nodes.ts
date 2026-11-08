@@ -43,6 +43,8 @@ function checksHTML(n: any): string {
     ${tag("GP", st(n.globalping_ok), gpTitle)}
     ${n.mtproto_status ? tag("MTP", n.mtproto_verdict === "blocked" ? "bad" : n.mtproto_verdict === "ok" ? "ok" : "unknown",
       `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}${n.mtproto_verdict === "blocked" ? " · из РФ TCP не открылся" : ""}${n.mtproto_rescued ? " · удержала ноду от карантина (Globalping провалена)" : ""}`) : ""}
+    ${n.ssh_summary ? tag("SSH", n.ssh_blocked ? "bad" : n.ssh_fail_streak ? "unknown" : "ok",
+      `порт через check-host: ${n.ssh_summary}${n.ssh_blocked ? " · из РФ закрыт — вне очереди" : n.ssh_fail_streak ? ` · из РФ закрыт ${n.ssh_fail_streak} раз подряд` : ""}`) : ""}
     ${tag("METRICS", st(n.metrics_healthy ?? n.metrics_ok), mTitle)}
   </span>`;
 }

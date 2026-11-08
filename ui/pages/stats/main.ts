@@ -88,6 +88,8 @@ function checksHTML(n: any): string {
     ${tag("TCP", st(n.healthy), n.healthy ? "порт отвечает" : "порт не отвечает")}
     ${tag("GP", st(n.globalping_ok), n.globalping_ok ? "верификация пройдена" : "верификация провалена")}
     ${n.mtproto_status ? tag("MTP", mtpState(n), mtpTitle(n)) : ""}
+    ${n.ssh_summary ? tag("SSH", n.ssh_blocked ? "bad" : n.ssh_fail_streak ? "unknown" : "ok",
+      `порт через check-host: ${n.ssh_summary}${n.ssh_blocked ? " · из РФ закрыт — вне очереди" : n.ssh_fail_streak ? ` · из РФ закрыт ${n.ssh_fail_streak} раз подряд` : ""}`) : ""}
     ${tag("METRICS", st(n.metrics_healthy), "защёлка metrics-здоровья: в отказ только после серии подряд плохих отчётов")}
   </span>`;
 }

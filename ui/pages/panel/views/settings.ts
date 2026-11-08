@@ -168,6 +168,21 @@ function renderGrid(): void {
     </div>
 
     <div class="cfg" data-settings-group="globalping">
+      <div class="cfg-head">${icon(ICONS.health)}<span>Проверка порта мастеров (check-host)</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-ssh-enabled"><span class="box"></span> Проверять порт мастеров из РФ и снаружи</label>
+        <div class="field"><label for="s-ssh-interval">Интервал, секунд</label><input type="number" id="s-ssh-interval" min="10" max="3600"></div>
+        <div class="field"><label for="s-ssh-port">Порт</label><input type="number" id="s-ssh-port" min="1" max="65535"></div>
+        <div class="field"><label for="s-ssh-streak">Плохих проверок подряд до вывода из очереди</label><input type="number" id="s-ssh-streak" min="1" max="50"></div>
+        <div class="field"><label for="s-ssh-foreign">Зарубежных узлов в проверке</label><input type="number" id="s-ssh-foreign" min="1" max="10"></div>
+        <div class="field"><label for="s-ssh-ruok">Порог «открыт из РФ», % российских узлов</label><input type="number" id="s-ssh-ruok" min="1" max="100"></div>
+        <div class="field"><label for="s-ssh-base">api_base</label><input type="text" id="s-ssh-base" class="mono"></div>
+        <div class="note">Каждый мастер (и нода, уже выведенная этой проверкой) проверяется TCP на порт со всех российских узлов check-host.net и с нескольких зарубежных. Из РФ закрыт, снаружи открыт — плохая проверка; нужное число подряд — нода вне очереди, пока из РФ порт снова не откроется. Закрыт и снаружи — не в счёт (это решают другие проверки).</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-ssh-save">Сохранить проверку порта</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.ban)}<span>Карантин GP</span></div>
       <div class="cfg-body">
         <div class="field">
@@ -313,6 +328,14 @@ export async function load(): Promise<void> {
   ($("s-hc-quar") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
   ($("s-hc-gp-validity") as HTMLInputElement).value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
   ($("s-gp-base") as HTMLInputElement).value = c.globalping.api_base;
+  const sc = c.ssh_check || {};
+  ($("s-ssh-enabled") as HTMLInputElement).checked = !!sc.enabled;
+  ($("s-ssh-interval") as HTMLInputElement).value = sc.interval_sec || 20;
+  ($("s-ssh-port") as HTMLInputElement).value = sc.port || 22;
+  ($("s-ssh-streak") as HTMLInputElement).value = sc.fail_streak || 3;
+  ($("s-ssh-foreign") as HTMLInputElement).value = sc.foreign_nodes || 3;
+  ($("s-ssh-ruok") as HTMLInputElement).value = sc.ru_ok_percent || 50;
+  ($("s-ssh-base") as HTMLInputElement).value = sc.api_base || "";
   const mt = c.mtproto_check || {};
   ($("s-mt-enabled") as HTMLInputElement).checked = !!mt.enabled;
   ($("s-mt-token") as HTMLInputElement).value = mt.token || "";
@@ -541,6 +564,17 @@ export function init(): void {
   $("s-gp-save").onclick = () =>
     saveSection({ globalping: { api_base: ($("s-gp-base") as HTMLInputElement).value.trim() } }, "Globalping сохранён")
       .catch((e) => showToast(e.message, true));
+
+  $("s-ssh-save").onclick = () => {
+    const num = (id: string) => parseInt(($(id) as HTMLInputElement).value, 10) || 0;
+    saveSection({ ssh_check: {
+      enabled: ($("s-ssh-enabled") as HTMLInputElement).checked,
+      interval_sec: num("s-ssh-interval"), port: num("s-ssh-port"), fail_streak: num("s-ssh-streak"),
+      foreign_nodes: num("s-ssh-foreign"), ru_ok_percent: num("s-ssh-ruok"),
+      api_base: ($("s-ssh-base") as HTMLInputElement).value.trim(),
+    } }, "Проверка порта сохранена")
+      .catch((e) => showToast(e.message, true));
+  };
 
   $("s-mt-save").onclick = () =>
     saveSection({ mtproto_check: {

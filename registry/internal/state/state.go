@@ -30,6 +30,8 @@ const (
 	EventGlobalpingBlocked   = "globalping_blocked"   // независимая проверка Globalping: фейл
 	EventGlobalpingRecovered = "globalping_recovered" // проверка снова проходит
 	EventMTProtoRescued      = "mtproto_rescued"      // Globalping провалена, MTProto не RKN_BLOCK — без карантина
+	EventSSHBlocked          = "ssh_blocked"          // check-host: порт закрыт из РФ fail_streak раз подряд, снаружи открыт — вне очереди
+	EventSSHRecovered        = "ssh_recovered"        // check-host: из РФ порт снова открыт
 	EventQueueJoined         = "queue_joined"         // вошла в очередь мастерства (fully healthy)
 	EventQueueLeft           = "queue_left"           // выпала из очереди (позиция сгорела)
 	EventMasterElected       = "master_elected"
@@ -393,7 +395,15 @@ type Candidate struct {
 	MTProtoRescued bool      `json:"mtproto_rescued,omitempty"`
 	// MTProtoVerdict — "ok" (из РФ TCP открылся), "blocked" (не открылся),
 	// "" — неоднозначно (нет точки РФ, сбой API).
-	MTProtoVerdict   string    `json:"mtproto_verdict,omitempty"`
+	MTProtoVerdict string `json:"mtproto_verdict,omitempty"`
+	// SSH-проверка (server/ssh_check.go): порт [ssh_check] через check-host
+	// из РФ и снаружи. SSHFailStreak — подряд «из РФ закрыт, снаружи открыт»;
+	// SSHBlocked — серия достигла fail_streak: нода вне очереди, пока из РФ
+	// порт снова не откроется. SSHAt/SSHSummary — последняя проверка.
+	SSHFailStreak    int       `json:"ssh_fail_streak,omitempty"`
+	SSHBlocked       bool      `json:"ssh_blocked,omitempty"`
+	SSHAt            time.Time `json:"ssh_at,omitempty"`
+	SSHSummary       string    `json:"ssh_summary,omitempty"`
 	LastGlobalpingAt time.Time `json:"last_globalping_at,omitempty"` // verification receipt only, not measurement freshness
 	// GlobalpingMeasurementAt comes only from a finished independent GET's
 	// createdAt. Missing legacy proof stays zero; never migrate from receipt time.
@@ -499,6 +509,9 @@ func (c *Candidate) IsFullyHealthy(freshnessTTL time.Duration) bool {
 	if c.PortCompatible != nil && !*c.PortCompatible {
 		return false
 	}
+	if c.SSHBlocked {
+		return false
+	}
 	if c.LastReportAt.IsZero() || time.Since(c.LastReportAt) > freshnessTTL {
 		return false
 	}
@@ -514,6 +527,8 @@ func (c *Candidate) UnhealthyReason(freshnessTTL time.Duration) string {
 	case c.Quarantine != nil:
 		return fmt.Sprintf("gp quarantine: failed verified attempt %d (last ratio %.2f) — awaiting ban verdict or recovery",
 			c.Quarantine.Attempts, c.Quarantine.LastRatio)
+	case c.SSHBlocked:
+		return "ssh check: port unreachable from RU, reachable from abroad (" + c.SSHSummary + ")"
 	case !c.Healthy:
 		return "tcp probe failing (port unreachable)"
 	case !c.GlobalpingOK:

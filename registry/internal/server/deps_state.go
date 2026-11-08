@@ -42,6 +42,8 @@ const (
 	EventGlobalpingBlocked   = state.EventGlobalpingBlocked
 	EventGlobalpingRecovered = state.EventGlobalpingRecovered
 	EventMTProtoRescued      = state.EventMTProtoRescued
+	EventSSHBlocked          = state.EventSSHBlocked
+	EventSSHRecovered        = state.EventSSHRecovered
 	EventQueueJoined         = state.EventQueueJoined
 	EventQueueLeft           = state.EventQueueLeft
 	EventMasterElected       = state.EventMasterElected

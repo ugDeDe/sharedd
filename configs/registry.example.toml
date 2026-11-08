@@ -152,3 +152,19 @@ minutes_per_day = 60
 [mtproto_check]
 token = ""
 api_base = "https://api.yazaebalsyadelatproxy.cc"
+
+# Проверка порта мастеров через check-host.net (правится и в панели:
+# Настройки → Проверка порта мастеров). Раз в interval_sec каждый мастер (и
+# нода, уже выведенная этой проверкой) проверяется TCP на port со всех
+# российских узлов check-host и foreign_nodes зарубежных. Из РФ открыто меньше
+# чем у ru_ok_percent узлов, а снаружи открыто у большинства — плохая
+# проверка; fail_streak подряд — нода вне очереди, пока из РФ порт снова не
+# откроется. Закрыто и снаружи — не в счёт. Порт прокси не годится: на нём
+# антискан и лимиты соединений. enabled не задан = включено.
+[ssh_check]
+interval_sec = 20
+port = 22
+fail_streak = 3
+foreign_nodes = 3
+ru_ok_percent = 50
+api_base = "https://check-host.net"

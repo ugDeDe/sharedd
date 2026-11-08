@@ -272,6 +272,23 @@ type RegistryConfig struct {
 		Token   string `toml:"token"`
 		APIBase string `toml:"api_base"`
 	} `toml:"mtproto_check"`
+
+	// SSHCheck — проверка порта (по умолчанию 22) у мастеров через
+	// check-host.net: раз в IntervalSec TCP со всех российских узлов и
+	// ForeignNodes зарубежных. Из РФ не открывается (доля успешных РФ-узлов
+	// ниже RUOKPercent), а снаружи открывается — плохая проверка; FailStreak
+	// подряд — нода вне очереди, пока из РФ снова не откроется. Порт прокси
+	// не годится: на нём антискан и лимиты новых соединений, а блокировка
+	// IP видна на любом порту. Enabled: nil = включено.
+	SSHCheck struct {
+		Enabled      *bool  `toml:"enabled"`
+		IntervalSec  int    `toml:"interval_sec"`
+		Port         int    `toml:"port"`
+		FailStreak   int    `toml:"fail_streak"`
+		ForeignNodes int    `toml:"foreign_nodes"`
+		RUOKPercent  int    `toml:"ru_ok_percent"`
+		APIBase      string `toml:"api_base"`
+	} `toml:"ssh_check"`
 }
 
 type Resolved struct {
@@ -492,7 +509,10 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if err := ValidateMTProtoCheck(MTProtoCheckEnabled(cfg), cfg.MTProtoCheck.Token); err != nil {
 		return err
 	}
-	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase, "mtproto_check.api_base": cfg.MTProtoCheck.APIBase} {
+	if err := ValidateSSHCheck(cfg.SSHCheck.IntervalSec, cfg.SSHCheck.Port, cfg.SSHCheck.FailStreak, cfg.SSHCheck.ForeignNodes, cfg.SSHCheck.RUOKPercent); err != nil {
+		return err
+	}
+	for name, raw := range map[string]string{"globalping.api_base": cfg.Globalping.APIBase, "mtproto_check.api_base": cfg.MTProtoCheck.APIBase, "ssh_check.api_base": cfg.SSHCheck.APIBase} {
 		u, err := url.ParseRequestURI(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("%s must be an absolute http(s) URL", name)
@@ -565,6 +585,7 @@ func ApplyRegistryDefaults(cfg *RegistryConfig) {
 	if cfg.MTProtoCheck.APIBase == "" {
 		cfg.MTProtoCheck.APIBase = DefaultMTProtoCheckAPIBase
 	}
+	ApplySSHCheckDefaults(cfg)
 	if cfg.Panel.EventsMax == 0 {
 		cfg.Panel.EventsMax = 500
 	}
@@ -747,6 +768,56 @@ const (
 )
 
 var adTagRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// [ssh_check]: значения по умолчанию.
+const (
+	DefaultSSHCheckIntervalSec  = 20
+	DefaultSSHCheckPort         = 22
+	DefaultSSHCheckFailStreak   = 3
+	DefaultSSHCheckForeignNodes = 3
+	DefaultSSHCheckRUOKPercent  = 50
+	DefaultSSHCheckAPIBase      = "https://check-host.net"
+)
+
+// ApplySSHCheckDefaults — нули [ssh_check] в значения по умолчанию.
+func ApplySSHCheckDefaults(cfg *RegistryConfig) {
+	c := &cfg.SSHCheck
+	if c.IntervalSec == 0 {
+		c.IntervalSec = DefaultSSHCheckIntervalSec
+	}
+	if c.Port == 0 {
+		c.Port = DefaultSSHCheckPort
+	}
+	if c.FailStreak == 0 {
+		c.FailStreak = DefaultSSHCheckFailStreak
+	}
+	if c.ForeignNodes == 0 {
+		c.ForeignNodes = DefaultSSHCheckForeignNodes
+	}
+	if c.RUOKPercent == 0 {
+		c.RUOKPercent = DefaultSSHCheckRUOKPercent
+	}
+	if c.APIBase == "" {
+		c.APIBase = DefaultSSHCheckAPIBase
+	}
+}
+
+// ValidateSSHCheck — границы [ssh_check].
+func ValidateSSHCheck(intervalSec, port, failStreak, foreignNodes, ruOKPercent int) error {
+	switch {
+	case intervalSec < 10 || intervalSec > 3600:
+		return fmt.Errorf("ssh_check.interval_sec: допустимо 10..3600")
+	case port < 1 || port > 65535:
+		return fmt.Errorf("ssh_check.port: допустимо 1..65535")
+	case failStreak < 1 || failStreak > 50:
+		return fmt.Errorf("ssh_check.fail_streak: допустимо 1..50")
+	case foreignNodes < 1 || foreignNodes > 10:
+		return fmt.Errorf("ssh_check.foreign_nodes: допустимо 1..10")
+	case ruOKPercent < 1 || ruOKPercent > 100:
+		return fmt.Errorf("ssh_check.ru_ok_percent: допустимо 1..100")
+	}
+	return nil
+}
 
 // DefaultMTProtoCheckAPIBase — база MTProto-проверки по умолчанию.
 const DefaultMTProtoCheckAPIBase = "https://api.yazaebalsyadelatproxy.cc"

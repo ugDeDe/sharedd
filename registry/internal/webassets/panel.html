@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="39419504b0b1ed19">
+  <meta name="sharedd-build" content="cf35560f08faf294">
 </head>
 <body>
 
@@ -4097,6 +4097,11 @@
       n.mtproto_verdict === "blocked" ? "bad" : n.mtproto_verdict === "ok" ? "ok" : "unknown",
       `MTProto-проверка: ${n.mtproto_summary || n.mtproto_status}${n.mtproto_verdict === "blocked" ? " · из РФ TCP не открылся" : ""}${n.mtproto_rescued ? " · удержала ноду от карантина (Globalping провалена)" : ""}`
     ) : ""}
+    ${n.ssh_summary ? tag(
+      "SSH",
+      n.ssh_blocked ? "bad" : n.ssh_fail_streak ? "unknown" : "ok",
+      `порт через check-host: ${n.ssh_summary}${n.ssh_blocked ? " · из РФ закрыт — вне очереди" : n.ssh_fail_streak ? ` · из РФ закрыт ${n.ssh_fail_streak} раз подряд` : ""}`
+    ) : ""}
     ${tag("METRICS", st((_a = n.metrics_healthy) != null ? _a : n.metrics_ok), mTitle)}
   </span>`;
   }
@@ -4922,6 +4927,21 @@
     </div>
 
     <div class="cfg" data-settings-group="globalping">
+      <div class="cfg-head">${icon(ICONS.health)}<span>Проверка порта мастеров (check-host)</span></div>
+      <div class="cfg-body">
+        <label class="check"><input type="checkbox" id="s-ssh-enabled"><span class="box"></span> Проверять порт мастеров из РФ и снаружи</label>
+        <div class="field"><label for="s-ssh-interval">Интервал, секунд</label><input type="number" id="s-ssh-interval" min="10" max="3600"></div>
+        <div class="field"><label for="s-ssh-port">Порт</label><input type="number" id="s-ssh-port" min="1" max="65535"></div>
+        <div class="field"><label for="s-ssh-streak">Плохих проверок подряд до вывода из очереди</label><input type="number" id="s-ssh-streak" min="1" max="50"></div>
+        <div class="field"><label for="s-ssh-foreign">Зарубежных узлов в проверке</label><input type="number" id="s-ssh-foreign" min="1" max="10"></div>
+        <div class="field"><label for="s-ssh-ruok">Порог «открыт из РФ», % российских узлов</label><input type="number" id="s-ssh-ruok" min="1" max="100"></div>
+        <div class="field"><label for="s-ssh-base">api_base</label><input type="text" id="s-ssh-base" class="mono"></div>
+        <div class="note">Каждый мастер (и нода, уже выведенная этой проверкой) проверяется TCP на порт со всех российских узлов check-host.net и с нескольких зарубежных. Из РФ закрыт, снаружи открыт — плохая проверка; нужное число подряд — нода вне очереди, пока из РФ порт снова не откроется. Закрыт и снаружи — не в счёт (это решают другие проверки).</div>
+      </div>
+      <div class="cfg-foot"><button class="btn primary" id="s-ssh-save">Сохранить проверку порта</button></div>
+    </div>
+
+    <div class="cfg" data-settings-group="globalping">
       <div class="cfg-head">${icon(ICONS.ban)}<span>Карантин GP</span></div>
       <div class="cfg-body">
         <div class="field">
@@ -5058,6 +5078,14 @@
     $("s-hc-quar").value = c.healthcheck ? c.healthcheck.quarantine_attempts : 3;
     $("s-hc-gp-validity").value = c.healthcheck ? c.healthcheck.globalping_validity_min : 15;
     $("s-gp-base").value = c.globalping.api_base;
+    const sc = c.ssh_check || {};
+    $("s-ssh-enabled").checked = !!sc.enabled;
+    $("s-ssh-interval").value = sc.interval_sec || 20;
+    $("s-ssh-port").value = sc.port || 22;
+    $("s-ssh-streak").value = sc.fail_streak || 3;
+    $("s-ssh-foreign").value = sc.foreign_nodes || 3;
+    $("s-ssh-ruok").value = sc.ru_ok_percent || 50;
+    $("s-ssh-base").value = sc.api_base || "";
     const mt = c.mtproto_check || {};
     $("s-mt-enabled").checked = !!mt.enabled;
     $("s-mt-token").value = mt.token || "";
@@ -5229,6 +5257,18 @@
       globalping_validity_min: Math.max(1, parseInt($("s-hc-gp-validity").value, 10) || 15)
     } }, "Карантин сохранён").catch((e) => showToast(e.message, true));
     $("s-gp-save").onclick = () => saveSection({ globalping: { api_base: $("s-gp-base").value.trim() } }, "Globalping сохранён").catch((e) => showToast(e.message, true));
+    $("s-ssh-save").onclick = () => {
+      const num = (id) => parseInt($(id).value, 10) || 0;
+      saveSection({ ssh_check: {
+        enabled: $("s-ssh-enabled").checked,
+        interval_sec: num("s-ssh-interval"),
+        port: num("s-ssh-port"),
+        fail_streak: num("s-ssh-streak"),
+        foreign_nodes: num("s-ssh-foreign"),
+        ru_ok_percent: num("s-ssh-ruok"),
+        api_base: $("s-ssh-base").value.trim()
+      } }, "Проверка порта сохранена").catch((e) => showToast(e.message, true));
+    };
     $("s-mt-save").onclick = () => saveSection({ mtproto_check: {
       enabled: $("s-mt-enabled").checked,
       token: $("s-mt-token").value.trim(),

@@ -94,6 +94,18 @@ type editableMTProtoCheck struct {
 	APIBase string `json:"api_base"`
 }
 
+// editableSSHCheck — [ssh_check]: порт мастеров через check-host
+// (ssh_check.go). Hot-apply: цикл читает секцию на каждом тике.
+type editableSSHCheck struct {
+	Enabled      bool   `json:"enabled"`
+	IntervalSec  int    `json:"interval_sec"`
+	Port         int    `json:"port"`
+	FailStreak   int    `json:"fail_streak"`
+	ForeignNodes int    `json:"foreign_nodes"`
+	RUOKPercent  int    `json:"ru_ok_percent"`
+	APIBase      string `json:"api_base"`
+}
+
 type editablePanel struct {
 	Token     string `json:"token"`
 	EventsMax int    `json:"events_max"`
@@ -176,6 +188,8 @@ type editableConfig struct {
 	AdPause *editableAdPause `json:"ad_pause,omitempty"`
 	// MTProto-проверка прокси (mtproto_check.go).
 	MTProtoCheck *editableMTProtoCheck `json:"mtproto_check,omitempty"`
+	// Порт мастеров через check-host (ssh_check.go).
+	SSHCheck *editableSSHCheck `json:"ssh_check,omitempty"`
 }
 
 var (
@@ -253,6 +267,14 @@ func validateEditable(in *editableConfig) error {
 	if gp := in.Globalping; gp != nil {
 		if gp.APIBase != "" && !strings.HasPrefix(gp.APIBase, "https://") && !strings.HasPrefix(gp.APIBase, "http://") {
 			return fmt.Errorf("globalping.api_base: ожидается http(s):// URL")
+		}
+	}
+	if c := in.SSHCheck; c != nil {
+		if err := config.ValidateSSHCheck(c.IntervalSec, c.Port, c.FailStreak, c.ForeignNodes, c.RUOKPercent); err != nil {
+			return err
+		}
+		if c.APIBase != "" && !strings.HasPrefix(c.APIBase, "https://") && !strings.HasPrefix(c.APIBase, "http://") {
+			return fmt.Errorf("ssh_check.api_base: ожидается http(s):// URL")
 		}
 	}
 	if m := in.MTProtoCheck; m != nil {
@@ -400,6 +422,15 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 		},
 		Globalping: &editableGlobalping{
 			APIBase: r.cfg.Globalping.APIBase,
+		},
+		SSHCheck: &editableSSHCheck{
+			Enabled:      r.cfg.SSHCheck.Enabled == nil || *r.cfg.SSHCheck.Enabled,
+			IntervalSec:  r.cfg.SSHCheck.IntervalSec,
+			Port:         r.cfg.SSHCheck.Port,
+			FailStreak:   r.cfg.SSHCheck.FailStreak,
+			ForeignNodes: r.cfg.SSHCheck.ForeignNodes,
+			RUOKPercent:  r.cfg.SSHCheck.RUOKPercent,
+			APIBase:      r.cfg.SSHCheck.APIBase,
 		},
 		MTProtoCheck: &editableMTProtoCheck{
 			Enabled: config.MTProtoCheckEnabled(&r.cfg.RegistryConfig),
@@ -585,6 +616,16 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 			r.cfg.Globalping.APIBase = strings.TrimRight(gp.APIBase, "/")
 		}
 		changed = append(changed, "globalping")
+	}
+	if c := in.SSHCheck; c != nil {
+		enabled := c.Enabled
+		r.cfg.SSHCheck.Enabled = &enabled
+		r.cfg.SSHCheck.IntervalSec, r.cfg.SSHCheck.Port, r.cfg.SSHCheck.FailStreak = c.IntervalSec, c.Port, c.FailStreak
+		r.cfg.SSHCheck.ForeignNodes, r.cfg.SSHCheck.RUOKPercent = c.ForeignNodes, c.RUOKPercent
+		if c.APIBase != "" {
+			r.cfg.SSHCheck.APIBase = strings.TrimRight(c.APIBase, "/")
+		}
+		changed = append(changed, fmt.Sprintf("ssh_check(enabled=%t,interval=%ds,port=%d,streak=%d)", enabled, c.IntervalSec, c.Port, c.FailStreak))
 	}
 	if m := in.MTProtoCheck; m != nil {
 		enabled := m.Enabled

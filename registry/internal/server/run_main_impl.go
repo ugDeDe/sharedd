@@ -139,6 +139,8 @@ type Registry struct {
 
 	// scan — собранный список сканеров для агентов (antiscan.go).
 	scan antiscanRuntime
+	// ssh — SSH-проверка мастеров через check-host (ssh_check.go).
+	ssh sshCheckRuntime
 	// loadAcc/costCache — «цена 1000 соединений» (conn_cost.go): трафик с
 	// прошлой точки по нодам (под r.mu) и кэш оценок для статистики.
 	loadAcc   map[string]*loadAccum
@@ -269,6 +271,8 @@ func Run() {
 	go reg.resumeFleets(ctx)
 	// Список сканеров для нод: abuse-листы ∩ RU-диапазоны (antiscan.go).
 	go reg.antiscanLoop(ctx)
+	// Порт 22 мастеров через check-host: блокировка IP из РФ (ssh_check.go).
+	go reg.sshCheckLoop(ctx)
 	bpDone := make(chan struct{})
 	go func() {
 		defer close(bpDone)
