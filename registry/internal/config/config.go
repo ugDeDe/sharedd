@@ -254,11 +254,13 @@ type RegistryConfig struct {
 	// поровну между нодами, умеющими подмену тега, окнами длиной master_ttl
 	// внутри мастерства (рекламное окно, своё, рекламное…). Поддерживают ноды
 	// mtdd (/v1/ad-tag) и MTProxyL (метка общих пользователей через
-	// `mtproxyl secret adtag`). Enabled: nil = выключено.
+	// `mtproxyl secret adtag`). Сутки бюджета начинаются в DayStart
+	// ("HH:MM" по часам регистратора, пусто = полночь). Enabled: nil = выключено.
 	AdPause struct {
 		Enabled       *bool  `toml:"enabled"`
 		Tag           string `toml:"tag"`
 		MinutesPerDay int    `toml:"minutes_per_day"`
+		DayStart      string `toml:"day_start"`
 	} `toml:"ad_pause"`
 
 	// MTProtoCheck — внешняя MTProto-проверка прокси (настоящий хендшейк и
@@ -503,7 +505,7 @@ func ValidateRegistryConfig(cfg *RegistryConfig) error {
 	if err := ValidateAntiscan(cfg.Antiscan.Sources, cfg.Antiscan.IntervalMin, cfg.Antiscan.GeoURL); err != nil {
 		return err
 	}
-	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.MinutesPerDay); err != nil {
+	if err := ValidateAdPause(cfg.AdPause.Enabled != nil && *cfg.AdPause.Enabled, cfg.AdPause.Tag, cfg.AdPause.MinutesPerDay, cfg.AdPause.DayStart); err != nil {
 		return err
 	}
 	if err := ValidateMTProtoCheck(MTProtoCheckEnabled(cfg), cfg.MTProtoCheck.Token); err != nil {
@@ -847,11 +849,28 @@ func ValidAdTag(tag string) bool {
 	return adTagRe.MatchString(tag) && strings.Trim(tag, "0") != ""
 }
 
-// ValidateAdPause — минут в сутки 1..MaxAdPauseMinutesPerDay; включённой
-// паузе нужен тег.
-func ValidateAdPause(enabled bool, tag string, minutesPerDay int) error {
+// ParseAdDayStart — начало рекламных суток "HH:MM" в минутах от полуночи;
+// пусто = 0 (полночь).
+func ParseAdDayStart(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return 0, fmt.Errorf("ad_pause.day_start: ожидается ЧЧ:ММ (00:00..23:59), получено %q", s)
+	}
+	return t.Hour()*60 + t.Minute(), nil
+}
+
+// ValidateAdPause — минут в сутки 1..MaxAdPauseMinutesPerDay; начало суток
+// ЧЧ:ММ; включённой паузе нужен тег.
+func ValidateAdPause(enabled bool, tag string, minutesPerDay int, dayStart string) error {
 	if minutesPerDay < 1 || minutesPerDay > MaxAdPauseMinutesPerDay {
 		return fmt.Errorf("ad_pause.minutes_per_day: допустимо 1..%d", MaxAdPauseMinutesPerDay)
+	}
+	if _, err := ParseAdDayStart(dayStart); err != nil {
+		return err
 	}
 	if tag != "" && !ValidAdTag(tag) {
 		return fmt.Errorf("ad_pause.tag: 32 hex-символа, не все нули")

@@ -161,6 +161,7 @@ type editableAdPause struct {
 	Enabled       bool   `json:"enabled"`
 	Tag           string `json:"tag"`
 	MinutesPerDay int    `json:"minutes_per_day"`
+	DayStart      string `json:"day_start"` // "HH:MM", начало рекламных суток
 }
 
 // maxDefaultMaxNodes — верхняя граница [users] default_max_nodes
@@ -340,9 +341,11 @@ func validateEditable(in *editableConfig) error {
 	}
 	if a := in.AdPause; a != nil {
 		a.Tag = strings.ToLower(strings.TrimSpace(a.Tag))
-		if err := config.ValidateAdPause(a.Enabled, a.Tag, a.MinutesPerDay); err != nil {
+		if err := config.ValidateAdPause(a.Enabled, a.Tag, a.MinutesPerDay, a.DayStart); err != nil {
 			return err
 		}
+		m, _ := config.ParseAdDayStart(a.DayStart)
+		a.DayStart = fmt.Sprintf("%02d:%02d", m/60, m%60)
 	}
 	if u := in.Users; u != nil {
 		if u.DefaultMaxNodes < 0 || u.DefaultMaxNodes > maxDefaultMaxNodes {
@@ -470,6 +473,7 @@ func (r *Registry) handleGetConfig(w http.ResponseWriter, req *http.Request) {
 			Enabled:       r.cfg.AdPause.Enabled != nil && *r.cfg.AdPause.Enabled,
 			Tag:           r.cfg.AdPause.Tag,
 			MinutesPerDay: r.cfg.AdPause.MinutesPerDay,
+			DayStart:      adDayStartString(r.cfg.AdPause.DayStart),
 		},
 		Antiscan: &editableAntiscan{
 			Enabled:     config.ResolveAntiscanEnabled(r.cfg.Antiscan.Enabled),
@@ -690,7 +694,8 @@ func (r *Registry) handlePutConfig(w http.ResponseWriter, req *http.Request) {
 		r.cfg.AdPause.Enabled = &enabled
 		r.cfg.AdPause.Tag = a.Tag
 		r.cfg.AdPause.MinutesPerDay = a.MinutesPerDay
-		changed = append(changed, fmt.Sprintf("ad_pause(enabled=%t,minutes_per_day=%d)", enabled, a.MinutesPerDay))
+		r.cfg.AdPause.DayStart = a.DayStart
+		changed = append(changed, fmt.Sprintf("ad_pause(enabled=%t,minutes_per_day=%d,day_start=%s)", enabled, a.MinutesPerDay, a.DayStart))
 	}
 	if a := in.Antiscan; a != nil {
 		// Hot-apply: antiscanLoop читает секцию на каждой сборке; kick ниже

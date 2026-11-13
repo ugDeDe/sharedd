@@ -235,7 +235,12 @@ function renderGrid(): void {
         <div class="field">
           <label for="s-ad-minutes">Минут рекламы в сутки на весь пул</label>
           <input type="number" id="s-ad-minutes" min="1" max="1440">
-          <span class="help">Делится поровну между нодами, умеющими подмену тега, с округлением вверх до целых окон master_ttl (не меньше одного окна на ноду). Реклама идёт только пока нода мастер, окна мастерства ноды чередуются (и через ротацию в очередь): рекламное, своё, рекламное… Когда пул выбрал бюджет, до полуночи (по часам регистратора) рекламы нет. Ноды добавились или ушли — доли пересчитываются.</span>
+          <span class="help">Делится поровну между нодами, умеющими подмену тега, с округлением вверх до целых окон master_ttl (не меньше одного окна на ноду). Реклама идёт только пока нода мастер, окна мастерства ноды чередуются (и через ротацию в очередь): рекламное, своё, рекламное… Когда пул выбрал бюджет, до начала следующих суток рекламы нет. Ноды добавились или ушли — доли пересчитываются.</span>
+        </div>
+        <div class="field">
+          <label for="s-ad-daystart">Начало суток рекламы</label>
+          <input type="time" id="s-ad-daystart" step="60">
+          <span class="help">С этого времени (по часам регистратора) бюджет обновляется и начинает тратиться. Поставьте утро, чтобы реклама не уходила за ночь без клиентов. По умолчанию 00:00.</span>
         </div>
         <div class="note">Считается только время, подтверждённое агентом; каждое включение и снятие тега пишется в журнал событий. Поддерживают ноды mtdd (тег меняется сразу у всех клиентов) и MTProxyL ≥ 1.4.9 с ME (тег пула ставится только общим пользователям пула, клиенты получают его при переподключении). Прочие ноды отмечены «не поддерживает» и рекламу не показывают.</div>
         <div class="as-status" id="s-ad-status"></div>
@@ -350,6 +355,7 @@ export async function load(): Promise<void> {
   ($("s-ad-enabled") as HTMLInputElement).checked = !!ad.enabled;
   ($("s-ad-tag") as HTMLInputElement).value = ad.tag || "";
   ($("s-ad-minutes") as HTMLInputElement).value = ad.minutes_per_day || 60;
+  ($("s-ad-daystart") as HTMLInputElement).value = ad.day_start || "00:00";
   renderAdPauseStatus(data.ad_pause_status, data.ad_pause_summary);
   ($("s-panel-token") as HTMLInputElement).value = c.panel.token;
   ($("s-panel-events") as HTMLInputElement).value = c.panel.events_max;
@@ -434,7 +440,7 @@ const AD_STATE: Record<string, string> = {
 function renderAdPauseStatus(list: any[], sum: any): void {
   if (!list || list.length === 0) { $("s-ad-status").innerHTML = ""; return; }
   const head = sum
-    ? `<div class="as-src"><span class="as-src-name">Сегодня (${esc(sum.day)})</span>` +
+    ? `<div class="as-src"><span class="as-src-name">Сутки с ${esc(sum.day)} ${esc(sum.day_start || "00:00")}</span>` +
       `<span class="as-src-stat">пул ${fmtDur(sum.used_sec)} из ${fmtDur(sum.budget_sec)} · нод с рекламой: ${sum.nodes} · окно ${fmtDur(sum.period_sec)}</span></div>`
     : "";
   $("s-ad-status").innerHTML = `<div class="as-sources">` + head + list.map((n: any) => {
@@ -601,6 +607,7 @@ export function init(): void {
       enabled: ($("s-ad-enabled") as HTMLInputElement).checked,
       tag: ($("s-ad-tag") as HTMLInputElement).value.trim(),
       minutes_per_day: parseInt(($("s-ad-minutes") as HTMLInputElement).value, 10) || 60,
+      day_start: ($("s-ad-daystart") as HTMLInputElement).value || "00:00",
     } }, "Рекламная пауза сохранена")
       .then(() => load().catch(() => {}))
       .catch((e) => showToast(e.message, true));

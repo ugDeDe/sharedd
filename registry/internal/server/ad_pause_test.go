@@ -255,6 +255,49 @@ func TestAdPauseBudgetResetsAtMidnight(t *testing.T) {
 	}
 }
 
+func TestAdDayStart(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 11, 7, h, m, 0, 0, time.Local) }
+	for _, tc := range []struct {
+		now      time.Time
+		dayStart int
+		key      string
+		start    time.Time
+	}{
+		{at(12, 0), 0, "2026-11-07", at(0, 0)},
+		{at(7, 59), 8 * 60, "2026-11-06", time.Date(2026, 11, 6, 8, 0, 0, 0, time.Local)},
+		{at(8, 0), 8 * 60, "2026-11-07", at(8, 0)},
+		{at(23, 59), 8*60 + 30, "2026-11-07", at(8, 30)},
+	} {
+		key, start := adDay(tc.now, tc.dayStart)
+		if key != tc.key || !start.Equal(tc.start) {
+			t.Fatalf("adDay(%v, %d) = %s %v, want %s %v", tc.now, tc.dayStart, key, start, tc.key, tc.start)
+		}
+	}
+}
+
+// С day_start = 08:00 бюджет, выбранный ночью, обновляется в 08:00, а не в
+// полночь.
+func TestAdPauseBudgetResetsAtDayStart(t *testing.T) {
+	r := adPauseRegistry(t, 10)
+	r.cfg.AdPause.DayStart = "08:00"
+	night := time.Date(2026, 11, 7, 23, 30, 0, 0, time.Local)
+	r.state.Candidates["a"] = &Candidate{NodeID: "a", MasterSince: night, AdState: machineapi.AdPauseStateOwn}
+	if got := countTrue(adPauseRun(t, r, night, 3)["a"]); got != 1 {
+		t.Fatalf("evening: %d windows", got)
+	}
+	// После полуночи — те же сутки: бюджет выбран.
+	if got := countTrue(adPauseRun(t, r, night.Add(time.Hour), 3)["a"]); got != 0 {
+		t.Fatalf("after midnight before day_start budget must stay spent, got %d", got)
+	}
+	morning := time.Date(2026, 11, 8, 8, 0, 0, 0, time.Local)
+	if got := countTrue(adPauseRun(t, r, morning, 3)["a"]); got != 1 {
+		t.Fatalf("day_start must give a fresh window, got %d", got)
+	}
+	if _, sum := r.adPauseStatusSnapshot(morning.Add(30 * time.Minute)); sum.Day != "2026-11-08" || sum.DayStart != "08:00" {
+		t.Fatalf("summary day: %+v", sum)
+	}
+}
+
 func heartbeat(t *testing.T, r *Registry, body string) machineapi.HeartbeatResponse {
 	t.Helper()
 	rec := httptest.NewRecorder()
