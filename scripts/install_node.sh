@@ -70,16 +70,22 @@ NONINTERACTIVE=0
 # автоопределяемые пути к конфигу telemt
 TELEMT_CLASSIC="/etc/telemt/telemt.toml"
 TELEMT_MTDD="/etc/mtdd/config.json"   # mtdd: JSON-конфиг, юнит mtdd.service
-MTPROXYL_DIR="/opt/mtproxyl"
+MTPROXYL_DIR="${SHAREDD_MTPROXYL_DIR:-/opt/mtproxyl}"
 MTPROXYL_SETTINGS="${MTPROXYL_DIR}/settings.conf"
 detect_mtproxyl_config() {
-    for c in "/opt/mtproxyl/mtproxy/config.toml" "/opt/mtproxyl/mtproxy/telemt.toml" "/opt/mtproxyl/superexpert.toml"; do
+    if grep -qE "^ENGINE_KIND=['\"]?mtdd['\"]?[[:space:]]*$" "$MTPROXYL_SETTINGS" 2>/dev/null \
+        && ! grep -qE "^MTPROXYL_MODE=['\"]?reanimator['\"]?[[:space:]]*$" "$MTPROXYL_SETTINGS" 2>/dev/null; then
+        printf '%s' "${MTPROXYL_DIR}/mtdd/config.json"
+        return 0
+    fi
+    local c
+    for c in "${MTPROXYL_DIR}/mtproxy/config.toml" "${MTPROXYL_DIR}/mtproxy/telemt.toml" "${MTPROXYL_DIR}/superexpert.toml"; do
         if [ -f "$c" ]; then
             printf '%s' "$c"
             return 0
         fi
     done
-    printf '%s' "/opt/mtproxyl/mtproxy/config.toml"
+    printf '%s' "${MTPROXYL_DIR}/mtproxy/config.toml"
 }
 TELEMT_MTPROXYL="$(detect_mtproxyl_config)"
 
@@ -174,6 +180,34 @@ toml_escape() {
     printf '%s' "$value"
 }
 
+# An existing node config may still point to the previous telemt engine.
+update_mtdd_config_path() {
+    [ "$TELEMT_CONFIG" = "${MTPROXYL_DIR}/mtdd/config.json" ] || return 0
+    local file="$1" tmp
+    tmp=$(mktemp "${file}.XXXXXX")
+    awk -v path="$TELEMT_CONFIG" '
+        function put() {
+            if (section && !done) { print "config_path = \"" path "\""; done=1 }
+        }
+        /^[[:space:]]*\[/ {
+            put()
+            section=($0 ~ /^[[:space:]]*\[telemt\][[:space:]]*(#.*)?$/)
+            if (section) seen=1
+        }
+        section && /^[[:space:]]*config_path[[:space:]]*=/ {
+            print "config_path = \"" path "\""; done=1; next
+        }
+        { print }
+        END {
+            put()
+            if (!seen) print "\n[telemt]\nconfig_path = \"" path "\""
+        }
+    ' "$file" > "$tmp"
+    chmod --reference="$file" "$tmp"
+    chown --reference="$file" "$tmp"
+    mv -f "$tmp" "$file"
+}
+
 update_registry_config() { # update_registry_config <node.toml>
     local file="$1" tmp line section=0 saw_registry=0 have_url=0 have_token=0
     local escaped_url escaped_token
@@ -226,6 +260,7 @@ say "бинарник: ${BOLD}${BINARY}${NC}"
 mtproxyl_cli() { command -v mtproxyl &>/dev/null; }
 
 disable_superexpert_if_active() {
+    [ "$TELEMT_MTPROXYL" != "${MTPROXYL_DIR}/mtdd/config.json" ] || return 0
     if [ -f "$MTPROXYL_SETTINGS" ] && grep -qE '^SUPEREXPERT_ENABLED="?true"?' "$MTPROXYL_SETTINGS" 2>/dev/null; then
         if mtproxyl_cli; then
             say "MTProxyL: отключаю устаревший режим superexpert..."
@@ -238,6 +273,10 @@ disable_superexpert_if_active() {
 apply_mtproxyl_from_registry() {
     [ "$MTPROXYL_MODE" -eq 1 ] || return 0
     mtproxyl_cli || return 0
+    if [ "$TELEMT_MTPROXYL" = "${MTPROXYL_DIR}/mtdd/config.json" ]; then
+        say "MTProxyL + mtdd: пользователей применит агент через CLI менеджера (one-shot)."
+        return 0
+    fi
 
     say "MTProxyL: получаю конфигурацию с регистратора..."
     local cfg_json=""
@@ -339,7 +378,12 @@ if [ ! -f "$TELEMT_CONFIG" ]; then
     [ -f "$TELEMT_CLASSIC" ] && [ "$TELEMT_CONFIG" != "$TELEMT_CLASSIC" ] && warn "найден классический конфиг: $TELEMT_CLASSIC — перезапустите: --preset classic"
     die "сначала установите telemt (или MTProxyL), затем повторите. Путь задаётся: --preset classic|mtproxyl, --telemt-config PATH"
 fi
-say "конфиг telemt: ${BOLD}${TELEMT_CONFIG}${NC}"
+say "конфиг прокси: ${BOLD}${TELEMT_CONFIG}${NC}"
+
+if [ "$TELEMT_CONFIG" = "${MTPROXYL_DIR}/mtdd/config.json" ] \
+    && ! grep -aq 'MTPROXYL-MTDD' "$BINARY"; then
+    die "эта сборка агента не поддерживает MTProxyL + mtdd; пересоберите sharedd-node-agent"
+fi
 
 # Общий порт задаёт регистратор; несовпадение означает, что ноду нельзя
 # безопасно допускать в пул или навешивать antiscan на локальный порт.
@@ -446,6 +490,8 @@ else
     ok "registry.url и обязательный registry.token обновлены в $ETC_DIR/node.toml"
 fi
 
+update_mtdd_config_path "$ETC_DIR/node.toml"
+
 cat > /etc/systemd/system/sharedd-node-agent.service <<'NODE_UNIT'
 [Unit]
 Description=sharedd — агент HA-ноды (MTProto proxy pool)
@@ -513,9 +559,39 @@ detect_proxy_unit() {
     return 1
 }
 
+# mtdd metrics may use a separate listener and a separate token.
+configure_mtdd_metrics() {
+    local creds="/etc/mtdd/credentials.env" probe
+    if [ "$TELEMT_CONFIG" = "${MTPROXYL_DIR}/mtdd/config.json" ]; then
+        creds="${MTPROXYL_DIR}/mtdd/credentials.env"
+    fi
+    probe=$(python3 - "$TELEMT_CONFIG" "$creds" <<'PYMETRICS'
+import json, re, sys
+from pathlib import Path
+c = json.loads(Path(sys.argv[1]).read_text())
+split = int(c.get('metrics_port', 0)) > 0 and bool(c.get('metrics_token_env'))
+host = str(c.get('metrics_host' if split else 'control_host') or '127.0.0.1').strip('[]')
+if host in ('0.0.0.0', '::'): host = '127.0.0.1'
+port = int(c.get('metrics_port' if split else 'control_port') or 9090)
+name = c.get('metrics_token_env') if split else (c.get('api_token_env') or 'MTDD_API_TOKEN')
+token = ''
+for line in Path(sys.argv[2]).read_text().splitlines():
+    m = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=['\"]?([A-Za-z0-9]{32,512})['\"]?\s*", line.strip())
+    if m and m[1] == name: token = m[2]
+if not token: sys.exit('mtdd metrics token not found in credentials file')
+if ':' in host: host = '[' + host + ']'
+print(f'http://{host}:{port}/metrics')
+print(token)
+PYMETRICS
+    ) || die "не удалось прочитать адрес/токен метрик mtdd"
+    METRICS_URL="${probe%%$'\n'*}"
+    METRICS_AUTH=("Authorization: Bearer ${probe#*$'\n'}")
+}
+
 # rescue — вернуть прокси в работу, если one-shot не отработал (или был убит
 # по таймауту между stop и start). Classic/MEKO: при неудаче детекта
 # рестартуем telemt.service ВСЛЕПУЮ — он там всегда так называется.
+
 rescue_proxy() {
     if [ "$MTPROXYL_MODE" -eq 1 ]; then
         if mtproxyl_cli; then
@@ -610,13 +686,10 @@ if [ "$APPLY_EFFECTIVE" -eq 1 ]; then
     elif [ -n "$mp" ]; then
         METRICS_URL="http://127.0.0.1:${mp}/metrics"
     fi
-    # mtdd: /metrics под Bearer-токеном, порт — control_port из JSON-конфига
+    # mtdd: /metrics с токеном и адресом из JSON-конфига.
     METRICS_AUTH=()
-    if [ "$TELEMT_CONFIG" = "$TELEMT_MTDD" ]; then
-        mdp=$(grep -oE '"control_port"[[:space:]]*:[[:space:]]*[0-9]+' "$TELEMT_CONFIG" 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)
-        METRICS_URL="http://127.0.0.1:${mdp:-9090}/metrics"
-        mtok=$(sed -n 's/^\(export \)\{0,1\}MTDD_API_TOKEN=//p' /etc/mtdd/credentials.env 2>/dev/null | head -n1 || true)
-        [ -n "$mtok" ] && METRICS_AUTH=("Authorization: Bearer $mtok")
+    if [[ "$TELEMT_CONFIG" == *.json ]]; then
+        configure_mtdd_metrics
     fi
     say "жду подъёма прокси с новым конфигом (опрашиваю ${METRICS_URL}, до 120 с)..."
     UP=0
@@ -643,17 +716,22 @@ hline
 echo -e "  ${GREEN}${BOLD}Готово${NC}"
 hline
 echo -e "  Регистратор:     ${BOLD}${REGISTRY_URL}${NC}"
-echo -e "  Конфиг telemt:   ${BOLD}${TELEMT_CONFIG}${NC}"
+echo -e "  Конфиг прокси:   ${BOLD}${TELEMT_CONFIG}${NC}"
 echo -e "  Конфиг ноды:     ${ETC_DIR}/node.toml"
 echo -e "  Журнал:          journalctl -u sharedd-node-agent -f"
 echo ""
-echo -e "  ${DIM}Дальше всё автоматически: агент сам определит IP, зарегистрируется,${NC}"
-echo -e "  ${DIM}подтянет SNI/пользователей/интервалы из регистратора и пропишет их${NC}"
-echo -e "  ${DIM}в telemt.toml (mask_host не трогается; при mask=true — exclusive_mask).${NC}"
-if [ "$MTPROXYL_MODE" -eq 1 ]; then
-    echo ""
-    echo -e "  ${DIM}MTProxyL: агент синхронизирует ${TELEMT_MTPROXYL} и вызывает${NC}"
-    echo -e "  ${DIM}mtproxyl restart для применения изменений.${NC}"
-    echo -e "  ${DIM}Все изменения из панели (юзеры/SNI) применяются автоматически с рестартом.${NC}"
+if [ "$TELEMT_CONFIG" = "${MTPROXYL_DIR}/mtdd/config.json" ]; then
+    echo -e "  ${DIM}MTProxyL + mtdd: пользователи пула и их SNI синхронизируются через CLI.${NC}"
+    echo -e "  ${DIM}Общий домен и Selfmask сохраняются; expert telemt не используется.${NC}"
+else
+    echo -e "  ${DIM}Дальше всё автоматически: агент сам определит IP, зарегистрируется,${NC}"
+    echo -e "  ${DIM}подтянет SNI/пользователей/интервалы из регистратора и пропишет их${NC}"
+    echo -e "  ${DIM}в telemt.toml (mask_host не трогается; при mask=true — exclusive_mask).${NC}"
+    if [ "$MTPROXYL_MODE" -eq 1 ]; then
+        echo ""
+        echo -e "  ${DIM}MTProxyL: агент синхронизирует ${TELEMT_MTPROXYL} и вызывает${NC}"
+        echo -e "  ${DIM}mtproxyl restart для применения изменений.${NC}"
+        echo -e "  ${DIM}Все изменения из панели (юзеры/SNI) применяются автоматически с рестартом.${NC}"
+    fi
 fi
 hline

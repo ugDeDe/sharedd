@@ -21,7 +21,7 @@ extract() { # extract <file> <fn>
 }
 
 status=0
-for fn in toml_escape update_registry_config detect_proxy_unit rescue_proxy ensure_antiscan_deps; do
+for fn in detect_mtproxyl_config configure_mtdd_metrics update_mtdd_config_path toml_escape update_registry_config detect_proxy_unit rescue_proxy ensure_antiscan_deps; do
     if diff -q <(extract "$A" "$fn") <(extract "$B" "$fn") >/dev/null; then
         echo "parity ok: $fn"
     else

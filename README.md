@@ -440,7 +440,7 @@ tar xzf dist/sharedd-node-agent-*-linux-amd64.tar.gz
 sudo bash pkg/install_full.sh # URL регистратора (Enter = дефолт), путь telemt — авто
 # явные пресеты:
 sudo bash pkg/install_full.sh --preset classic # /etc/telemt/telemt.toml
-sudo bash pkg/install_full.sh --preset mtproxyl # MTProxyL (настройка через CLI)
+sudo bash pkg/install_full.sh --preset mtproxyl # MTProxyL + telemt/mtdd (через CLI)
 sudo bash pkg/install_full.sh --preset mtdd      # mtdd (/etc/mtdd/config.json, API)
 ```
 
@@ -630,6 +630,21 @@ Globalping, а не самоотчётом). Два пути: **1)** смени�
 Да. Агент детектит тип установки: ванильный telemt,
 MEKO, MTProxyL Manager. Для MTProxyL Manager
 агент настраивает параметры и секреты через CLI (`mtproxyl expert` / `secret`).
+Для MTProxyL Manager с движком **mtdd** установщики выбирают
+`/opt/mtproxyl/mtdd/config.json`, в том числе при наличии старого конфига telemt.
+Пользователи пула и их персональный SNI сохраняются через `mtproxyl secret`:
+перезапуск или пересборка конфига менеджером не стирают их. Общий домен,
+Selfmask и остальные пользователи сохраняются. Команды `expert` telemt для mtdd
+не вызываются. Метрики читаются с адресом и токеном из конфигурации mtdd и
+его `credentials.env`; поддерживается отдельный порт метрик.
+
+Нужны **обновлённые установщик и агент** с поддержкой MTProxyL + mtdd.
+Старый бинарник отклоняется до замены установленного агента. Для локальной
+сборки используйте `--binary /путь/sharedd-node-agent` с `scripts/install_node.sh`;
+web-установщик принимает `--binary-url` (либо `--channel dev`, когда сборка уже
+опубликована в dev-релизе). При повторной установке путь в `node.toml` обновляется.
+Рекламная пауза меняет персональные теги только пользователей пула.
+
 Тип ноды показывается бейджом в панели.
 
 </details>
