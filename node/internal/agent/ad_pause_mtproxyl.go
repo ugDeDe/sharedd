@@ -58,15 +58,22 @@ var adPauseSharedUsers = func() []string {
 // mtproxylAdView — из рабочего config.toml: включён ли ME и персональные метки.
 func mtproxylAdView(path string) (me bool, tags map[string]string, err error) {
 	if isMtproxylMtddConfig(path) {
-		users, readErr := readMtproxylMtddUsers()
-		if readErr != nil {
-			return false, nil, readErr
+		// Состояние самого mtdd (его users.json), а не secrets.conf: сборка
+		// mtdd без полного API метку пользователя не примет, хотя MTProxyL её
+		// запишет, — такое окно не должно подтверждаться как pool.
+		c, cerr := loadMtddConfig(path)
+		if cerr != nil {
+			return false, nil, cerr
+		}
+		users, rerr := readMtddUsers(c)
+		if rerr != nil {
+			return false, nil, fmt.Errorf("read mtdd users: %w", rerr)
 		}
 		tags = make(map[string]string, len(users))
-		for _, user := range users {
-			tags[user.Label] = strings.ToLower(strings.TrimSpace(user.AdTag))
+		for name, u := range users {
+			tags[name] = strings.ToLower(strings.TrimSpace(u.AdTag))
 		}
-		return true, tags, nil
+		return true, tags, nil // ME у mtdd есть всегда
 	}
 
 	b, err := os.ReadFile(path)

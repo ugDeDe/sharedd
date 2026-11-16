@@ -61,9 +61,11 @@ type mtddConfig struct {
 	TLSDomain   string `json:"tls_domain"`
 	UsersPath   string `json:"users_path"`
 	// Новая схема токенов (ветка dev mtdd): admin — api_token_env, metrics —
-	// отдельный слушатель metrics_host:metrics_port (явный порт > 0) с токеном
-	// из metrics_token_env. Без явного metrics_port метрики берутся с порта
-	// API под admin-токеном (так отвечают и прежние сборки).
+	// отдельный слушатель metrics_host:metrics_port (явный порт > 0), токен —
+	// из metrics_token_env, если задан (без него mtdd пускает только
+	// metrics_allow, по умолчанию loopback; так конфиг пишет MTProxyL). Без
+	// явного metrics_port метрики берутся с порта API под admin-токеном
+	// (устаревший путь, так отвечают и прежние сборки).
 	APITokenEnv     string `json:"api_token_env"`
 	MetricsHost     string `json:"metrics_host"`
 	MetricsPort     int    `json:"metrics_port"`
@@ -106,8 +108,11 @@ func (c *mtddConfig) asTelemt() *TelemtConfig {
 	host, port := strings.Trim(c.ControlHost, "[]"), c.ControlPort
 	if c.splitMetrics() {
 		host, port = strings.Trim(strings.TrimSpace(c.MetricsHost), "[]"), c.MetricsPort
-		if host == "" {
+		switch host {
+		case "", "0.0.0.0":
 			host = "127.0.0.1"
+		case "::":
+			host = "::1"
 		}
 	}
 	t.Server.MetricsPort = port
@@ -115,9 +120,11 @@ func (c *mtddConfig) asTelemt() *TelemtConfig {
 	return &t
 }
 
-// splitMetrics — /metrics отдаётся отдельным слушателем с metrics-токеном.
+// splitMetrics — /metrics отдаётся отдельным слушателем metrics_host:metrics_port.
+// /metrics на порту API у mtdd устарел (Deprecation), поэтому явный
+// metrics_port важнее, даже без metrics-токена.
 func (c *mtddConfig) splitMetrics() bool {
-	return c.MetricsPort > 0 && strings.TrimSpace(c.MetricsTokenEnv) != ""
+	return c.MetricsPort > 0
 }
 
 // mtddBase — базовый URL локального API ("http://127.0.0.1:9090").
@@ -158,11 +165,16 @@ func (c *mtddConfig) adminToken() (string, error) {
 	return mtddEnvTokenFile(c.credentialsPath(), c.APITokenEnv)
 }
 
-// metricsToken — токен для /metrics: отдельный metrics-токен при выделенном
-// слушателе, иначе admin (метрики на порту API).
+// metricsToken — токен для /metrics: при выделенном слушателе — metrics-токен
+// или "" (слушатель без токена, доступ по metrics_allow), иначе admin
+// (метрики на порту API).
 func (c *mtddConfig) metricsToken() (string, error) {
 	if c.splitMetrics() {
-		return mtddEnvTokenFile(c.credentialsPath(), strings.TrimSpace(c.MetricsTokenEnv))
+		name := strings.TrimSpace(c.MetricsTokenEnv)
+		if name == "" {
+			return "", nil
+		}
+		return mtddEnvTokenFile(c.credentialsPath(), name)
 	}
 	return c.adminToken()
 }
@@ -182,7 +194,9 @@ func metricsGet(client *http.Client, cfg *config.NodeConfig, target string) (*ht
 		if terr != nil {
 			return nil, terr
 		}
-		req.Header.Set("Authorization", "Bearer "+tok)
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
 	}
 	return client.Do(req)
 }
@@ -251,6 +265,7 @@ type mtddUserRecord struct {
 	Secret    string `json:"secret"`
 	Enabled   bool   `json:"enabled"`
 	TLSDomain string `json:"tls_domain"` // персональный SNI (mtdd с поддержкой tls_domain)
+	AdTag     string `json:"ad_tag"`     // персональная рекламная метка (полный API)
 }
 
 var mtddSecretRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)

@@ -569,23 +569,29 @@ configure_mtdd_metrics() {
 import json, re, sys
 from pathlib import Path
 c = json.loads(Path(sys.argv[1]).read_text())
-split = int(c.get('metrics_port', 0)) > 0 and bool(c.get('metrics_token_env'))
+# Явный metrics_port — свой слушатель (/metrics на порту API устарел); токен
+# у него только при metrics_token_env, иначе доступ по metrics_allow (loopback).
+split = int(c.get('metrics_port', 0) or 0) > 0
 host = str(c.get('metrics_host' if split else 'control_host') or '127.0.0.1').strip('[]')
-if host in ('0.0.0.0', '::'): host = '127.0.0.1'
+if host == '0.0.0.0': host = '127.0.0.1'
+if host == '::': host = '::1'
 port = int(c.get('metrics_port' if split else 'control_port') or 9090)
 name = c.get('metrics_token_env') if split else (c.get('api_token_env') or 'MTDD_API_TOKEN')
 token = ''
-for line in Path(sys.argv[2]).read_text().splitlines():
-    m = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=['\"]?([A-Za-z0-9]{32,512})['\"]?\s*", line.strip())
-    if m and m[1] == name: token = m[2]
-if not token: sys.exit('mtdd metrics token not found in credentials file')
+if name:
+    for line in Path(sys.argv[2]).read_text().splitlines():
+        m = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=['\"]?([A-Za-z0-9]{32,512})['\"]?\s*", line.strip())
+        if m and m[1] == name: token = m[2]
+    if not token: sys.exit('mtdd metrics token not found in credentials file')
 if ':' in host: host = '[' + host + ']'
 print(f'http://{host}:{port}/metrics')
-print(token)
+print('T:' + token)
 PYMETRICS
     ) || die "не удалось прочитать адрес/токен метрик mtdd"
     METRICS_URL="${probe%%$'\n'*}"
-    METRICS_AUTH=("Authorization: Bearer ${probe#*$'\n'}")
+    probe="${probe#*$'\n'T:}"
+    METRICS_AUTH=()
+    [ -z "$probe" ] || METRICS_AUTH=("Authorization: Bearer ${probe}")
 }
 
 # rescue — вернуть прокси в работу, если one-shot не отработал (или был убит

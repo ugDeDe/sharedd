@@ -55,6 +55,18 @@ grep -q 'apply_to_telemt=true' "$1/node.toml"
 configure_mtdd_metrics
 test "$METRICS_URL" = 'http://[::1]:9092/metrics'
 test "${METRICS_AUTH[0]}" = "Authorization: Bearer $EXPECTED_TOKEN"
+# As MTProxyL writes it: metrics listener without a token (metrics_allow),
+# never the deprecated /metrics on the API port.
+printf '{"control_port":9091,"api_token_env":"MTDD_API_TOKEN","metrics_host":"0.0.0.0","metrics_port":9090}' > "$1/mtdd/config.json"
+configure_mtdd_metrics
+test "$METRICS_URL" = 'http://127.0.0.1:9090/metrics'
+test "${#METRICS_AUTH[@]}" = 0
+# Without metrics_port: legacy /metrics on the API port with the admin token.
+printf '{"control_port":9091,"metrics_port":0}' > "$1/mtdd/config.json"
+printf 'MTDD_API_TOKEN=%s\n' "$EXPECTED_TOKEN" > "$1/mtdd/credentials.env"
+configure_mtdd_metrics
+test "$METRICS_URL" = 'http://127.0.0.1:9091/metrics'
+test "${METRICS_AUTH[0]}" = "Authorization: Bearer $EXPECTED_TOKEN"
 printf "ENGINE_KIND='telemt'\n" > "$MTPROXYL_SETTINGS"
 test "$(detect_mtproxyl_config)" = "$MTPROXYL_DIR/mtproxy/config.toml"
 '''
