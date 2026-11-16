@@ -114,3 +114,55 @@ func TestRegisterFailureKeepsNodeType(t *testing.T) {
 		t.Fatalf("failed register must NOT pin new type (retry needed), got %q", lastNodeType)
 	}
 }
+
+// MTProxyL помечается движком: конфиг /opt/mtproxyl/mtdd/config.json —
+// mtproxyl_mtdd, иначе mtproxyl. Регистратор, не знающий mtproxyl_mtdd
+// (400 про node_type), получает mtproxyl — нода не выпадает из пула.
+func TestRegisterReportsMtproxylEngine(t *testing.T) {
+	_, mtproxyl := withManagerDirs(t)
+	lastNodeType = ""
+	nodeTypeLegacyOnly.Store(false)
+	t.Cleanup(func() { lastNodeType = ""; nodeTypeLegacyOnly.Store(false) })
+	if err := os.Mkdir(mtproxyl, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := false
+	var sent []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var p registerPayload
+		_ = json.NewDecoder(r.Body).Decode(&p)
+		sent = append(sent, p.NodeType)
+		if legacy && p.NodeType == NodeTypeMTProxyLMtdd {
+			http.Error(w, "node_type must be classic, mtproxyl, meko, or mtdd", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cfg := &config.NodeConfig{}
+	cfg.Registry.URL = srv.URL
+	nodeID = "node-t-3"
+	client := &http.Client{Timeout: 3 * time.Second}
+
+	cfg.Telemt.ConfigPath = filepath.Join(mtproxyl, "mtproxy", "config.toml")
+	if reportedNodeType(cfg) != NodeTypeMTProxyL {
+		t.Fatalf("MTProxyL on telemt must report mtproxyl, got %q", reportedNodeType(cfg))
+	}
+	cfg.Telemt.ConfigPath = filepath.Join(mtproxyl, "mtdd", "config.json")
+	if ok, _ := register(client, cfg, "1.2.3.4"); !ok || lastNodeType != NodeTypeMTProxyLMtdd {
+		t.Fatalf("MTProxyL on mtdd must register as mtproxyl_mtdd, sent %v, pinned %q", sent, lastNodeType)
+	}
+
+	legacy, sent = true, nil
+	if ok, _ := register(client, cfg, "1.2.3.4"); !ok {
+		t.Fatalf("old registry: fallback registration failed, sent %v", sent)
+	}
+	if len(sent) != 2 || sent[0] != NodeTypeMTProxyLMtdd || sent[1] != NodeTypeMTProxyL {
+		t.Fatalf("expected mtproxyl_mtdd then mtproxyl, sent %v", sent)
+	}
+	// Дальше — сразу mtproxyl, и тип совпадает с зарегистрированным (без
+	// перерегистрации на каждом heartbeat).
+	if reportedNodeType(cfg) != NodeTypeMTProxyL || registeredNodeType() != NodeTypeMTProxyL {
+		t.Fatalf("fallback must stick: reported %q, registered %q", reportedNodeType(cfg), registeredNodeType())
+	}
+}

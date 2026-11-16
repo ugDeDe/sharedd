@@ -176,7 +176,7 @@ type panelNode struct {
 	GPVerifiedPct    float64  `json:"gp_verified_pct"`
 	MasterStints     int      `json:"master_stints"`
 	MasterTimeSec    int64    `json:"master_time_sec"`
-	// NodeType: classic/mtproxyl/meko/mtdd — бейдж типа менеджера в панели.
+	// NodeType: classic/mtproxyl/mtproxyl_mtdd/meko/mtdd — бейдж типа менеджера в панели.
 	NodeType string `json:"node_type,omitempty"`
 	// Quarantine: не-nil — нода в GP-карантине, рендерится
 	// отдельной таблицей (не в основном списке нод).

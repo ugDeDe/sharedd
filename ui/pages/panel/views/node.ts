@@ -6,6 +6,7 @@
    Меняется только разметка. */
 
 import { $, esc, renderSection } from "../../../lib/dom";
+import { nodeTypeBadge } from "../../../lib/node-type";
 import { fmtDur, fmtAgo, fmtClock } from "../../../lib/format";
 import { api, state } from "../state";
 import { renderInto as renderEventsInto } from "./events";
@@ -15,17 +16,6 @@ function chip(flag: boolean | null | undefined, okText?: string, noText?: string
   return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
 }
 
-const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
-  classic:  { label: "Classic",  cls: "",         title: "классический telemt" },
-  mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
-  meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
-  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
-};
-function nodeTypeBadge(t: string): string {
-  const m = NODE_TYPE_META[t];
-  if (!m) return "";
-  return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-}
 
 /* ── спарклайн клиентов с ховером ──────────────────────────────────
    наводишь курсор — подсказка со временем и числом подключений в этой

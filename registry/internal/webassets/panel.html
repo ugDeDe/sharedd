@@ -3157,7 +3157,7 @@
     display: none;
   }
 </style>
-  <meta name="sharedd-build" content="8f4b36097d4fd454">
+  <meta name="sharedd-build" content="61b49ce6bd2e7cd0">
 </head>
 <body>
 
@@ -3714,6 +3714,24 @@
     return data;
   }
 
+  // ui/lib/node-type.ts
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL · telemt", cls: "special", title: "MTProxyL с движком telemt (/opt/mtproxyl/)" },
+    mtproxyl_mtdd: { label: "MTProxyL · mtdd", cls: "special", title: "MTProxyL с движком mtdd (/opt/mtproxyl/mtdd/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
+  };
+  function nodeTypeLabel(t) {
+    const m = NODE_TYPE_META[String(t != null ? t : "")];
+    return m ? m.label : "";
+  }
+  function nodeTypeBadge(t) {
+    const m = NODE_TYPE_META[String(t != null ? t : "")];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
+
   // ui/lib/format.ts
   function fmtDur(sec) {
     sec = Math.max(0, Math.floor(sec));
@@ -3897,7 +3915,6 @@
     <td class="dim wrap" data-label="Причина">${esc(b.cause || "—")}</td>
   </tr>`).join("");
   }
-  var NODE_TYPE_LABEL = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd" };
   function domainSubtitle(m) {
     if (m.node_id) {
       let ttl = "";
@@ -3933,7 +3950,7 @@
   }
   function masterNodeItemHTML(n, id, dead, pair) {
     var _a;
-    const type = NODE_TYPE_LABEL[n.node_type] || "";
+    const type = nodeTypeLabel(n.node_type);
     const avail = ((_a = n.availability_pct) != null ? _a : 0).toFixed(1);
     return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <span class="topo-star">${icon(ICONS.masters, 14)}</span>
@@ -4071,16 +4088,6 @@
   // ui/pages/panel/views/nodes.ts
   function availColor(p) {
     return p >= 99 ? "ok" : p >= 95 ? "warn" : "bad";
-  }
-  var NODE_TYPE_META = {
-    classic: { label: "Classic", cls: "", title: "классический telemt" },
-    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
-    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
-  };
-  function nodeTypeLabel(t) {
-    const m = NODE_TYPE_META[t];
-    return m ? m.label : "";
   }
   function checksHTML(n) {
     var _a;
@@ -4379,17 +4386,6 @@
     if (flag === null || flag === void 0) return `<span class="badge">—</span>`;
     return flag ? `<span class="badge ok">${okText || "ok"}</span>` : `<span class="badge bad">${noText || "fail"}</span>`;
   }
-  var NODE_TYPE_META2 = {
-    classic: { label: "Classic", cls: "", title: "классический telemt" },
-    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
-    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
-  };
-  function nodeTypeBadge(t) {
-    const m = NODE_TYPE_META2[t];
-    if (!m) return "";
-    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-  }
   function clientsSparkInteractive(pts) {
     if (pts.length < 2) {
       return `<div class="dim" style="padding:6px 0">пока мало данных — накапливается раз в metrics_ms</div>`;
@@ -4560,17 +4556,6 @@
   }
 
   // ui/pages/panel/views/dns.ts
-  var NODE_TYPE_META3 = {
-    classic: { label: "Classic", cls: "", title: "классический telemt" },
-    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
-    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
-  };
-  function nodeTypeBadge2(t) {
-    const m = NODE_TYPE_META3[t];
-    if (!m) return "";
-    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-  }
   function ttlRing(m) {
     if (!(m.ttl_sec > 0)) return `<span class="pair-dot"></span>`;
     const expired = m.ttl_remaining_sec < 0;
@@ -4654,7 +4639,7 @@
     <div class="pair-link">${ttlRing(m)}</div>
     <div class="pair-node">
       <div class="pair-name mono">${esc(m.node_id)}</div>
-      <div class="pair-sub">${nodeTypeBadge2(m.node_type)}</div>
+      <div class="pair-sub">${nodeTypeBadge(m.node_type)}</div>
     </div>
     <div class="pair-meta">
       <div class="pair-clients"><b>${m.clients != null ? m.clients : "—"}</b><span>клиентов</span></div>
@@ -5165,7 +5150,7 @@
       const now = n.active ? " · сейчас окно рекламы" : n.master ? " · мастер" : "";
       const quota = n.quota_sec ? ` из ${fmtDur2(n.quota_sec)}` : "";
       const stat = `${state3}${now} · сегодня ${fmtDur2(n.today_sec)}${quota} · всего ${fmtDur2(n.ad_sec)}`;
-      return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}"><span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span><span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
+      return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}"><span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(nodeTypeLabel(n.node_type) || n.node_type) : ""}</span><span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
     }).join("") + `</div>`;
   }
   async function dnsPush2() {

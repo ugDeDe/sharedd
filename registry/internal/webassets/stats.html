@@ -1975,7 +1975,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     margin-bottom: 16px;
   }
 </style>
-  <meta name="sharedd-build" content="b12570855e8e9b53">
+  <meta name="sharedd-build" content="5eaae17105c30a78">
 </head>
 <body>
 
@@ -2032,6 +2032,24 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
     check: `<polyline points="20 6 9 17 4 12"/>`,
     back: `<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>`
   };
+
+  // ui/lib/node-type.ts
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL · telemt", cls: "special", title: "MTProxyL с движком telemt (/opt/mtproxyl/)" },
+    mtproxyl_mtdd: { label: "MTProxyL · mtdd", cls: "special", title: "MTProxyL с движком mtdd (/opt/mtproxyl/mtdd/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
+  };
+  function nodeTypeLabel(t) {
+    const m = NODE_TYPE_META[String(t != null ? t : "")];
+    return m ? m.label : "";
+  }
+  function nodeTypeBadge(t) {
+    const m = NODE_TYPE_META[String(t != null ? t : "")];
+    if (!m) return "";
+    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
+  }
 
   // ui/lib/format.ts
   function fmtDur(sec) {
@@ -2465,17 +2483,6 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
   }
   function nodeName(n) {
     return String((n == null ? void 0 : n.display_name) || (n == null ? void 0 : n.node_id) || "—");
-  }
-  var NODE_TYPE_META = {
-    classic: { label: "Classic", cls: "", title: "классический telemt" },
-    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
-    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
-  };
-  function nodeTypeBadge(t) {
-    const m = NODE_TYPE_META[t];
-    if (!m) return "";
-    return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
   }
   var EV_META = {
     registry_started: { label: "Запуск регистратора", cls: "" },
@@ -2914,7 +2921,6 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       Предельная цена появляется, когда соединений было заметно разное число. Проценты — от всего сервера: сравнимы только между серверами одного размера.${hostBits.length ? " Хост: " + esc(hostBits.join(" · ")) + "." : ""}</div>
   </section>`;
   }
-  var TYPE_LABEL = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd", unknown: "неизвестно" };
   function costByTypeHTML(list) {
     const head = `<div class="card-head"><h2>Цена 1000 соединений по типам прокси</h2><span class="hint">медиана по нодам · 24 ч</span></div>`;
     if (!list.length) {
@@ -2930,7 +2936,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem("sharedd.theme")
       return ((_b = (_a = t.cpu_cores) == null ? void 0 : _a.avg_nodes) != null ? _b : 0) > 0 || ((_d = (_c = t.ram_mb) == null ? void 0 : _c.avg_nodes) != null ? _d : 0) > 0;
     });
     const rows = list.map((t) => `<tr>
-      <td data-label="Тип">${esc(TYPE_LABEL[t.node_type] || t.node_type)}</td>
+      <td data-label="Тип">${esc(nodeTypeLabel(t.node_type) || (t.node_type === "unknown" ? "неизвестно" : t.node_type))}</td>
       <td class="num mono" data-label="Нод">${t.nodes}</td>
       <td class="num mono" data-label="CPU сервера">${cell(t.host_cpu_pct, 1, "%")}</td>
       <td class="num mono" data-label="RAM сервера">${cell(t.host_ram_pct, 1, "%")}</td>

@@ -15,6 +15,9 @@ package agent
 import (
 	"os"
 	"strings"
+	"sync/atomic"
+
+	"sharedd/node/internal/config"
 )
 
 // Пути — var ради подмены в тестах.
@@ -28,7 +31,24 @@ const (
 	NodeTypeMTProxyL = "mtproxyl"
 	NodeTypeMEKO     = "meko"
 	NodeTypeMTDD     = "mtdd"
+	// NodeTypeMTProxyLMtdd — только в /register: MTProxyL Manager с движком
+	// mtdd. Внутри агента нода остаётся NodeTypeMTProxyL (CLI тот же).
+	NodeTypeMTProxyLMtdd = "mtproxyl_mtdd"
 )
+
+// nodeTypeLegacyOnly — регистратор не знает mtproxyl_mtdd (400 про node_type):
+// до перезапуска агента регистрируемся как mtproxyl.
+var nodeTypeLegacyOnly atomic.Bool
+
+// reportedNodeType — тип для /register и бейджа в панели: MTProxyL
+// помечается движком (telemt — mtproxyl, mtdd — mtproxyl_mtdd).
+func reportedNodeType(cfg *config.NodeConfig) string {
+	nt := detectNodeType()
+	if nt == NodeTypeMTProxyL && cfg != nil && isMtproxylMtddConfig(cfg.Telemt.ConfigPath) && !nodeTypeLegacyOnly.Load() {
+		return NodeTypeMTProxyLMtdd
+	}
+	return nt
+}
 
 // detectNodeType — тип установленного менеджера. os.Stat дёшев, дёргается
 // на каждом /register, так что смена менеджера заметна без рестарта агента.
@@ -50,6 +70,8 @@ func nodeTypeLabel(t string) string {
 	switch strings.ToLower(t) {
 	case NodeTypeMTProxyL:
 		return "MTProxyL"
+	case NodeTypeMTProxyLMtdd:
+		return "MTProxyL (mtdd)"
 	case NodeTypeMEKO:
 		return "MEKO"
 	case NodeTypeMTDD:

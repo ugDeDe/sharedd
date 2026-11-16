@@ -77,10 +77,10 @@ func ValidatePublicIPv4(s string) error {
 
 func ValidateNodeType(nodeType string) error {
 	switch nodeType {
-	case "classic", "mtproxyl", "meko", "mtdd":
+	case "classic", "mtproxyl", "mtproxyl_mtdd", "meko", "mtdd":
 		return nil
 	default:
-		return fmt.Errorf("node_type must be classic, mtproxyl, meko, or mtdd")
+		return fmt.Errorf("node_type must be classic, mtproxyl, mtproxyl_mtdd, meko, or mtdd")
 	}
 }
 
@@ -120,7 +120,8 @@ func ValidateHealthReport(payload HealthReportPayload, now time.Time) error {
 type RegisterRequest struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic/mtproxyl/meko/mtdd — информационный бейдж в панели.
+	// NodeType: classic/mtproxyl/mtproxyl_mtdd/meko/mtdd — информационный бейдж
+	// в панели (mtproxyl — MTProxyL на telemt, mtproxyl_mtdd — на mtdd).
 	NodeType string `json:"node_type,omitempty"`
 	// AuthKey — персональный ключ регистрации (sda_…, user-режим
 	// [users] enabled=true). В legacy-режиме поле игнорируется; agents

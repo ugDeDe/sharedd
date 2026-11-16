@@ -3233,7 +3233,7 @@
     overflow: visible;
   }
 </style>
-  <meta name="sharedd-build" content="0d11321d524c1a8e">
+  <meta name="sharedd-build" content="9873889d62a57c38">
 </head>
 <body>
 
@@ -4401,6 +4401,15 @@
     }
   }
 
+  // ui/lib/node-type.ts
+  var NODE_TYPE_META = {
+    classic: { label: "Classic", cls: "", title: "классический telemt" },
+    mtproxyl: { label: "MTProxyL · telemt", cls: "special", title: "MTProxyL с движком telemt (/opt/mtproxyl/)" },
+    mtproxyl_mtdd: { label: "MTProxyL · mtdd", cls: "special", title: "MTProxyL с движком mtdd (/opt/mtproxyl/mtdd/)" },
+    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
+    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
+  };
+
   // ui/lib/chart.ts
   var VB_W = 100;
   function chartTop(nums, max) {
@@ -5463,12 +5472,6 @@
     quarantined: { label: "карантин Globalping", cls: "warn" },
     deleting: { label: "удаляется", cls: "warn" },
     offline: { label: "нет данных", cls: "" }
-  };
-  var NODE_TYPE_META = {
-    classic: { label: "Classic", cls: "", title: "классический telemt" },
-    mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-    meko: { label: "MEKO", cls: "info", title: "фикс MEKO (/opt/mtpr-simple/)" },
-    mtdd: { label: "mtdd", cls: "info", title: "прокси mtdd (/etc/mtdd/)" }
   };
   var EV_LABEL = {
     node_registered: { label: "Регистрация ноды", dot: "info" },

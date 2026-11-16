@@ -304,6 +304,11 @@ SSH-ключ. Провайдер не участвует, платных выз�
 { "node_id": "...", "ip": "...", "authkey": "sda_...", "node_type": "..." }
 ```
 
+`node_type` — `classic`, `mtproxyl` (MTProxyL на telemt), `mtproxyl_mtdd`
+(MTProxyL Manager на mtdd), `meko` или `mtdd`. Регистратор без
+`mtproxyl_mtdd` отвечает 400 с текстом про `node_type` — агент тогда
+регистрируется как `mtproxyl` до своего перезапуска.
+
 Порядок авторизации:
 1. Bearer — общий `[security] node_token` остаётся первым барьером (как сейчас).
 2. `authkey` в теле: хеш ищется в authkeys; не найден/revoked → 403 `bad_authkey`.

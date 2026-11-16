@@ -144,7 +144,7 @@ func (r *Registry) handleNodeSettingsPatch(w http.ResponseWriter, req *http.Requ
 			nodeType = c.NodeType
 		}
 		r.mu.RUnlock()
-		if nodeType != "" && nodeType != "mtproxyl" {
+		if nodeType != "" && nodeType != "mtproxyl" && nodeType != "mtproxyl_mtdd" {
 			controlAPIError(w, http.StatusUnprocessableEntity, "unsupported_setting",
 				"эта нода не MTProxyL: изменение ad_tag на живой ноде не поддерживается. Задайте его при переустановке.")
 			return

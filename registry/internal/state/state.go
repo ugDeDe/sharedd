@@ -433,7 +433,7 @@ type Candidate struct {
 	// nil keeps legacy persisted candidates compatible until their next report.
 	PortCompatible *bool `json:"port_compatible,omitempty"`
 
-	// NodeType: classic/mtproxyl/meko/mtdd — тип менеджера прокси на ноде,
+	// NodeType: classic/mtproxyl/mtproxyl_mtdd/meko/mtdd — тип менеджера прокси на ноде,
 	// информационный бейдж в панели.
 	NodeType string `json:"node_type,omitempty"`
 

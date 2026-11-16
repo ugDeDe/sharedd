@@ -14,6 +14,7 @@
    из макета. */
 
 import { $, esc, icon, ICONS } from "../../../lib/dom";
+import { nodeTypeLabel } from "../../../lib/node-type";
 import { fmtDur, fmtClock, fmtInterval, fmtTtlMin, plural, fmtNum } from "../../../lib/format";
 
 /* ── KPI-стрип ─────────────────────────────────────────────────────── */
@@ -172,7 +173,6 @@ function renderGPStats(o: any): void {
    2 домена со связями и 3 ноды в очереди — остальное сводится в строку
    «ещё N…», иначе схема расползается на большом пуле. */
 
-const NODE_TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd" };
 
 function domainSubtitle(m: any): string {
   if (m.node_id) {
@@ -220,7 +220,7 @@ function ghostItemHTML(m: any, id: string): string {
 }
 
 function masterNodeItemHTML(n: any, id: string, dead?: boolean, pair?: number): string {
-  const type = NODE_TYPE_LABEL[n.node_type as string] || "";
+  const type = nodeTypeLabel(n.node_type);
   const avail = (n.availability_pct ?? 0).toFixed(1);
   return `<div class="topo-item ${dead ? "sick" : "live"}" id="${id}"${pair != null ? ` data-pair="${pair}"` : ""}>
     <span class="topo-star">${icon(ICONS.masters, 14)}</span>

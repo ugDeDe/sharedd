@@ -3,6 +3,7 @@
    перенесена из прежней версии дословно. Меняется только разметка и стили. */
 
 import { $, esc, icon, ICONS } from "../../lib/dom";
+import { nodeTypeBadge, nodeTypeLabel } from "../../lib/node-type";
 import { fmtDur, fmtAgo, fmtClock, plural } from "../../lib/format";
 import { initTheme } from "../../lib/theme";
 import {
@@ -20,17 +21,6 @@ function availClass(p: number): string { return p >= 99 ? "ok" : p >= 95 ? "warn
    "login · Нода №N", для legacy/общей регистрации — прежний node_id. */
 function nodeName(n: any): string { return String(n?.display_name || n?.node_id || "—"); }
 
-const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
-  classic:  { label: "Classic",  cls: "",        title: "классический telemt" },
-  mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
-  meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
-  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
-};
-function nodeTypeBadge(t: string): string {
-  const m = NODE_TYPE_META[t];
-  if (!m) return "";
-  return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-}
 
 const EV_META: Record<string, { label: string; cls: string }> = {
   registry_started:      { label: "Запуск регистратора",  cls: "" },
@@ -505,7 +495,6 @@ function connCostHTML(c: any, host: any): string {
   </section>`;
 }
 
-const TYPE_LABEL: Record<string, string> = { classic: "Classic", mtproxyl: "MTProxyL", meko: "MEKO", mtdd: "mtdd", unknown: "неизвестно" };
 
 function costByTypeHTML(list: any[]): string {
   const head = `<div class="card-head"><h2>Цена 1000 соединений по типам прокси</h2><span class="hint">медиана по нодам · 24 ч</span></div>`;
@@ -520,7 +509,7 @@ function costByTypeHTML(list: any[]): string {
   // Колонки процесса прокси — только когда хоть один тип их прислал.
   const proc = list.some((t) => (t.cpu_cores?.avg_nodes ?? 0) > 0 || (t.ram_mb?.avg_nodes ?? 0) > 0);
   const rows = list.map((t) => `<tr>
-      <td data-label="Тип">${esc(TYPE_LABEL[t.node_type] || t.node_type)}</td>
+      <td data-label="Тип">${esc(nodeTypeLabel(t.node_type) || (t.node_type === "unknown" ? "неизвестно" : t.node_type))}</td>
       <td class="num mono" data-label="Нод">${t.nodes}</td>
       <td class="num mono" data-label="CPU сервера">${cell(t.host_cpu_pct, 1, "%")}</td>
       <td class="num mono" data-label="RAM сервера">${cell(t.host_ram_pct, 1, "%")}</td>

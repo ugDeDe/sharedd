@@ -6,6 +6,7 @@
    только пустой контейнер #settings-grid. */
 
 import { $, esc, icon, ICONS } from "../../../lib/dom";
+import { nodeTypeLabel } from "../../../lib/node-type";
 import { api, getToken, showToast, saveSection, LS_KEY } from "../state";
 
 /* иконка «глаз» для полей-секретов — своего нет в общем наборе ui/lib/dom.ts */
@@ -449,7 +450,7 @@ function renderAdPauseStatus(list: any[], sum: any): void {
     const quota = n.quota_sec ? ` из ${fmtDur(n.quota_sec)}` : "";
     const stat = `${state}${now} · сегодня ${fmtDur(n.today_sec)}${quota} · всего ${fmtDur(n.ad_sec)}`;
     return `<div class="as-src${n.state === "failed" ? " as-bad" : ""}">` +
-      `<span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(n.node_type) : ""}</span>` +
+      `<span class="as-src-name mono" title="${esc(n.ip)}">${esc(n.node_id)}${n.node_type ? " · " + esc(nodeTypeLabel(n.node_type) || n.node_type) : ""}</span>` +
       `<span class="as-src-stat" title="${esc(stat)}">${esc(stat)}</span></div>`;
   }).join("") + `</div>`;
 }

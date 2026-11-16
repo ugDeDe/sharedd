@@ -9,6 +9,7 @@
    и активный таб. */
 
 import { $, esc, renderSection } from "../../lib/dom";
+import { NODE_TYPE_META } from "../../lib/node-type";
 import { fmtAgo, fmtClock, fmtDur, fmtNum, plural } from "../../lib/format";
 import { barChart } from "../../lib/chart";
 import {
@@ -29,12 +30,6 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   offline:     { label: "нет данных", cls: "" },
 };
 
-const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
-  classic:  { label: "Classic",  cls: "",        title: "классический telemt" },
-  mtproxyl: { label: "MTProxyL", cls: "special", title: "форк MTProxyL (/opt/mtproxyl/)" },
-  meko:     { label: "MEKO",     cls: "info",    title: "фикс MEKO (/opt/mtpr-simple/)" },
-  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
-};
 
 // Подписи типов событий ноды (как в панели, core set). Неизвестный тип
 // показывается как есть — не выдумываем ярлык.

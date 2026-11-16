@@ -21,7 +21,7 @@ import (
 type registerPayload struct {
 	NodeID string `json:"node_id"`
 	IP     string `json:"ip"`
-	// NodeType: classic / mtproxyl / meko / mtdd — информационный бейдж в
+	// NodeType: classic / mtproxyl / mtproxyl_mtdd / meko / mtdd — бейдж в
 	// панели (см. nodetype.go).
 	NodeType string `json:"node_type,omitempty"`
 	// AuthKey — персональный ключ регистрации из [registry] authkey
@@ -211,18 +211,23 @@ func registerWithReason(client *http.Client, cfg *config.NodeConfig, ip string, 
 	if ip == "" || cfg == nil {
 		return false, 0
 	}
-	nt := detectNodeType()
-	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt, AuthKey: cfg.Registry.AuthKey}
-	data, _ := json.Marshal(payload)
-	resp, err := registryRequest(client, cfg, http.MethodPost, "/register", bytes.NewReader(data))
+	nt := reportedNodeType(cfg)
+	resp, body, err := postRegister(client, cfg, ip, nt)
+	// Регистратор старше mtproxyl_mtdd отвергает незнакомый node_type —
+	// регистрируемся как MTProxyL, чтобы обновление агента раньше
+	// регистратора не выбивало ноду из пула.
+	if err == nil && resp.StatusCode == http.StatusBadRequest && nt == NodeTypeMTProxyLMtdd && bytes.Contains(body, []byte("node_type")) {
+		nodeTypeLegacyOnly.Store(true)
+		log.Printf("registry does not know node_type %s — registering as %s", nt, NodeTypeMTProxyL)
+		nt = NodeTypeMTProxyL
+		resp, body, err = postRegister(client, cfg, ip, nt)
+	}
 	if err != nil {
 		log.Printf("register error: %v", err)
 		netw.noteFail() // сброс keep-alive; при смене исходящего IP — кэша IP/рестарт
 		return false, 0
 	}
 	netw.noteOK()
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
 	// 401 — реестр отклонил наши учётные данные. Если это был персональный
 	// секрет (перевыпущен/отозван), забываем его: следующая попытка пойдёт
 	// с общим токеном (ON) или authkey в теле (OFF), /register выдаст новый.
@@ -281,6 +286,19 @@ func registerWithReason(client *http.Client, cfg *config.NodeConfig, ip string, 
 	return resp.StatusCode == http.StatusOK, 0
 }
 
+// postRegister — POST /register; тело ответа прочитано, resp.Body закрыт.
+func postRegister(client *http.Client, cfg *config.NodeConfig, ip, nt string) (*http.Response, []byte, error) {
+	payload := registerPayload{NodeID: nodeID, IP: ip, NodeType: nt, AuthKey: cfg.Registry.AuthKey}
+	data, _ := json.Marshal(payload)
+	resp, err := registryRequest(client, cfg, http.MethodPost, "/register", bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, err
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	return resp, body, nil
+}
+
 // parseRetryAfterSeconds — Retry-After в формате delta-seconds (HTTP-дату
 // регистратор не шлёт; на ней — fail-open 0, попробуем на следующем тике).
 func parseRetryAfterSeconds(h string) time.Duration {
@@ -329,7 +347,7 @@ func heartbeatLoop(client *http.Client, cfg *config.NodeConfig, ipr *ipResolver)
 		recovery.mu.Lock()
 		lastRegisteredIP := recovery.registeredIP
 		recovery.mu.Unlock()
-		if ip != "" && (ip != lastRegisteredIP || detectNodeType() != registeredNodeType()) {
+		if ip != "" && (ip != lastRegisteredIP || reportedNodeType(cfg) != registeredNodeType()) {
 			tryRegister(ip)
 			time.Sleep(intervals.Heartbeat())
 			continue

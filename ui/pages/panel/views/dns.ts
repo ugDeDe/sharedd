@@ -11,20 +11,10 @@
    addEventListener дублей не плодит), т.к. у этого экрана нет init(). */
 
 import { $, esc } from "../../../lib/dom";
+import { nodeTypeBadge } from "../../../lib/node-type";
 import { fmtTtlMin } from "../../../lib/format";
 import { getToken, showToast } from "../state";
 
-const NODE_TYPE_META: Record<string, { label: string; cls: string; title: string }> = {
-  classic:  { label: "Classic",  cls: "",         title: "классический telemt" },
-  mtproxyl: { label: "MTProxyL", cls: "special",  title: "форк MTProxyL (/opt/mtproxyl/)" },
-  meko:     { label: "MEKO",     cls: "info",     title: "фикс MEKO (/opt/mtpr-simple/)" },
-  mtdd:     { label: "mtdd",     cls: "info",     title: "прокси mtdd (/etc/mtdd/)" },
-};
-function nodeTypeBadge(t: string): string {
-  const m = NODE_TYPE_META[t];
-  if (!m) return "";
-  return `<span class="badge ${m.cls}" title="${esc(m.title)}">${esc(m.label)}</span>`;
-}
 
 /* Кольцо обратного отсчёта мастерства: наглядно, сколько домен ещё
    пробудет на этой ноде. Раньше это была строка «21м / 30м». */
