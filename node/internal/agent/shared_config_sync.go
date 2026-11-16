@@ -676,6 +676,9 @@ func applySharedConfigManaged(cfg *config.NodeConfig, shared SharedConfig) error
 	applySvcMu.Lock()
 	defer applySvcMu.Unlock()
 
+	if isMtproxylMtddConfig(cfg.Telemt.ConfigPath) {
+		return applyMtproxylMtddShared(cfg, shared)
+	}
 	if isMtddConfigPath(cfg.Telemt.ConfigPath) {
 		return applyMtddShared(cfg, shared)
 	}

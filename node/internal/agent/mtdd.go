@@ -53,6 +53,8 @@ const mtddAPITimeout = 5 * time.Second
 
 // mtddConfig — используемое агентом подмножество /etc/mtdd/config.json.
 type mtddConfig struct {
+	configPath string
+
 	ProxyPort   int    `json:"proxy_port"`
 	ControlHost string `json:"control_host"`
 	ControlPort int    `json:"control_port"`
@@ -83,6 +85,7 @@ func loadMtddConfig(path string) (*mtddConfig, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("failed to parse mtdd config: %w", err)
 	}
+	c.configPath = path
 	if c.ControlPort == 0 {
 		c.ControlPort = 9090
 	}
@@ -128,10 +131,10 @@ func (c *mtddConfig) base() string {
 
 var mtddEnvLineRe = regexp.MustCompile(`^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=["']?([A-Za-z0-9]{32,512})["']?\s*$`)
 
-// mtddEnvToken — значение токена из credentials.env по имени переменной (читает
+// mtddEnvTokenFile — значение токена из credentials.env по имени переменной (читает
 // только root; наружу не логируется).
-func mtddEnvToken(name string) (string, error) {
-	data, err := os.ReadFile(mtddCredsPath)
+func mtddEnvTokenFile(path, name string) (string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read mtdd credentials: %w", err)
 	}
@@ -140,17 +143,26 @@ func mtddEnvToken(name string) (string, error) {
 			return m[2], nil
 		}
 	}
-	return "", fmt.Errorf("no valid %s in %s", name, mtddCredsPath)
+	return "", fmt.Errorf("no valid %s in %s", name, path)
+}
+
+func (c *mtddConfig) credentialsPath() string {
+	if isMtproxylMtddConfig(c.configPath) {
+		return filepath.Join(filepath.Dir(c.configPath), "credentials.env")
+	}
+	return mtddCredsPath
 }
 
 // adminToken — токен управления (api_token_env).
-func (c *mtddConfig) adminToken() (string, error) { return mtddEnvToken(c.APITokenEnv) }
+func (c *mtddConfig) adminToken() (string, error) {
+	return mtddEnvTokenFile(c.credentialsPath(), c.APITokenEnv)
+}
 
 // metricsToken — токен для /metrics: отдельный metrics-токен при выделенном
 // слушателе, иначе admin (метрики на порту API).
 func (c *mtddConfig) metricsToken() (string, error) {
 	if c.splitMetrics() {
-		return mtddEnvToken(strings.TrimSpace(c.MetricsTokenEnv))
+		return mtddEnvTokenFile(c.credentialsPath(), strings.TrimSpace(c.MetricsTokenEnv))
 	}
 	return c.adminToken()
 }
@@ -250,7 +262,11 @@ func mtddUsersFile(c *mtddConfig) string {
 		p = "/var/lib/mtdd/users.json"
 	}
 	if !filepath.IsAbs(p) {
-		p = filepath.Join(filepath.Dir(mtddConfigPath), p)
+		base := c.configPath
+		if base == "" {
+			base = mtddConfigPath
+		}
+		p = filepath.Join(filepath.Dir(base), p)
 	}
 	return p
 }

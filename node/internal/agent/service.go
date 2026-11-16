@@ -172,6 +172,12 @@ func ensureProxyUp(cfg *config.NodeConfig) error {
 	if err := waitMetricsReady(cfg, ensureMetricsTimeout); err == nil {
 		return nil
 	}
+	if isMtproxylMtddConfig(cfg.Telemt.ConfigPath) {
+		if err := tryMtproxylRestart(); err != nil {
+			return err
+		}
+		return waitMetricsReady(cfg, proxyUpTimeout)
+	}
 	if isMtddConfigPath(cfg.Telemt.ConfigPath) {
 		if !systemdAvailable() {
 			return fmt.Errorf("no systemd — start mtdd manually")

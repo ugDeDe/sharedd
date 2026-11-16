@@ -57,6 +57,18 @@ var adPauseSharedUsers = func() []string {
 
 // mtproxylAdView — из рабочего config.toml: включён ли ME и персональные метки.
 func mtproxylAdView(path string) (me bool, tags map[string]string, err error) {
+	if isMtproxylMtddConfig(path) {
+		users, readErr := readMtproxylMtddUsers()
+		if readErr != nil {
+			return false, nil, readErr
+		}
+		tags = make(map[string]string, len(users))
+		for _, user := range users {
+			tags[user.Label] = strings.ToLower(strings.TrimSpace(user.AdTag))
+		}
+		return true, tags, nil
+	}
+
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return false, nil, err

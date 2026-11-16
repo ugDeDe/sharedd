@@ -68,6 +68,7 @@ jobs:
       # Критичные функции конфиг-конвейера не должны расходиться между
       # интерактивным и web-установщиком ноды.
       - run: bash scripts/check_installer_parity.sh
+      - run: python3 scripts/test_mtproxyl_mtdd_installers.py
 
   ui-check:
     runs-on: ubuntu-latest

@@ -141,6 +141,8 @@ var applyAdPause = func(cfg *config.NodeConfig, d adPauseDirective) string {
 	switch {
 	case cfg == nil:
 		return adPauseUnsupported
+	case isMtproxylMtddConfig(cfg.Telemt.ConfigPath):
+		return applyAdPauseMtproxyl(cfg, d)
 	case isMtddConfigPath(cfg.Telemt.ConfigPath):
 		return applyAdPauseMtdd(cfg, d)
 	case adPauseOnMtproxyl():
